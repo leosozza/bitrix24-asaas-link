@@ -204,6 +204,39 @@ async function registerPaySystemHandler(clientEndpoint: string, accessToken: str
 async function createPaySystems(clientEndpoint: string, accessToken: string, installationId: string, supabase: any) {
   console.log('Creating Pay Systems at endpoint:', clientEndpoint);
   
+  // First, get available person types
+  console.log('Fetching available person types...');
+  const personTypesResult = await callBitrixApi(clientEndpoint, 'sale.persontype.list', {}, accessToken);
+  
+  let personTypeId: string | null = null;
+  
+  if (personTypesResult.result && Array.isArray(personTypesResult.result.personTypes)) {
+    const personTypes = personTypesResult.result.personTypes;
+    console.log('Available person types:', JSON.stringify(personTypes));
+    
+    if (personTypes.length > 0) {
+      // Use the first available person type
+      personTypeId = personTypes[0].ID || personTypes[0].id;
+      console.log('Using person type ID:', personTypeId);
+    }
+  } else if (personTypesResult.result && typeof personTypesResult.result === 'object') {
+    // Alternative format: object with IDs as keys
+    const personTypeIds = Object.keys(personTypesResult.result);
+    console.log('Available person type IDs:', personTypeIds);
+    
+    if (personTypeIds.length > 0) {
+      personTypeId = personTypeIds[0];
+      console.log('Using person type ID:', personTypeId);
+    }
+  } else {
+    console.log('Person types result:', JSON.stringify(personTypesResult));
+  }
+  
+  if (!personTypeId) {
+    console.error('No person types available in portal. Cannot create pay systems.');
+    return 0;
+  }
+  
   const payMethods = [
     { code: 'pix', name: 'Asaas - PIX', description: 'Pagamento instantâneo via PIX' },
     { code: 'boleto', name: 'Asaas - Boleto', description: 'Pagamento via Boleto Bancário' },
@@ -220,6 +253,7 @@ async function createPaySystems(clientEndpoint: string, accessToken: string, ins
       BX_REST_HANDLER: 'asaas_payments',
       ACTIVE: 'Y',
       ENTITY_REGISTRY_TYPE: 'ORDER',
+      PERSON_TYPE_ID: personTypeId,
       NEW_WINDOW: 'N',
       SETTINGS: {
         PAYMENT_METHOD: { TYPE: 'VALUE', VALUE: method.code },
