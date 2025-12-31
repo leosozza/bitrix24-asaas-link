@@ -193,6 +193,11 @@ async function registerPaySystemHandler(clientEndpoint: string, accessToken: str
   }, accessToken);
 
   if (handlerResult.error) {
+    // Check if handler already exists - this is OK, we can continue
+    if (handlerResult.error.includes('ALREADY_EXIST')) {
+      console.log('Handler already registered, continuing with pay system creation...');
+      return { ...handlerResult, alreadyExisted: true };
+    }
     console.error('Failed to register handler:', handlerResult.error, handlerResult.error_description);
   } else {
     console.log('Handler registered successfully:', JSON.stringify(handlerResult.result));
@@ -327,8 +332,13 @@ async function registerPaySystemsLazy(
     console.log('Step 1: Registering pay system handler...');
     const handlerResult = await registerPaySystemHandler(clientEndpoint, accessToken, iframeBaseUrl);
     
-    if (handlerResult.error) {
+    // Check if handler registration failed (but allow if already exists)
+    if (handlerResult.error && !handlerResult.alreadyExisted) {
       return { success: false, message: `Handler registration failed: ${handlerResult.error_description || handlerResult.error}` };
+    }
+    
+    if (handlerResult.alreadyExisted) {
+      console.log('Handler already exists - proceeding to create pay systems');
     }
     
     // Step 2: Create pay systems
