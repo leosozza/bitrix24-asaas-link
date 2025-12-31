@@ -53,9 +53,16 @@ async function callBitrixApi(endpoint: string, method: string, params: Record<st
   return data;
 }
 
-async function registerPaySystemHandler(clientEndpoint: string, accessToken: string, installationId: string) {
-  console.log('Registering Pay System Handler...');
+async function registerPaySystemHandler(clientEndpoint: string, accessToken: string, appDomain: string) {
+  console.log('Registering Pay System Handler at endpoint:', clientEndpoint);
   
+  // First try to delete existing handler (in case of reinstall)
+  const deleteResult = await callBitrixApi(clientEndpoint, 'sale.paysystem.handler.delete', {
+    CODE: 'asaas_payments',
+  }, accessToken);
+  console.log('Delete existing handler result:', JSON.stringify(deleteResult));
+  
+  // Now register the handler
   const handlerResult = await callBitrixApi(clientEndpoint, 'sale.paysystem.handler.add', {
     NAME: 'Asaas Pagamentos',
     CODE: 'asaas_payments',
@@ -64,7 +71,7 @@ async function registerPaySystemHandler(clientEndpoint: string, accessToken: str
       CURRENCY: ['BRL'],
       CLIENT_TYPE: 'b2c',
       IFRAME_DATA: {
-        ACTION_URI: `${APP_DOMAIN}/functions/v1/bitrix-payment-iframe`,
+        ACTION_URI: `${appDomain}/functions/v1/bitrix-payment-iframe`,
         FIELDS: {
           paymentId: { CODE: 'PAYMENT_ID' },
           orderId: { CODE: 'ORDER_ID' },
@@ -77,27 +84,9 @@ async function registerPaySystemHandler(clientEndpoint: string, accessToken: str
         },
       },
       CODES: {
-        ASAAS_API_KEY: {
-          NAME: 'Chave API Asaas',
-          DESCRIPTION: 'Sua chave de API do Asaas (encontre em Configurações > Integrações)',
-          SORT: 100,
-          INPUT: { TYPE: 'STRING' },
-        },
-        ASAAS_ENVIRONMENT: {
-          NAME: 'Ambiente',
-          DESCRIPTION: 'Sandbox para testes, Produção para uso real',
-          SORT: 200,
-          INPUT: {
-            TYPE: 'ENUM',
-            OPTIONS: {
-              sandbox: 'Sandbox (Testes)',
-              production: 'Produção',
-            },
-          },
-        },
         PAYMENT_METHOD: {
           NAME: 'Método de Pagamento',
-          SORT: 300,
+          SORT: 100,
           INPUT: {
             TYPE: 'ENUM',
             OPTIONS: {
@@ -145,6 +134,12 @@ async function registerPaySystemHandler(clientEndpoint: string, accessToken: str
     },
   }, accessToken);
 
+  if (handlerResult.error) {
+    console.error('Failed to register handler:', handlerResult.error, handlerResult.error_description);
+  } else {
+    console.log('Handler registered successfully:', JSON.stringify(handlerResult.result));
+  }
+  
   return handlerResult;
 }
 
@@ -152,9 +147,9 @@ async function createPaySystems(
   clientEndpoint: string, 
   accessToken: string, 
   installationId: string,
-  supabase: ReturnType<typeof createClient>
+  supabase: any
 ) {
-  console.log('Creating Pay Systems...');
+  console.log('Creating Pay Systems at endpoint:', clientEndpoint);
   
   const payMethods = [
     { code: 'pix', name: 'Asaas - PIX', description: 'Pagamento instantâneo via PIX' },
@@ -164,7 +159,43 @@ async function createPaySystems(
 
   // Get person types first
   const personTypesResult = await callBitrixApi(clientEndpoint, 'sale.persontype.list', {}, accessToken);
+  console.log('Person types result:', JSON.stringify(personTypesResult));
+  
   const personTypes = personTypesResult.result || [];
+  
+  if (personTypes.length === 0) {
+    console.log('No person types found, creating pay systems without person type filter');
+    // Create at least one pay system per method without person type
+    for (const method of payMethods) {
+      const paySystemResult = await callBitrixApi(clientEndpoint, 'sale.paysystem.add', {
+        NAME: method.name,
+        DESCRIPTION: method.description,
+        PSA_NAME: method.name,
+        BX_REST_HANDLER: 'asaas_payments',
+        ACTIVE: 'Y',
+        ENTITY_REGISTRY_TYPE: 'ORDER',
+        NEW_WINDOW: 'N',
+        SETTINGS: {
+          PAYMENT_METHOD: { TYPE: 'VALUE', VALUE: method.code },
+        },
+      }, accessToken);
+
+      if (paySystemResult.result) {
+        console.log(`Created pay system: ${method.name} (ID: ${paySystemResult.result})`);
+        
+        // Save to database
+        await supabase.from('bitrix_pay_systems').insert({
+          installation_id: installationId,
+          pay_system_id: String(paySystemResult.result),
+          payment_method: method.code,
+          is_active: true,
+        });
+      } else if (paySystemResult.error) {
+        console.error(`Failed to create pay system ${method.name}:`, paySystemResult.error, paySystemResult.error_description);
+      }
+    }
+    return;
+  }
   
   for (const method of payMethods) {
     for (const personType of personTypes) {
@@ -183,7 +214,18 @@ async function createPaySystems(
       }, accessToken);
 
       if (paySystemResult.result) {
-        console.log(`Created pay system: ${method.name} (ID: ${paySystemResult.result})`);
+        console.log(`Created pay system: ${method.name} for person type ${personType.ID} (ID: ${paySystemResult.result})`);
+        
+        // Save to database
+        await supabase.from('bitrix_pay_systems').insert({
+          installation_id: installationId,
+          pay_system_id: String(paySystemResult.result),
+          payment_method: method.code,
+          entity_type: personType.NAME || 'ORDER',
+          is_active: true,
+        });
+      } else if (paySystemResult.error) {
+        console.error(`Failed to create pay system ${method.name}:`, paySystemResult.error, paySystemResult.error_description);
       }
     }
   }
@@ -223,57 +265,53 @@ serve(async (req) => {
     
     let eventData: BitrixInstallEvent;
     
+    // Helper to extract nested params like auth[domain] or flat params like DOMAIN
+    const extractParam = (params: URLSearchParams, nested: string, flat: string): string => {
+      return params.get(nested) || params.get(flat) || params.get(flat.toLowerCase()) || '';
+    };
+
     // Parse Bitrix form data - handles both flat params (AUTH_ID) and nested (auth[access_token])
     const parseBitrixFormData = (params: URLSearchParams): BitrixInstallEvent => {
       // Log all params for debugging
-      console.log('All params:', Object.fromEntries(params.entries()));
+      const allParams = Object.fromEntries(params.entries());
+      console.log('All params:', JSON.stringify(allParams));
       
-      // Try to get PLACEMENT_OPTIONS which contains JSON with auth data
-      const placementOptions = params.get('PLACEMENT_OPTIONS');
-      let parsedOptions: Record<string, string> = {};
+      // Extract nested auth params (auth[domain], auth[access_token], etc.)
+      const nestedDomain = extractParam(params, 'auth[domain]', 'DOMAIN');
+      const nestedAccessToken = extractParam(params, 'auth[access_token]', 'AUTH_ID');
+      const nestedRefreshToken = extractParam(params, 'auth[refresh_token]', 'REFRESH_ID');
+      const nestedMemberId = extractParam(params, 'auth[member_id]', 'member_id');
+      const nestedClientEndpoint = extractParam(params, 'auth[client_endpoint]', 'CLIENT_ENDPOINT');
+      const nestedServerEndpoint = extractParam(params, 'auth[server_endpoint]', 'SERVER_ENDPOINT');
+      const nestedApplicationToken = extractParam(params, 'auth[application_token]', 'APP_SID');
+      const nestedUserId = extractParam(params, 'auth[user_id]', 'USER_ID');
+      const nestedExpires = extractParam(params, 'auth[expires]', 'AUTH_EXPIRES');
+      const nestedExpiresIn = extractParam(params, 'auth[expires_in]', 'AUTH_EXPIRES_IN') || '3600';
+      const nestedScope = extractParam(params, 'auth[scope]', 'scope');
+      const nestedStatus = extractParam(params, 'auth[status]', 'status');
       
-      if (placementOptions) {
-        try {
-          parsedOptions = JSON.parse(placementOptions);
-          console.log('Parsed PLACEMENT_OPTIONS:', parsedOptions);
-        } catch (e) {
-          console.log('Failed to parse PLACEMENT_OPTIONS');
-        }
+      // Determine actual portal domain
+      let portalDomain = nestedDomain;
+      
+      // If client_endpoint exists but domain doesn't, extract from client_endpoint
+      if (!portalDomain && nestedClientEndpoint) {
+        const match = nestedClientEndpoint.match(/https?:\/\/([^\/]+)/);
+        if (match) portalDomain = match[1];
       }
       
-      // Extract domain from SERVER_ENDPOINT or AUTH_ID
-      const serverEndpoint = params.get('SERVER_ENDPOINT') || '';
-      let domain = '';
-      if (serverEndpoint) {
-        // SERVER_ENDPOINT format: https://oauth.bitrix.info/rest/
-        // We need the actual portal domain - try to get from other params
-        const authId = params.get('AUTH_ID') || '';
-        // For marketplace apps, we need to determine the domain differently
-        // Check if there's a domain in the referrer or elsewhere
+      // Construct client_endpoint from domain if not provided
+      let clientEndpoint = nestedClientEndpoint;
+      if (!clientEndpoint && portalDomain) {
+        clientEndpoint = `https://${portalDomain}/rest/`;
       }
       
-      // For REST apps, Bitrix sends flat parameters
-      const accessToken = params.get('AUTH_ID') || '';
-      const refreshToken = params.get('REFRESH_ID') || '';
-      const authExpires = params.get('AUTH_EXPIRES') || '';
-      const memberId = params.get('member_id') || '';
-      const status = params.get('status') || '';
-      const serverEp = params.get('SERVER_ENDPOINT') || '';
-      
-      // Calculate domain from server endpoint or use member_id for API calls
-      // For REST API calls, we need to use the server endpoint
-      // The actual portal domain can be derived from the member_id lookup
-      
-      // For now, construct client endpoint from server endpoint
-      // Bitrix24 REST apps use SERVER_ENDPOINT for OAuth and need client_endpoint for API calls
-      // The client_endpoint format is: https://{domain}/rest/
-      
-      console.log('Parsed flat params:', {
-        accessToken: accessToken ? '***exists***' : 'missing',
-        refreshToken: refreshToken ? '***exists***' : 'missing',
-        memberId,
-        status,
-        serverEndpoint: serverEp,
+      console.log('Parsed install params:', {
+        domain: portalDomain,
+        memberId: nestedMemberId,
+        accessToken: nestedAccessToken ? '***exists***' : 'missing',
+        refreshToken: nestedRefreshToken ? '***exists***' : 'missing',
+        clientEndpoint,
+        serverEndpoint: nestedServerEndpoint,
       });
       
       return {
@@ -284,18 +322,18 @@ serve(async (req) => {
         },
         ts: '',
         auth: {
-          access_token: accessToken,
-          expires: authExpires,
-          expires_in: '3600',
-          scope: params.get('scope') || '',
-          domain: memberId, // Use member_id as domain identifier for now
-          server_endpoint: serverEp,
-          status: status,
-          client_endpoint: serverEp, // Will need to be updated after OAuth flow
-          member_id: memberId,
-          user_id: '',
-          refresh_token: refreshToken,
-          application_token: params.get('APP_SID') || '',
+          access_token: nestedAccessToken,
+          expires: nestedExpires,
+          expires_in: nestedExpiresIn,
+          scope: nestedScope,
+          domain: portalDomain,
+          server_endpoint: nestedServerEndpoint,
+          status: nestedStatus,
+          client_endpoint: clientEndpoint,
+          member_id: nestedMemberId,
+          user_id: nestedUserId,
+          refresh_token: nestedRefreshToken,
+          application_token: nestedApplicationToken,
         },
       };
     };
@@ -393,11 +431,21 @@ serve(async (req) => {
     installationId = upsertedInstall.id;
     console.log('Upserted installation:', installationId);
 
-    // Register pay system handler
-    await registerPaySystemHandler(auth.client_endpoint, auth.access_token, installationId);
-    
-    // Create pay systems
-    await createPaySystems(auth.client_endpoint, auth.access_token, installationId, supabase as any);
+    // Only register pay systems if we have a valid client_endpoint (not oauth endpoint)
+    if (auth.client_endpoint && !auth.client_endpoint.includes('oauth.bitrix.info')) {
+      // Build the app domain for iframe URL
+      const supabaseUrl = SUPABASE_URL.replace('https://', '').replace('.supabase.co', '');
+      const iframeBaseUrl = `https://${supabaseUrl}.supabase.co`;
+      
+      // Register pay system handler
+      await registerPaySystemHandler(auth.client_endpoint, auth.access_token, iframeBaseUrl);
+      
+      // Create pay systems
+      await createPaySystems(auth.client_endpoint, auth.access_token, installationId, supabase as any);
+    } else {
+      console.log('Skipping pay system registration - no valid client_endpoint. Domain:', auth.domain);
+      console.log('client_endpoint value:', auth.client_endpoint);
+    }
 
     // Build auth URL with member_id and domain params for automatic linking
     const authUrl = `${APP_DOMAIN}/auth?member_id=${encodeURIComponent(auth.member_id)}&domain=${encodeURIComponent(domainValue)}`;
