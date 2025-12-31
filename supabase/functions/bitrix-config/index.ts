@@ -113,6 +113,62 @@ serve(async (req) => {
       .eq('tenant_id', tenantId)
       .single();
 
+    // Register webhook with Asaas
+    const APP_DOMAIN = Deno.env.get('APP_DOMAIN') || 'https://prpvoabbenonecgzufhb.supabase.co';
+    const webhookUrl = `${APP_DOMAIN}/functions/v1/asaas-webhook`;
+    
+    let webhookId: string | null = null;
+    let webhookSecret: string | null = null;
+    
+    try {
+      // First, list existing webhooks to check if our webhook is already registered
+      const listResponse = await fetch(`${baseUrl}/webhooks`, {
+        headers: { 'access_token': apiKey },
+      });
+      
+      if (listResponse.ok) {
+        const webhookList = await listResponse.json();
+        const existingWebhook = webhookList.data?.find((wh: { url: string }) => wh.url === webhookUrl);
+        
+        if (existingWebhook) {
+          webhookId = existingWebhook.id;
+          webhookSecret = existingWebhook.authToken || null;
+          console.log('Webhook already registered:', webhookId);
+        } else {
+          // Register new webhook
+          const webhookResponse = await fetch(`${baseUrl}/webhooks`, {
+            method: 'POST',
+            headers: { 
+              'access_token': apiKey,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              url: webhookUrl,
+              email: 'webhook@connectpay.app',
+              enabled: true,
+              interrupted: false,
+              apiVersion: 3,
+              authToken: crypto.randomUUID(),
+              sendType: 'SEQUENTIALLY'
+            }),
+          });
+          
+          if (webhookResponse.ok) {
+            const webhookData = await webhookResponse.json();
+            webhookId = webhookData.id;
+            webhookSecret = webhookData.authToken || null;
+            console.log('Webhook registered:', webhookId);
+          } else {
+            const webhookError = await webhookResponse.json().catch(() => ({}));
+            console.error('Failed to register webhook:', webhookError);
+          }
+        }
+      }
+    } catch (webhookErr) {
+      console.error('Error registering webhook:', webhookErr);
+      // Continue anyway - webhook can be configured manually
+    }
+
     if (existingConfig) {
       // Update existing config
       const { error: updateError } = await supabase
@@ -121,6 +177,9 @@ serve(async (req) => {
           api_key: apiKey,
           environment,
           is_active: true,
+          webhook_id: webhookId,
+          webhook_secret: webhookSecret,
+          webhook_configured: !!webhookId,
           updated_at: new Date().toISOString(),
         })
         .eq('tenant_id', tenantId);
@@ -143,6 +202,9 @@ serve(async (req) => {
           api_key: apiKey,
           environment,
           is_active: true,
+          webhook_id: webhookId,
+          webhook_secret: webhookSecret,
+          webhook_configured: !!webhookId,
         });
 
       if (insertError) {
@@ -158,7 +220,10 @@ serve(async (req) => {
 
     return new Response(JSON.stringify({ 
       success: true,
-      message: 'Configuração salva com sucesso! Seus pagamentos estão prontos.'
+      message: webhookId 
+        ? 'Configuração salva! Webhook configurado automaticamente para receber notificações de pagamento.'
+        : 'Configuração salva! Configure o webhook manualmente no painel do Asaas.',
+      webhookConfigured: !!webhookId
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

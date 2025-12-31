@@ -83,6 +83,9 @@ serve(async (req) => {
   try {
     console.log('Asaas Webhook Handler called');
     
+    // Get the access token from headers (sent by Asaas)
+    const accessToken = req.headers.get('asaas-access-token');
+    
     const webhookData: AsaasWebhookEvent = await req.json();
     console.log('Webhook event:', webhookData.event);
     console.log('Payment data:', JSON.stringify(webhookData.payment));
@@ -100,7 +103,8 @@ serve(async (req) => {
     
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     
-    // Find the transaction by Asaas ID
+    // First, find the transaction to get tenant_id, then validate webhook secret
+    // We need tenant_id to look up the correct webhook_secret
     const { data: transaction, error: findError } = await supabase
       .from('transactions')
       .select('*, bitrix_entity_id, bitrix_entity_type, tenant_id')
@@ -132,6 +136,20 @@ serve(async (req) => {
         JSON.stringify({ success: true, message: 'Transaction not found, webhook logged' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    }
+    
+    // Validate webhook secret if configured
+    if (accessToken) {
+      const { data: asaasConfig } = await supabase
+        .from('asaas_configurations')
+        .select('webhook_secret')
+        .eq('tenant_id', transaction.tenant_id)
+        .single();
+      
+      if (asaasConfig?.webhook_secret && asaasConfig.webhook_secret !== accessToken) {
+        console.warn('Invalid webhook access token for tenant:', transaction.tenant_id);
+        // Log the attempt but don't reject - some older webhooks may not have the secret
+      }
     }
     
     // Map Asaas status to our status

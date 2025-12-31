@@ -23,6 +23,8 @@ export type Database = {
           is_active: boolean
           tenant_id: string
           updated_at: string
+          webhook_configured: boolean
+          webhook_id: string | null
           webhook_secret: string | null
         }
         Insert: {
@@ -33,6 +35,8 @@ export type Database = {
           is_active?: boolean
           tenant_id: string
           updated_at?: string
+          webhook_configured?: boolean
+          webhook_id?: string | null
           webhook_secret?: string | null
         }
         Update: {
@@ -43,6 +47,8 @@ export type Database = {
           is_active?: boolean
           tenant_id?: string
           updated_at?: string
+          webhook_configured?: boolean
+          webhook_id?: string | null
           webhook_secret?: string | null
         }
         Relationships: [
