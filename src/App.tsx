@@ -11,6 +11,7 @@ import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import DashboardTransactions from "./pages/DashboardTransactions";
 import DashboardIntegrations from "./pages/DashboardIntegrations";
+import DashboardMcp from "./pages/DashboardMcp";
 import DashboardSettings from "./pages/DashboardSettings";
 import NotFound from "./pages/NotFound";
 
@@ -48,6 +49,14 @@ const App = () => (
                 element={
                   <ProtectedRoute>
                     <DashboardIntegrations />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/dashboard/mcp"
+                element={
+                  <ProtectedRoute>
+                    <DashboardMcp />
                   </ProtectedRoute>
                 }
               />

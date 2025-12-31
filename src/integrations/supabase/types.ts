@@ -217,6 +217,97 @@ export type Database = {
           },
         ]
       }
+      mcp_connections: {
+        Row: {
+          api_key_encrypted: string | null
+          auth_type: string
+          created_at: string
+          id: string
+          is_enabled: boolean
+          last_sync_at: string | null
+          mcp_url: string
+          name: string
+          tenant_id: string
+          tools_count: number
+          updated_at: string
+        }
+        Insert: {
+          api_key_encrypted?: string | null
+          auth_type?: string
+          created_at?: string
+          id?: string
+          is_enabled?: boolean
+          last_sync_at?: string | null
+          mcp_url: string
+          name: string
+          tenant_id: string
+          tools_count?: number
+          updated_at?: string
+        }
+        Update: {
+          api_key_encrypted?: string | null
+          auth_type?: string
+          created_at?: string
+          id?: string
+          is_enabled?: boolean
+          last_sync_at?: string | null
+          mcp_url?: string
+          name?: string
+          tenant_id?: string
+          tools_count?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mcp_connections_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mcp_tools: {
+        Row: {
+          connection_id: string
+          created_at: string
+          description: string | null
+          id: string
+          input_schema: Json | null
+          is_exposed: boolean
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          connection_id: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          input_schema?: Json | null
+          is_exposed?: boolean
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          connection_id?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          input_schema?: Json | null
+          is_exposed?: boolean
+          name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mcp_tools_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "mcp_connections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           bitrix_domain: string | null

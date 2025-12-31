@@ -27,6 +27,7 @@ const menuItems = [
   { title: 'Visão Geral', url: '/dashboard', icon: LayoutDashboard },
   { title: 'Transações', url: '/dashboard/transactions', icon: Receipt },
   { title: 'Integrações', url: '/dashboard/integrations', icon: Plug },
+  { title: 'Servidores MCP', url: '/dashboard/mcp', icon: Zap },
   { title: 'Configurações', url: '/dashboard/settings', icon: Settings },
 ];
 
