@@ -39,8 +39,8 @@ serve(async (req) => {
 
     console.log('Auth action:', action, 'for domain:', domain, 'memberId:', memberId);
 
-    if (!email || !password || !memberId || !domain) {
-      return new Response(JSON.stringify({ error: 'Campos obrigatórios faltando' }), {
+    if (!email || !password) {
+      return new Response(JSON.stringify({ error: 'Email e senha são obrigatórios' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -131,18 +131,20 @@ serve(async (req) => {
       console.log('User logged in:', userId);
     }
 
-    // Link Bitrix installation to user
-    const { error: updateError } = await supabase
-      .from('bitrix_installations')
-      .update({ tenant_id: userId, updated_at: new Date().toISOString() })
-      .eq('member_id', memberId)
-      .is('tenant_id', null);
+    // Link Bitrix installation to user (only if memberId is provided)
+    if (memberId) {
+      const { error: updateError } = await supabase
+        .from('bitrix_installations')
+        .update({ tenant_id: userId, updated_at: new Date().toISOString() })
+        .eq('member_id', memberId)
+        .is('tenant_id', null);
 
-    if (updateError) {
-      console.error('Update installation error:', updateError);
-      // Don't fail the request, just log - installation might already be linked
-    } else {
-      console.log('Installation linked to user:', userId);
+      if (updateError) {
+        console.error('Update installation error:', updateError);
+        // Don't fail the request, just log - installation might already be linked
+      } else {
+        console.log('Installation linked to user:', userId);
+      }
     }
 
     // Check if user has Asaas config
