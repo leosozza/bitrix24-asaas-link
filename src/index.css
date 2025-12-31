@@ -162,12 +162,54 @@
   }
 
   .text-gradient {
-    @apply bg-clip-text text-transparent;
     background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
   }
 
   .text-gradient-accent {
-    @apply bg-clip-text text-transparent;
     background: var(--gradient-accent);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Brand colors for logos */
+  .text-bitrix {
+    color: hsl(195 91% 57%);
+  }
+
+  .text-asaas {
+    color: hsl(155 100% 33%);
+  }
+
+  .bg-bitrix {
+    background-color: hsl(195 91% 57% / 0.1);
+  }
+
+  .bg-asaas {
+    background-color: hsl(155 100% 33% / 0.1);
+  }
+
+  /* Animation utilities */
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+
+  .animate-float-delayed {
+    animation: float 6s ease-in-out infinite 2s;
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-20px); }
+  }
+
+  /* Glass effect */
+  .glass {
+    background: hsl(var(--background) / 0.8);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
   }
 }
