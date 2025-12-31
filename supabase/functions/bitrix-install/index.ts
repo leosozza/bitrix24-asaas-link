@@ -499,23 +499,37 @@ serve(async (req) => {
       }
     }
     
-    // Use portal client_endpoint for pay system registration
-    if (portalClientEndpoint && auth.access_token && !portalClientEndpoint.includes('oauth.bitrix.info')) {
+    // Use server_endpoint as OAuth proxy for pay system registration
+    // The oauth.bitrix.info server routes API calls to the correct portal based on access_token
+    const apiEndpoint = portalClientEndpoint || auth.server_endpoint;
+    
+    if (apiEndpoint && auth.access_token) {
       // Build the app domain for iframe URL
       const supabaseUrl = SUPABASE_URL.replace('https://', '').replace('.supabase.co', '');
       const iframeBaseUrl = `https://${supabaseUrl}.supabase.co`;
       
-      console.log('Registering pay systems using portal endpoint:', portalClientEndpoint);
+      console.log('=== PAY SYSTEM REGISTRATION ===');
+      console.log('API Endpoint:', apiEndpoint);
+      console.log('Using OAuth proxy:', apiEndpoint.includes('oauth.bitrix.info') ? 'YES' : 'NO');
+      console.log('Iframe Base URL:', iframeBaseUrl);
       
-      // Register pay system handler
-      await registerPaySystemHandler(portalClientEndpoint, auth.access_token, iframeBaseUrl);
-      
-      // Create pay systems
-      await createPaySystems(portalClientEndpoint, auth.access_token, installationId, supabase as any);
+      try {
+        // Register pay system handler
+        console.log('Step 1: Registering pay system handler...');
+        const handlerResult = await registerPaySystemHandler(apiEndpoint, auth.access_token, iframeBaseUrl);
+        console.log('Handler registration result:', JSON.stringify(handlerResult));
+        
+        // Create pay systems
+        console.log('Step 2: Creating pay systems...');
+        await createPaySystems(apiEndpoint, auth.access_token, installationId, supabase as any);
+        console.log('Pay system creation completed');
+      } catch (paySystemError) {
+        console.error('Error during pay system registration:', paySystemError);
+      }
     } else {
-      console.log('Skipping pay system registration - no valid portal endpoint');
-      console.log('portalClientEndpoint:', portalClientEndpoint);
-      console.log('server_endpoint:', auth.server_endpoint);
+      console.log('Skipping pay system registration - missing endpoint or access_token');
+      console.log('apiEndpoint:', apiEndpoint);
+      console.log('access_token exists:', !!auth.access_token);
     }
 
     // Build auth URL with member_id and domain params for automatic linking
