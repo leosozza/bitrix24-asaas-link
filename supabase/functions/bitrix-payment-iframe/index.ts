@@ -10,6 +10,9 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
+// Logo do Asaas em Base64 (fundo azul com asas brancas) - usado nos pay systems do Bitrix24
+const ASAAS_LOGO_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAACXBIWXMAAAsTAAALEwEAmpwYAAAFoElEQVR4nO2dW4hVVRjHf+OYY5qWlmVWVpaZRJFdtMiyi6VFaVkPZRdLe4gIuihBPnRBggIfInoILOghKKIgKMsKuumUmGYXzEwzHU3NzMzJnOl8sA4Mw+yzz95rr7PX2uv8YMPhzNl7rf/3rbXWt27gOI7jOI7jOI7jOI7jOI5TNnqBRcCXwE5gL9APDABHgJPAMWC/fDYoP38FvAEsBC4GemIO3CmPc4BngPeA/cAxYFBBSIV/54C/gH3AD8DLwOXAiKhLwonDDOBt4GdgKKCQCv8OAduAN4EpMRWIkzmDgDuAz4CDNYqo9O99wBrgVuD0WIrEyY6pwKvAT8BQjUIqvMH/A1YAl8RSLE42jASeB/4IIKTCu38DnwIzYykYJ3vGAa8AOwKLqfTvCuCiWIrGCc/5wGpgsEYxFd7NvRtwqD2nAu/WKKLSu18D18ZSQBf0AT8CHwC7gT+lKRkC/gWGgLHAaOC0WILNm17gceBPNYvJa2jbk0wjliJy0nMZ8B1wLOcmpNL//w28FEs5OSUxFHgB2B1AQKXXdz9wbywF5pRCL/ARMJBDLdG4P5OA+2IpNKd0xgPfSDAuT3Hu9xZJ/46LpeCc0hgOvAkcTlEbVPpvrwdGxFJ4TnqGAI+m2DdUY73C/gvSb0+B7cnR4vwMHEwpKM9/aw+wKZaCdII5hCbJeQIZAP6qQUyl1ycFjAH6YiloJ4z5wI6E++5qFPIrsFoT9ZwaGQTcp5h/NYqp8O9nwJ0xFLhTOVOBFcCBFO/n/y0GnoyhsJ3KGQO8Tt5Di8lLhM8HZsZQ6E5lXA5sSriQLP/vJGCiexl1Ms9s4HDKglP893sAtwAXxlD4jt3p8TRgBbAtZROS5L91I9DVuJCawMNAX8I9l9lqSz7/bzr7M42VYMIGKHdIX74/4d6rouy0t7aUw16OFB3D2A7cLI+PJtx/mXr/bOIqhNBMA94D9uW8jJxVf3oB9+kE91wEPATsTHhuN4q8v8K9fBtN1D4GpmJOCH8TwLOSsM9rJM/CZPlvzQJGxkCKKYU4UATXyhR2I7A7wfJxpr+/k96r/4H7gcdiCLqE4e4s+oAeGXNJI77Cv58D8w4LNkpGAM8C2ySXkm9zmfzbI2x71wDXxRB4+fUVQ+T1wE+yXNyfQHxu/1Vd0vfAhE7vmNJYxoiLgIUJlokz+bdHMw94MYagq87yBBfKM4El0OHqUB5Yv8+Y32uJNKZyRbGJGS5rTEr+7WbAbNzLyFbMrJWpVNqjFXL2BcRWmFjFbK2Ud7u1QmyKbAiYA/TJE6/kf7VVxP+Vvo3H5Qn+bz9P/gcAM5KY03KRGfJY8G3bxYtFmAc8DEPBB2I1ppFYBvwsN0+Y6d8e/pv77M9vvkGkNVglbJCnF4bnFH5tSifzyNMJoW3Ip4DZ0oMXA18lyDPV/bHn6b6dFsIbwGzpQ7xJckfCr7IWiS3O9AJzMhxlTbXQCB/g2f2Q5w8n2KdAVJxDxHCZFNe+9FJb0hP4Mv4mfyRBPi6lfRdVbsHMkKNe1TyXtJJtgvdG+g/dEW8pPIYL43KZMljGLYgX2S/bCgV/9Jy2dSb5N8+RPP4W4rsMkHRN8EfCfdhdfnkxYxT/Q98kxvFv4rYkXYfUCNhT2IlYVpwRTdGNq/iFWNZaG3c+8E7gFchLUxQT2FLBKRzaZV1qnMuJpj5+D+oWRgOXBMjDxSIqDwHzQ49CJ7VRpL8o+uxeJq/U2gCjAiSewxK2B0qlqz6sR9oabJFlxcRMW+KxJK3xh2VC2oi0NF4JrBZ8Aayy8SbGMmCJTEZ3yvR2f8hbF2ViqS3xmBJYLPhyUDT10UXZWJq2OLhMXnMTyS+i/w9eAXKNjBCXSQAAAABJRU5ErkJggg==';
+
 interface PaymentData {
   paymentId: string;
   orderId: string;
@@ -260,6 +263,7 @@ async function createPaySystems(clientEndpoint: string, accessToken: string, ins
       ENTITY_REGISTRY_TYPE: 'ORDER',
       PERSON_TYPE_ID: personTypeId,
       NEW_WINDOW: 'N',
+      LOGOTIP: ASAAS_LOGO_BASE64,
       SETTINGS: {
         PAYMENT_METHOD: { TYPE: 'VALUE', VALUE: method.code },
       },
@@ -282,6 +286,45 @@ async function createPaySystems(clientEndpoint: string, accessToken: string, ins
   }
 
   return successCount;
+}
+
+// Update existing pay systems with logo
+async function updatePaySystemsLogo(clientEndpoint: string, accessToken: string, installationId: string, supabase: any) {
+  console.log('Updating existing pay systems with logo...');
+  
+  // Fetch existing pay systems from database
+  const { data: paySystems, error } = await supabase
+    .from('bitrix_pay_systems')
+    .select('pay_system_id, payment_method')
+    .eq('installation_id', installationId);
+  
+  if (error || !paySystems || paySystems.length === 0) {
+    console.log('No existing pay systems found to update');
+    return 0;
+  }
+  
+  let updatedCount = 0;
+  
+  for (const ps of paySystems) {
+    console.log(`Updating pay system ${ps.pay_system_id} with logo...`);
+    
+    const updateResult = await callBitrixApi(clientEndpoint, 'sale.paysystem.update', {
+      ID: ps.pay_system_id,
+      FIELDS: {
+        LOGOTIP: ASAAS_LOGO_BASE64
+      }
+    }, accessToken);
+    
+    if (updateResult.result) {
+      console.log(`Successfully updated pay system ${ps.pay_system_id} with logo`);
+      updatedCount++;
+    } else if (updateResult.error) {
+      console.error(`Failed to update pay system ${ps.pay_system_id}:`, updateResult.error);
+    }
+  }
+  
+  console.log(`Updated ${updatedCount}/${paySystems.length} pay systems with logo`);
+  return updatedCount;
 }
 
 async function registerPaySystemsLazy(
@@ -338,7 +381,10 @@ async function registerPaySystemsLazy(
     }
     
     if (handlerResult.alreadyExisted) {
-      console.log('Handler already exists - proceeding to create pay systems');
+      console.log('Handler already exists - updating logos and checking for missing pay systems');
+      
+      // Try to update existing pay systems with the logo
+      await updatePaySystemsLogo(clientEndpoint, accessToken, installationId, supabase);
     }
     
     // Step 2: Create pay systems
@@ -358,6 +404,9 @@ async function registerPaySystemsLazy(
       
       console.log(`Pay system registration completed: ${successCount}/3 created`);
       return { success: true, message: `${successCount} pay systems created successfully`, domain: portalDomain };
+    } else if (handlerResult.alreadyExisted) {
+      // If handler existed and no new pay systems were created, logos were updated
+      return { success: true, message: 'Pay systems logos updated', domain: portalDomain };
     } else {
       return { success: false, message: 'No pay systems were created' };
     }
