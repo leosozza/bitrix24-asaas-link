@@ -634,17 +634,9 @@ serve(async (req) => {
     console.log('Portal domain available:', !!portalDomain);
     console.log('Client endpoint available:', !!portalClientEndpoint);
     
-    // Register automation robots (bizproc.robot.add works via oauth proxy)
-    if (auth.server_endpoint && auth.access_token) {
-      console.log('Registering automation robots...');
-      try {
-        await registerAutomationRobots(auth.server_endpoint, auth.access_token, APP_DOMAIN);
-        console.log('Automation robots registered successfully');
-      } catch (robotError) {
-        console.error('Failed to register automation robots:', robotError);
-        // Don't fail the installation if robots fail - they can be registered later
-      }
-    }
+    // NOTE: Automation robots are registered via lazy loading in bitrix-payment-iframe
+    // This is because bizproc.robot.add doesn't work through oauth.bitrix.info proxy
+    console.log('Automation robots will be registered when user opens the app (lazy loading)');
 
     // Build auth URL with member_id and domain params for automatic linking
     const authUrl = `${APP_DOMAIN}/auth?member_id=${encodeURIComponent(auth.member_id)}&domain=${encodeURIComponent(domainValue)}`;
