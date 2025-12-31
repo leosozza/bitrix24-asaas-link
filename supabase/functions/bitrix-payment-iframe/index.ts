@@ -130,6 +130,9 @@ async function registerPaySystemHandler(clientEndpoint: string, accessToken: str
     CODE: 'asaas_payments',
   }, accessToken);
 
+  const iframeUrl = `${iframeBaseUrl}/functions/v1/bitrix-payment-iframe`;
+  console.log('IFRAME URL for handler:', iframeUrl);
+
   const handlerResult = await callBitrixApi(clientEndpoint, 'sale.paysystem.handler.add', {
     NAME: 'Asaas Pagamentos',
     CODE: 'asaas_payments',
@@ -137,17 +140,54 @@ async function registerPaySystemHandler(clientEndpoint: string, accessToken: str
     SETTINGS: {
       CURRENCY: ['BRL'],
       CLIENT_TYPE: 'b2c',
-      IFRAME_URL: `${iframeBaseUrl}/functions/v1/bitrix-payment-iframe`,
-      IFRAME: true,
-      IFRAME_HEIGHT: 500,
-      IFRAME_WIDTH: 400,
+      IFRAME_DATA: {
+        ACTION_URI: iframeUrl,
+        FIELDS: {
+          paymentId: { CODE: 'PAYMENT_ID' },
+          paymentAmount: { CODE: 'PAYMENT_AMOUNT' },
+          paymentCurrency: { CODE: 'PAYMENT_CURRENCY' },
+          customerName: { CODE: 'CUSTOMER_NAME' },
+          customerEmail: { CODE: 'CUSTOMER_EMAIL' },
+          customerDocument: { CODE: 'CUSTOMER_DOCUMENT' },
+          paymentMethod: { CODE: 'PAYMENT_METHOD' },
+        },
+      },
       CODES: {
-        PAYMENT_ID: { NAME: 'ID do Pagamento', GROUP: 'PAYMENT', DEFAULT: { PROVIDER_KEY: 'PAYMENT', PROVIDER_VALUE: 'ID' } },
-        PAYMENT_AMOUNT: { NAME: 'Valor', GROUP: 'PAYMENT', DEFAULT: { PROVIDER_KEY: 'PAYMENT', PROVIDER_VALUE: 'SUM' } },
-        PAYMENT_CURRENCY: { NAME: 'Moeda', GROUP: 'PAYMENT', DEFAULT: { PROVIDER_KEY: 'PAYMENT', PROVIDER_VALUE: 'CURRENCY' } },
-        CUSTOMER_NAME: { NAME: 'Nome do Cliente', GROUP: 'ORDER', DEFAULT: { PROVIDER_KEY: 'ORDER', PROVIDER_VALUE: 'USER_NAME' } },
-        CUSTOMER_EMAIL: { NAME: 'Email do Cliente', GROUP: 'ORDER', DEFAULT: { PROVIDER_KEY: 'ORDER', PROVIDER_VALUE: 'USER_EMAIL' } },
-        CUSTOMER_DOCUMENT: { NAME: 'CPF/CNPJ do Cliente', GROUP: 'PROPERTY' },
+        PAYMENT_ID: { 
+          NAME: 'ID do Pagamento', 
+          GROUP: 'PAYMENT', 
+          DEFAULT: { PROVIDER_KEY: 'PAYMENT', PROVIDER_VALUE: 'ID' } 
+        },
+        PAYMENT_AMOUNT: { 
+          NAME: 'Valor', 
+          GROUP: 'PAYMENT', 
+          DEFAULT: { PROVIDER_KEY: 'PAYMENT', PROVIDER_VALUE: 'SUM' } 
+        },
+        PAYMENT_CURRENCY: { 
+          NAME: 'Moeda', 
+          GROUP: 'PAYMENT', 
+          DEFAULT: { PROVIDER_KEY: 'PAYMENT', PROVIDER_VALUE: 'CURRENCY' } 
+        },
+        CUSTOMER_NAME: { 
+          NAME: 'Nome do Cliente', 
+          GROUP: 'ORDER', 
+          DEFAULT: { PROVIDER_KEY: 'ORDER', PROVIDER_VALUE: 'USER_NAME' } 
+        },
+        CUSTOMER_EMAIL: { 
+          NAME: 'Email do Cliente', 
+          GROUP: 'ORDER', 
+          DEFAULT: { PROVIDER_KEY: 'ORDER', PROVIDER_VALUE: 'USER_EMAIL' } 
+        },
+        CUSTOMER_DOCUMENT: { 
+          NAME: 'CPF/CNPJ do Cliente', 
+          GROUP: 'PROPERTY',
+          INPUT: { TYPE: 'STRING' }
+        },
+        PAYMENT_METHOD: { 
+          NAME: 'Método de Pagamento', 
+          DESCRIPTION: 'PIX, Boleto ou Cartão',
+          INPUT: { TYPE: 'STRING' }
+        },
       },
     },
   }, accessToken);
