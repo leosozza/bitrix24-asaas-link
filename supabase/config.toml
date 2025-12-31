@@ -23,3 +23,6 @@ verify_jwt = false
 
 [functions.bitrix-config]
 verify_jwt = false
+
+[functions.bitrix-robot-handler]
+verify_jwt = false

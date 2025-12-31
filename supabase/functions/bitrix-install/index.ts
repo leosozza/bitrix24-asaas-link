@@ -268,6 +268,134 @@ async function createPaySystems(
   }
 }
 
+async function registerAutomationRobots(clientEndpoint: string, accessToken: string, appDomain: string) {
+  console.log('[Robots] Registering automation robots...');
+  
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+  const handlerUrl = `${supabaseUrl}/functions/v1/bitrix-robot-handler`;
+  
+  const robots = [
+    {
+      CODE: 'asaas_create_charge',
+      NAME: 'Asaas: Criar Cobrança',
+      HANDLER: handlerUrl,
+      AUTH_USER_ID: 1,
+      USE_SUBSCRIPTION: 'Y',
+      PROPERTIES: {
+        payment_method: {
+          Name: 'Método de Pagamento',
+          Type: 'select',
+          Options: { pix: 'PIX', boleto: 'Boleto', credit_card: 'Cartão de Crédito' },
+          Required: 'Y',
+          Default: 'pix',
+        },
+        amount: {
+          Name: 'Valor (R$)',
+          Type: 'double',
+          Required: 'Y',
+        },
+        customer_name: {
+          Name: 'Nome do Cliente',
+          Type: 'string',
+          Required: 'Y',
+        },
+        customer_email: {
+          Name: 'Email do Cliente',
+          Type: 'string',
+          Required: 'N',
+        },
+        customer_document: {
+          Name: 'CPF/CNPJ',
+          Type: 'string',
+          Required: 'Y',
+        },
+        due_days: {
+          Name: 'Dias para Vencimento',
+          Type: 'int',
+          Default: 3,
+        },
+      },
+      RETURN_PROPERTIES: {
+        charge_id: {
+          Name: 'ID da Cobrança',
+          Type: 'string',
+        },
+        charge_status: {
+          Name: 'Status',
+          Type: 'string',
+        },
+        payment_url: {
+          Name: 'Link de Pagamento',
+          Type: 'string',
+        },
+        pix_code: {
+          Name: 'Código PIX Copia-Cola',
+          Type: 'string',
+        },
+        boleto_url: {
+          Name: 'URL do Boleto',
+          Type: 'string',
+        },
+        error: {
+          Name: 'Mensagem de Erro',
+          Type: 'string',
+        },
+      },
+    },
+    {
+      CODE: 'asaas_check_payment',
+      NAME: 'Asaas: Verificar Pagamento',
+      HANDLER: handlerUrl,
+      AUTH_USER_ID: 1,
+      USE_SUBSCRIPTION: 'Y',
+      PROPERTIES: {
+        charge_id: {
+          Name: 'ID da Cobrança',
+          Type: 'string',
+          Required: 'Y',
+        },
+      },
+      RETURN_PROPERTIES: {
+        status: {
+          Name: 'Status do Pagamento',
+          Type: 'string',
+        },
+        paid_at: {
+          Name: 'Data do Pagamento',
+          Type: 'string',
+        },
+        paid_value: {
+          Name: 'Valor Pago',
+          Type: 'double',
+        },
+        error: {
+          Name: 'Mensagem de Erro',
+          Type: 'string',
+        },
+      },
+    },
+  ];
+
+  for (const robot of robots) {
+    // Try to delete existing robot first (in case of reinstall)
+    const deleteResult = await callBitrixApi(clientEndpoint, 'bizproc.robot.delete', {
+      CODE: robot.CODE,
+    }, accessToken);
+    console.log(`[Robots] Delete ${robot.CODE}:`, deleteResult.result || deleteResult.error);
+
+    // Register the robot
+    const addResult = await callBitrixApi(clientEndpoint, 'bizproc.robot.add', robot, accessToken);
+    
+    if (addResult.error) {
+      console.error(`[Robots] Failed to register ${robot.CODE}:`, addResult.error, addResult.error_description);
+    } else {
+      console.log(`[Robots] Registered ${robot.CODE}:`, addResult.result);
+    }
+  }
+  
+  console.log('[Robots] Automation robots registration complete');
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -505,6 +633,18 @@ serve(async (req) => {
     console.log('Installation complete - pay systems will be registered when user opens the app');
     console.log('Portal domain available:', !!portalDomain);
     console.log('Client endpoint available:', !!portalClientEndpoint);
+    
+    // Register automation robots (bizproc.robot.add works via oauth proxy)
+    if (auth.server_endpoint && auth.access_token) {
+      console.log('Registering automation robots...');
+      try {
+        await registerAutomationRobots(auth.server_endpoint, auth.access_token, APP_DOMAIN);
+        console.log('Automation robots registered successfully');
+      } catch (robotError) {
+        console.error('Failed to register automation robots:', robotError);
+        // Don't fail the installation if robots fail - they can be registered later
+      }
+    }
 
     // Build auth URL with member_id and domain params for automatic linking
     const authUrl = `${APP_DOMAIN}/auth?member_id=${encodeURIComponent(auth.member_id)}&domain=${encodeURIComponent(domainValue)}`;
