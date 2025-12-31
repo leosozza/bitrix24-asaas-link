@@ -94,7 +94,8 @@ serve(async (req) => {
       });
     }
 
-    // Mark installation as revoked and clear sensitive data
+    // Mark installation as revoked, clear sensitive data, and reset registration flags
+    // This ensures that on reinstallation, pay systems and robots will be re-registered
     const { error: updateError } = await supabase
       .from('bitrix_installations')
       .update({
@@ -102,6 +103,8 @@ serve(async (req) => {
         access_token: null,
         refresh_token: null,
         application_token: null,
+        pay_systems_registered: false,
+        robots_registered: false,
         updated_at: new Date().toISOString(),
       })
       .eq('id', installation.id);
@@ -111,14 +114,16 @@ serve(async (req) => {
       throw updateError;
     }
 
-    // Deactivate all pay systems for this installation
+    // Delete all pay systems for this installation (clean slate for reinstall)
     const { error: paySystemError } = await supabase
       .from('bitrix_pay_systems')
-      .update({ is_active: false })
+      .delete()
       .eq('installation_id', installation.id);
 
     if (paySystemError) {
-      console.error('Error deactivating pay systems:', paySystemError);
+      console.error('Error deleting pay systems:', paySystemError);
+    } else {
+      console.log('Deleted pay systems for installation');
     }
 
     // Log the uninstall event
