@@ -21,7 +21,167 @@ interface PaymentData {
   paymentMethod: string;
   domain: string;
   memberId: string;
+  accessToken?: string;
 }
+
+// ============= BITRIX API FUNCTIONS FOR PAY SYSTEM REGISTRATION =============
+
+async function callBitrixApi(endpoint: string, method: string, params: Record<string, unknown>, accessToken: string) {
+  const url = `${endpoint}${method}`;
+  console.log(`[Bitrix API] Calling: ${method}`);
+  console.log(`[Bitrix API] URL: ${url}`);
+  
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...params, auth: accessToken }),
+  });
+  
+  const result = await response.json();
+  
+  if (result.error) {
+    console.error(`[Bitrix API] Error in ${method}:`, result.error, result.error_description);
+  } else if (result.result) {
+    const resultStr = JSON.stringify(result.result);
+    console.log(`[Bitrix API] Success in ${method}:`, resultStr.substring(0, 200));
+  }
+  
+  return result;
+}
+
+async function registerPaySystemHandler(clientEndpoint: string, accessToken: string, iframeBaseUrl: string) {
+  console.log('Registering Pay System Handler at endpoint:', clientEndpoint);
+  
+  // First, try to delete any existing handler with the same code
+  await callBitrixApi(clientEndpoint, 'sale.paysystem.handler.delete', {
+    CODE: 'asaas_payments',
+  }, accessToken);
+
+  const handlerResult = await callBitrixApi(clientEndpoint, 'sale.paysystem.handler.add', {
+    NAME: 'Asaas Pagamentos',
+    CODE: 'asaas_payments',
+    SORT: 100,
+    SETTINGS: {
+      CURRENCY: ['BRL'],
+      CLIENT_TYPE: 'b2c',
+      IFRAME_URL: `${iframeBaseUrl}/functions/v1/bitrix-payment-iframe`,
+      IFRAME: true,
+      IFRAME_HEIGHT: 500,
+      IFRAME_WIDTH: 400,
+      CODES: {
+        PAYMENT_ID: { NAME: 'ID do Pagamento', GROUP: 'PAYMENT', DEFAULT: { PROVIDER_KEY: 'PAYMENT', PROVIDER_VALUE: 'ID' } },
+        PAYMENT_AMOUNT: { NAME: 'Valor', GROUP: 'PAYMENT', DEFAULT: { PROVIDER_KEY: 'PAYMENT', PROVIDER_VALUE: 'SUM' } },
+        PAYMENT_CURRENCY: { NAME: 'Moeda', GROUP: 'PAYMENT', DEFAULT: { PROVIDER_KEY: 'PAYMENT', PROVIDER_VALUE: 'CURRENCY' } },
+        CUSTOMER_NAME: { NAME: 'Nome do Cliente', GROUP: 'ORDER', DEFAULT: { PROVIDER_KEY: 'ORDER', PROVIDER_VALUE: 'USER_NAME' } },
+        CUSTOMER_EMAIL: { NAME: 'Email do Cliente', GROUP: 'ORDER', DEFAULT: { PROVIDER_KEY: 'ORDER', PROVIDER_VALUE: 'USER_EMAIL' } },
+        CUSTOMER_DOCUMENT: { NAME: 'CPF/CNPJ do Cliente', GROUP: 'PROPERTY' },
+      },
+    },
+  }, accessToken);
+
+  if (handlerResult.error) {
+    console.error('Failed to register handler:', handlerResult.error, handlerResult.error_description);
+  } else {
+    console.log('Handler registered successfully:', JSON.stringify(handlerResult.result));
+  }
+  
+  return handlerResult;
+}
+
+async function createPaySystems(clientEndpoint: string, accessToken: string, installationId: string, supabase: any) {
+  console.log('Creating Pay Systems at endpoint:', clientEndpoint);
+  
+  const payMethods = [
+    { code: 'pix', name: 'Asaas - PIX', description: 'Pagamento instantâneo via PIX' },
+    { code: 'boleto', name: 'Asaas - Boleto', description: 'Pagamento via Boleto Bancário' },
+    { code: 'credit_card', name: 'Asaas - Cartão', description: 'Pagamento via Cartão de Crédito' },
+  ];
+
+  let successCount = 0;
+
+  for (const method of payMethods) {
+    const paySystemResult = await callBitrixApi(clientEndpoint, 'sale.paysystem.add', {
+      NAME: method.name,
+      DESCRIPTION: method.description,
+      PSA_NAME: method.name,
+      BX_REST_HANDLER: 'asaas_payments',
+      ACTIVE: 'Y',
+      ENTITY_REGISTRY_TYPE: 'ORDER',
+      NEW_WINDOW: 'N',
+      SETTINGS: {
+        PAYMENT_METHOD: { TYPE: 'VALUE', VALUE: method.code },
+      },
+    }, accessToken);
+
+    if (paySystemResult.result) {
+      console.log(`Created pay system: ${method.name} (ID: ${paySystemResult.result})`);
+      successCount++;
+      
+      // Save to database
+      await supabase.from('bitrix_pay_systems').insert({
+        installation_id: installationId,
+        pay_system_id: String(paySystemResult.result),
+        payment_method: method.code,
+        is_active: true,
+      });
+    } else if (paySystemResult.error) {
+      console.error(`Failed to create pay system ${method.name}:`, paySystemResult.error, paySystemResult.error_description);
+    }
+  }
+
+  return successCount;
+}
+
+async function registerPaySystemsLazy(
+  domain: string,
+  accessToken: string,
+  installationId: string,
+  supabase: any
+): Promise<{ success: boolean; message: string }> {
+  console.log('=== LAZY PAY SYSTEM REGISTRATION ===');
+  console.log('Domain:', domain);
+  console.log('Installation ID:', installationId);
+  
+  // Build the REST endpoint from domain
+  const clientEndpoint = `https://${domain}/rest/`;
+  console.log('Client endpoint:', clientEndpoint);
+  
+  // Build iframe URL
+  const supabaseUrl = SUPABASE_URL.replace('https://', '').replace('.supabase.co', '');
+  const iframeBaseUrl = `https://${supabaseUrl}.supabase.co`;
+  
+  try {
+    // Step 1: Register the pay system handler
+    console.log('Step 1: Registering pay system handler...');
+    const handlerResult = await registerPaySystemHandler(clientEndpoint, accessToken, iframeBaseUrl);
+    
+    if (handlerResult.error) {
+      return { success: false, message: `Handler registration failed: ${handlerResult.error_description || handlerResult.error}` };
+    }
+    
+    // Step 2: Create pay systems
+    console.log('Step 2: Creating pay systems...');
+    const successCount = await createPaySystems(clientEndpoint, accessToken, installationId, supabase);
+    
+    if (successCount > 0) {
+      // Mark installation as having pay systems registered
+      await supabase
+        .from('bitrix_installations')
+        .update({ pay_systems_registered: true, updated_at: new Date().toISOString() })
+        .eq('id', installationId);
+      
+      console.log(`Pay system registration completed: ${successCount}/3 created`);
+      return { success: true, message: `${successCount} pay systems created successfully` };
+    } else {
+      return { success: false, message: 'No pay systems were created' };
+    }
+  } catch (error) {
+    console.error('Error during lazy pay system registration:', error);
+    return { success: false, message: error instanceof Error ? error.message : 'Unknown error' };
+  }
+}
+
+// ============= END BITRIX API FUNCTIONS =============
 
 // Generate auth page when installation is not linked
 function generateAuthPage(data: PaymentData): string {
@@ -1039,9 +1199,14 @@ serve(async (req) => {
       if (contentType.includes('application/x-www-form-urlencoded')) {
         const params = new URLSearchParams(bodyText);
         
+        // Log all params for debugging
+        const allParams = Object.fromEntries(params.entries());
+        console.log('All POST params:', JSON.stringify(allParams));
+        
         // Extract memberId and domain with multiple fallback names (Bitrix24 uses different conventions)
         let memberId = params.get('memberId') || params.get('member_id') || params.get('MEMBER_ID') || '';
         let domain = params.get('domain') || params.get('DOMAIN') || '';
+        let accessToken = params.get('AUTH_ID') || params.get('auth[access_token]') || '';
         
         // Try to extract from PLACEMENT_OPTIONS (JSON data from Bitrix24 placement)
         const placementOptions = params.get('PLACEMENT_OPTIONS');
@@ -1062,6 +1227,8 @@ serve(async (req) => {
         memberId = memberId || authMemberId || '';
         domain = domain || authDomain || '';
         
+        console.log('Extracted - Domain:', domain, 'MemberId:', memberId, 'AccessToken:', accessToken ? '***exists***' : 'MISSING');
+        
         paymentData = {
           paymentId: params.get('paymentId') || params.get('PAYMENT_ID') || '',
           orderId: params.get('orderId') || params.get('ORDER_ID') || '',
@@ -1073,6 +1240,7 @@ serve(async (req) => {
           paymentMethod: params.get('paymentMethod') || params.get('PAYMENT_METHOD') || 'pix',
           domain: domain,
           memberId: memberId,
+          accessToken: accessToken,
         };
       } else {
         paymentData = JSON.parse(bodyText);
@@ -1088,10 +1256,10 @@ serve(async (req) => {
     let asaasConfig = null;
     
     if (paymentData.memberId) {
-      // Find installation by member_id - use maybeSingle with order to handle duplicates gracefully
+      // Find installation by member_id - include pay_systems_registered flag
       const { data: inst, error: instError } = await supabase
         .from('bitrix_installations')
-        .select('tenant_id, domain')
+        .select('id, tenant_id, domain, pay_systems_registered, access_token')
         .eq('member_id', paymentData.memberId)
         .order('updated_at', { ascending: false })
         .limit(1)
@@ -1102,7 +1270,49 @@ serve(async (req) => {
       }
       
       installation = inst;
-      console.log('Installation found:', installation);
+      console.log('Installation found:', { 
+        id: installation?.id,
+        tenant_id: installation?.tenant_id, 
+        domain: installation?.domain,
+        pay_systems_registered: installation?.pay_systems_registered 
+      });
+      
+      // Try lazy pay system registration if we have domain and access_token
+      if (installation && !installation.pay_systems_registered) {
+        // Use domain from POST params or from installation record
+        const domainForRegistration = paymentData.domain || installation.domain;
+        // Use access_token from POST params or from installation record
+        const tokenForRegistration = paymentData.accessToken || installation.access_token;
+        
+        if (domainForRegistration && tokenForRegistration) {
+          console.log('Attempting lazy pay system registration...');
+          console.log('Using domain:', domainForRegistration);
+          
+          const registrationResult = await registerPaySystemsLazy(
+            domainForRegistration,
+            tokenForRegistration,
+            installation.id,
+            supabase
+          );
+          
+          console.log('Lazy registration result:', registrationResult);
+          
+          // Update domain in installation if we got it from POST params
+          if (paymentData.domain && paymentData.domain !== installation.domain) {
+            await supabase
+              .from('bitrix_installations')
+              .update({ domain: paymentData.domain, updated_at: new Date().toISOString() })
+              .eq('id', installation.id);
+            console.log('Updated installation domain to:', paymentData.domain);
+          }
+        } else {
+          console.log('Cannot register pay systems - missing domain or access_token');
+          console.log('Domain available:', !!domainForRegistration);
+          console.log('AccessToken available:', !!tokenForRegistration);
+        }
+      } else if (installation?.pay_systems_registered) {
+        console.log('Pay systems already registered for this installation');
+      }
       
       if (installation?.tenant_id) {
         const { data: config } = await supabase
