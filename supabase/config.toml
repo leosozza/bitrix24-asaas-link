@@ -17,3 +17,9 @@ verify_jwt = false
 
 [functions.asaas-webhook]
 verify_jwt = false
+
+[functions.bitrix-auth]
+verify_jwt = false
+
+[functions.bitrix-config]
+verify_jwt = false
