@@ -176,6 +176,48 @@ export type Database = {
           },
         ]
       }
+      fiscal_configurations: {
+        Row: {
+          auto_emit_on_payment: boolean
+          created_at: string
+          default_iss: number | null
+          id: string
+          is_active: boolean
+          municipal_service_code: string | null
+          municipal_service_id: string | null
+          municipal_service_name: string | null
+          observations_template: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          auto_emit_on_payment?: boolean
+          created_at?: string
+          default_iss?: number | null
+          id?: string
+          is_active?: boolean
+          municipal_service_code?: string | null
+          municipal_service_id?: string | null
+          municipal_service_name?: string | null
+          observations_template?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          auto_emit_on_payment?: boolean
+          created_at?: string
+          default_iss?: number | null
+          id?: string
+          is_active?: boolean
+          municipal_service_code?: string | null
+          municipal_service_id?: string | null
+          municipal_service_name?: string | null
+          observations_template?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       integration_logs: {
         Row: {
           action: string
@@ -219,6 +261,92 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoices: {
+        Row: {
+          asaas_invoice_id: string | null
+          bitrix_entity_id: string | null
+          bitrix_entity_type:
+            | Database["public"]["Enums"]["bitrix_entity_type"]
+            | null
+          created_at: string
+          customer_document: string | null
+          customer_email: string | null
+          customer_id: string | null
+          customer_name: string | null
+          effective_date: string | null
+          error_message: string | null
+          external_reference: string | null
+          id: string
+          invoice_number: string | null
+          invoice_url: string | null
+          observations: string | null
+          service_description: string
+          status: Database["public"]["Enums"]["invoice_status"]
+          tenant_id: string
+          transaction_id: string | null
+          updated_at: string
+          value: number
+        }
+        Insert: {
+          asaas_invoice_id?: string | null
+          bitrix_entity_id?: string | null
+          bitrix_entity_type?:
+            | Database["public"]["Enums"]["bitrix_entity_type"]
+            | null
+          created_at?: string
+          customer_document?: string | null
+          customer_email?: string | null
+          customer_id?: string | null
+          customer_name?: string | null
+          effective_date?: string | null
+          error_message?: string | null
+          external_reference?: string | null
+          id?: string
+          invoice_number?: string | null
+          invoice_url?: string | null
+          observations?: string | null
+          service_description: string
+          status?: Database["public"]["Enums"]["invoice_status"]
+          tenant_id: string
+          transaction_id?: string | null
+          updated_at?: string
+          value: number
+        }
+        Update: {
+          asaas_invoice_id?: string | null
+          bitrix_entity_id?: string | null
+          bitrix_entity_type?:
+            | Database["public"]["Enums"]["bitrix_entity_type"]
+            | null
+          created_at?: string
+          customer_document?: string | null
+          customer_email?: string | null
+          customer_id?: string | null
+          customer_name?: string | null
+          effective_date?: string | null
+          error_message?: string | null
+          external_reference?: string | null
+          id?: string
+          invoice_number?: string | null
+          invoice_url?: string | null
+          observations?: string | null
+          service_description?: string
+          status?: Database["public"]["Enums"]["invoice_status"]
+          tenant_id?: string
+          transaction_id?: string | null
+          updated_at?: string
+          value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoices_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
             referencedColumns: ["id"]
           },
         ]
@@ -699,6 +827,12 @@ export type Database = {
       asaas_environment: "sandbox" | "production"
       bitrix_entity_type: "deal" | "invoice" | "contact" | "company"
       bitrix_status: "active" | "expired" | "revoked"
+      invoice_status:
+        | "scheduled"
+        | "synchronized"
+        | "authorized"
+        | "canceled"
+        | "error"
       log_status: "success" | "error"
       payment_method: "pix" | "boleto" | "credit_card"
       split_type: "fixed" | "percentage"
@@ -850,6 +984,13 @@ export const Constants = {
       asaas_environment: ["sandbox", "production"],
       bitrix_entity_type: ["deal", "invoice", "contact", "company"],
       bitrix_status: ["active", "expired", "revoked"],
+      invoice_status: [
+        "scheduled",
+        "synchronized",
+        "authorized",
+        "canceled",
+        "error",
+      ],
       log_status: ["success", "error"],
       payment_method: ["pix", "boleto", "credit_card"],
       split_type: ["fixed", "percentage"],

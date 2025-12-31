@@ -539,6 +539,97 @@ serve(async (req) => {
         break;
       }
       
+      case 'asaas_create_invoice': {
+        const { charge_id, value, service_description, observations } = robotData.properties;
+        
+        if (!charge_id && !value) {
+          returnValues = { error: 'ID da cobrança ou valor são obrigatórios' };
+          logMessage = 'Erro: Dados incompletos';
+          break;
+        }
+        
+        // Get fiscal configuration
+        const { data: fiscalConfig } = await supabase
+          .from('fiscal_configurations')
+          .select('*')
+          .eq('tenant_id', installation.tenant_id)
+          .eq('is_active', true)
+          .single();
+        
+        const docId = robotData.document_id[2] || robotData.document_id[0] || 'unknown';
+        
+        // Build invoice payload
+        const invoicePayload: Record<string, unknown> = {
+          serviceDescription: service_description || fiscalConfig?.municipal_service_name || 'Serviço',
+          observations: observations || fiscalConfig?.observations_template || '',
+          value: charge_id ? undefined : parseFloat(value),
+        };
+        
+        if (charge_id) {
+          invoicePayload.payment = charge_id;
+        }
+        
+        if (fiscalConfig?.municipal_service_id) {
+          invoicePayload.municipalServiceId = fiscalConfig.municipal_service_id;
+        }
+        
+        if (fiscalConfig?.default_iss) {
+          invoicePayload.taxes = {
+            retainIss: false,
+            iss: fiscalConfig.default_iss,
+          };
+        }
+        
+        invoicePayload.externalReference = `bitrix_${robotData.auth.member_id}_${docId}`;
+        
+        console.log('[Asaas] Creating invoice:', JSON.stringify(invoicePayload));
+        
+        const invoiceResponse = await fetch(`${baseUrl}/invoices`, {
+          method: 'POST',
+          headers: {
+            'access_token': asaasConfig.api_key,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(invoicePayload),
+        });
+        
+        const invoice = await invoiceResponse.json();
+        console.log('[Asaas] Invoice created:', invoice.id, invoice.status);
+        
+        if (invoice.errors) {
+          returnValues = { error: invoice.errors[0]?.description || 'Erro ao criar nota fiscal' };
+          logMessage = `Erro: ${invoice.errors[0]?.description}`;
+          break;
+        }
+        
+        // Save to database
+        if (installation.tenant_id) {
+          await supabase.from('invoices').insert({
+            tenant_id: installation.tenant_id,
+            asaas_invoice_id: invoice.id,
+            customer_id: invoice.customer,
+            value: invoice.value,
+            service_description: invoicePayload.serviceDescription,
+            observations: invoicePayload.observations,
+            status: invoice.status === 'AUTHORIZED' ? 'authorized' : 'scheduled',
+            invoice_number: invoice.number,
+            invoice_url: invoice.invoiceUrl,
+            external_reference: invoicePayload.externalReference,
+            bitrix_entity_id: docId,
+            bitrix_entity_type: 'deal',
+          });
+        }
+        
+        returnValues = {
+          invoice_id: invoice.id,
+          invoice_status: invoice.status,
+          invoice_number: invoice.number || '',
+          invoice_url: invoice.invoiceUrl || '',
+        };
+        logMessage = `Nota Fiscal criada: ${invoice.id}`;
+        break;
+      }
+      
       default:
         console.error('Unknown robot code:', robotData.code);
         returnValues = { error: `Robot não reconhecido: ${robotData.code}` };
