@@ -1139,6 +1139,441 @@ function generateConfigPage(data: PaymentData): string {
 </html>`;
 }
 
+// Generate dashboard page for normal app context (not checkout)
+async function generateDashboardPage(
+  installation: { id: string; tenant_id: string; domain: string },
+  asaasConfig: { apiKey: string; environment: string },
+  supabase: any
+): Promise<string> {
+  const APP_DOMAIN = Deno.env.get('APP_DOMAIN') || 'https://asaas.thoth24.com';
+  
+  // Fetch metrics for current month
+  const startOfMonth = new Date();
+  startOfMonth.setDate(1);
+  startOfMonth.setHours(0, 0, 0, 0);
+  
+  const { data: transactions } = await supabase
+    .from('transactions')
+    .select('*')
+    .eq('tenant_id', installation.tenant_id)
+    .gte('created_at', startOfMonth.toISOString())
+    .order('created_at', { ascending: false })
+    .limit(100);
+  
+  // Calculate metrics
+  const total = transactions?.length || 0;
+  const totalAmount = transactions?.reduce((sum: number, t: any) => sum + (parseFloat(t.amount) || 0), 0) || 0;
+  const confirmed = transactions?.filter((t: any) => 
+    ['confirmed', 'received'].includes(t.status)
+  ).length || 0;
+  const pending = transactions?.filter((t: any) => t.status === 'pending').length || 0;
+  const successRate = total > 0 ? ((confirmed / total) * 100).toFixed(1) : '0';
+  
+  // Get recent transactions (last 5)
+  const recentTransactions = (transactions || []).slice(0, 5);
+  
+  const statusLabels: Record<string, string> = {
+    pending: 'Pendente',
+    confirmed: 'Confirmado',
+    received: 'Recebido',
+    overdue: 'Vencido',
+    refunded: 'Reembolsado',
+    cancelled: 'Cancelado',
+  };
+  
+  const statusColors: Record<string, string> = {
+    pending: '#f59e0b',
+    confirmed: '#10b981',
+    received: '#10b981',
+    overdue: '#ef4444',
+    refunded: '#8b5cf6',
+    cancelled: '#6b7280',
+  };
+
+  return `
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - ConnectPay Asaas</title>
+  <script src="//api.bitrix24.com/api/v1/"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f3f4f6;
+      color: #1f2937;
+      line-height: 1.5;
+      padding: 24px;
+    }
+    .dashboard {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    .dashboard-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .dashboard-header h1 {
+      font-size: 24px;
+      font-weight: 700;
+      color: #111827;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .dashboard-header h1 svg {
+      width: 32px;
+      height: 32px;
+      color: #0066cc;
+    }
+    .dashboard-header p {
+      color: #6b7280;
+      font-size: 14px;
+      margin-top: 4px;
+    }
+    .header-actions {
+      display: flex;
+      gap: 12px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 16px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-outline {
+      background: white;
+      border: 1px solid #d1d5db;
+      color: #374151;
+    }
+    .btn-outline:hover {
+      background: #f9fafb;
+      border-color: #9ca3af;
+    }
+    .btn-primary {
+      background: #0066cc;
+      color: white;
+    }
+    .btn-primary:hover {
+      background: #0052a3;
+    }
+    
+    /* Connection Status */
+    .connections-section {
+      margin-bottom: 24px;
+    }
+    .section-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .connection-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+    }
+    .connection-card {
+      background: white;
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .connection-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+    .connection-icon.bitrix { background: #f0f9ff; color: #0284c7; }
+    .connection-icon.asaas { background: #f0fdf4; color: #16a34a; }
+    .connection-info h3 {
+      font-size: 14px;
+      font-weight: 600;
+      color: #111827;
+    }
+    .connection-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #16a34a;
+    }
+    .connection-status::before {
+      content: '';
+      width: 8px;
+      height: 8px;
+      background: #16a34a;
+      border-radius: 50%;
+    }
+    .env-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 500;
+      text-transform: uppercase;
+    }
+    .env-badge.sandbox { background: #fef3c7; color: #92400e; }
+    .env-badge.production { background: #dcfce7; color: #166534; }
+    
+    /* Metrics */
+    .metrics-section {
+      margin-bottom: 24px;
+    }
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+    }
+    .metric-card {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .metric-card .value {
+      font-size: 28px;
+      font-weight: 700;
+      color: #111827;
+      display: block;
+    }
+    .metric-card .label {
+      font-size: 13px;
+      color: #6b7280;
+      margin-top: 4px;
+    }
+    .metric-card.highlight {
+      background: linear-gradient(135deg, #0066cc 0%, #0052a3 100%);
+    }
+    .metric-card.highlight .value,
+    .metric-card.highlight .label {
+      color: white;
+    }
+    
+    /* Transactions */
+    .transactions-section {
+      margin-bottom: 24px;
+    }
+    .transactions-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .transactions-table {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th {
+      text-align: left;
+      padding: 12px 16px;
+      background: #f9fafb;
+      font-size: 12px;
+      font-weight: 600;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    td {
+      padding: 12px 16px;
+      font-size: 14px;
+      border-bottom: 1px solid #f3f4f6;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover { background: #f9fafb; }
+    .status-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: #6b7280;
+    }
+    .empty-state svg {
+      width: 48px;
+      height: 48px;
+      margin-bottom: 12px;
+      opacity: 0.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="dashboard">
+    <header class="dashboard-header">
+      <div>
+        <h1>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+            <path d="M2 17l10 5 10-5"/>
+            <path d="M2 12l10 5 10-5"/>
+          </svg>
+          ConnectPay Dashboard
+        </h1>
+        <p>Gestão de pagamentos Asaas no Bitrix24</p>
+      </div>
+      <div class="header-actions">
+        <button class="btn btn-outline" onclick="openSettings()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+          Configurações
+        </button>
+        <button class="btn btn-primary" onclick="openFullDashboard()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+            <polyline points="15 3 21 3 21 9"/>
+            <line x1="10" y1="14" x2="21" y2="3"/>
+          </svg>
+          Dashboard Completo
+        </button>
+      </div>
+    </header>
+    
+    <section class="connections-section">
+      <h2 class="section-title">Status das Conexões</h2>
+      <div class="connection-grid">
+        <div class="connection-card">
+          <div class="connection-icon bitrix">🔗</div>
+          <div class="connection-info">
+            <h3>Bitrix24</h3>
+            <span class="connection-status">Conectado</span>
+          </div>
+        </div>
+        <div class="connection-card">
+          <div class="connection-icon asaas">💳</div>
+          <div class="connection-info">
+            <h3>Asaas</h3>
+            <span class="connection-status">
+              Ativo
+              <span class="env-badge ${asaasConfig.environment}">${asaasConfig.environment === 'production' ? 'Produção' : 'Sandbox'}</span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </section>
+    
+    <section class="metrics-section">
+      <h2 class="section-title">Métricas do Mês</h2>
+      <div class="metrics-grid">
+        <div class="metric-card highlight">
+          <span class="value">${total}</span>
+          <span class="label">Transações</span>
+        </div>
+        <div class="metric-card">
+          <span class="value">R$ ${totalAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+          <span class="label">Valor Total</span>
+        </div>
+        <div class="metric-card">
+          <span class="value">${successRate}%</span>
+          <span class="label">Taxa de Sucesso</span>
+        </div>
+        <div class="metric-card">
+          <span class="value">${pending}</span>
+          <span class="label">Pendentes</span>
+        </div>
+      </div>
+    </section>
+    
+    <section class="transactions-section">
+      <div class="transactions-header">
+        <h2 class="section-title">Últimas Transações</h2>
+      </div>
+      <div class="transactions-table">
+        ${recentTransactions.length > 0 ? `
+        <table>
+          <thead>
+            <tr>
+              <th>Cliente</th>
+              <th>Valor</th>
+              <th>Método</th>
+              <th>Status</th>
+              <th>Data</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${recentTransactions.map((t: any) => `
+              <tr>
+                <td>${t.customer_name || 'N/A'}</td>
+                <td>R$ ${(parseFloat(t.amount) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                <td>${t.payment_method === 'pix' ? 'PIX' : t.payment_method === 'boleto' ? 'Boleto' : 'Cartão'}</td>
+                <td>
+                  <span class="status-badge" style="background: ${statusColors[t.status] || '#6b7280'}20; color: ${statusColors[t.status] || '#6b7280'}">
+                    ${statusLabels[t.status] || t.status}
+                  </span>
+                </td>
+                <td>${new Date(t.created_at).toLocaleDateString('pt-BR')}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        ` : `
+        <div class="empty-state">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+            <line x1="3" y1="9" x2="21" y2="9"/>
+            <line x1="9" y1="21" x2="9" y2="9"/>
+          </svg>
+          <p>Nenhuma transação este mês</p>
+          <p style="font-size:12px;margin-top:4px;">As transações aparecerão aqui quando você processar pagamentos</p>
+        </div>
+        `}
+      </div>
+    </section>
+  </div>
+  
+  <script>
+    function openSettings() {
+      window.location.href = window.location.href + (window.location.href.includes('?') ? '&' : '?') + 'settings=true';
+    }
+    
+    function openFullDashboard() {
+      const url = '${APP_DOMAIN}/dashboard';
+      window.open(url, '_blank');
+    }
+    
+    if (typeof BX24 !== 'undefined') {
+      BX24.init(function() { 
+        BX24.fitWindow(); 
+      });
+    }
+  </script>
+</body>
+</html>`;
+}
+
 // Generate payment page (original functionality)
 function generatePaymentPage(data: PaymentData, asaasConfig: { apiKey: string; environment: string }): string {
   const methodLabels: Record<string, string> = {
@@ -1722,6 +2157,10 @@ serve(async (req) => {
       }
     }
 
+    // Check URL params for settings=true
+    const url = new URL(req.url);
+    const showSettings = url.searchParams.get('settings') === 'true';
+
     // Scenario 1: No tenant linked - show auth page
     if (!installation?.tenant_id) {
       console.log('Showing auth page - no tenant linked');
@@ -1740,9 +2179,30 @@ serve(async (req) => {
       });
     }
 
-    // Scenario 3: Everything configured - show payment page
-    console.log('Showing payment page - fully configured');
-    const html = generatePaymentPage(paymentData, asaasConfig);
+    // Check if user wants to edit settings
+    if (showSettings) {
+      console.log('Showing config page - settings requested');
+      const html = generateConfigPage(paymentData);
+      return new Response(html, {
+        headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' },
+      });
+    }
+
+    // Detect context: payment checkout vs normal app opening
+    const isPaymentContext = paymentData.paymentId && parseFloat(paymentData.amount || '0') > 0;
+
+    // Scenario 3a: Payment context - show payment page
+    if (isPaymentContext) {
+      console.log('Showing payment page - checkout context');
+      const html = generatePaymentPage(paymentData, asaasConfig);
+      return new Response(html, {
+        headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' },
+      });
+    }
+
+    // Scenario 3b: Normal app context - show dashboard
+    console.log('Showing dashboard - normal app context');
+    const html = await generateDashboardPage(installation, asaasConfig, supabase);
     return new Response(html, {
       headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' },
     });
