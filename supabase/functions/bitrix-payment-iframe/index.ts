@@ -501,12 +501,26 @@ serve(async (req) => {
 
   try {
     console.log('Bitrix Payment Iframe Handler called');
+    console.log('Method:', req.method);
     
     // Get payment data from query params or POST body
     let paymentData: PaymentData;
     
     if (req.method === 'GET') {
       const url = new URL(req.url);
+      
+      // Check if this is a validation request (no meaningful params)
+      const hasPaymentParams = url.searchParams.has('paymentId') || 
+                               url.searchParams.has('settings') ||
+                               url.searchParams.has('amount');
+      
+      if (!hasPaymentParams) {
+        console.log('GET validation request - returning OK');
+        return new Response('<html><body>OK</body></html>', {
+          headers: { ...corsHeaders, 'Content-Type': 'text/html' },
+        });
+      }
+      
       paymentData = {
         paymentId: url.searchParams.get('paymentId') || '',
         orderId: url.searchParams.get('orderId') || '',
@@ -520,8 +534,38 @@ serve(async (req) => {
         memberId: url.searchParams.get('memberId') || '',
       };
     } else {
-      const body = await req.json();
-      paymentData = body;
+      // Read body as text first to check if empty
+      const bodyText = await req.text();
+      
+      console.log('Body length:', bodyText.length);
+      
+      // Handle empty body (marketplace validation POST)
+      if (!bodyText || bodyText.trim() === '') {
+        console.log('Empty POST body - returning validation OK');
+        return new Response('<html><body>OK</body></html>', {
+          headers: { ...corsHeaders, 'Content-Type': 'text/html' },
+        });
+      }
+      
+      // Parse the body
+      const contentType = req.headers.get('content-type') || '';
+      if (contentType.includes('application/x-www-form-urlencoded')) {
+        const params = new URLSearchParams(bodyText);
+        paymentData = {
+          paymentId: params.get('paymentId') || '',
+          orderId: params.get('orderId') || '',
+          amount: params.get('amount') || '0',
+          currency: params.get('currency') || 'BRL',
+          customerName: params.get('customerName') || '',
+          customerEmail: params.get('customerEmail') || '',
+          customerDocument: params.get('customerDocument') || '',
+          paymentMethod: params.get('paymentMethod') || 'pix',
+          domain: params.get('domain') || '',
+          memberId: params.get('memberId') || '',
+        };
+      } else {
+        paymentData = JSON.parse(bodyText);
+      }
     }
     
     console.log('Payment data:', JSON.stringify(paymentData));
