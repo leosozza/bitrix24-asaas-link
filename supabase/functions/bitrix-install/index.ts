@@ -223,16 +223,66 @@ serve(async (req) => {
     
     let eventData: BitrixInstallEvent;
     
+    // Helper function to parse PHP-style form data (auth[access_token]=xxx)
+    const parsePhpStyleFormData = (params: URLSearchParams): BitrixInstallEvent => {
+      const result: Record<string, Record<string, string>> = {
+        auth: {},
+        data: {},
+      };
+      let event = '';
+      let ts = '';
+      
+      for (const [key, value] of params.entries()) {
+        // Handle simple keys
+        if (key === 'event') { event = value; continue; }
+        if (key === 'ts') { ts = value; continue; }
+        
+        // Handle nested keys like auth[access_token], data[VERSION]
+        const match = key.match(/^(\w+)\[(\w+)\]$/);
+        if (match) {
+          const [, parentKey, childKey] = match;
+          if (parentKey === 'auth' || parentKey === 'data') {
+            result[parentKey][childKey.toLowerCase()] = value;
+          }
+        }
+      }
+      
+      console.log('Parsed auth keys:', Object.keys(result.auth));
+      console.log('Parsed auth values preview:', {
+        access_token: result.auth.access_token ? '***exists***' : 'missing',
+        domain: result.auth.domain || 'missing',
+        member_id: result.auth.member_id || 'missing',
+      });
+      
+      return {
+        event: event || 'ONAPPINSTALL',
+        data: {
+          VERSION: result.data.version || '',
+          ACTIVE: result.data.active || '',
+        },
+        ts,
+        auth: {
+          access_token: result.auth.access_token || '',
+          expires: result.auth.expires || '',
+          expires_in: result.auth.expires_in || '3600',
+          scope: result.auth.scope || '',
+          domain: result.auth.domain || '',
+          server_endpoint: result.auth.server_endpoint || '',
+          status: result.auth.status || '',
+          client_endpoint: result.auth.client_endpoint || '',
+          member_id: result.auth.member_id || '',
+          user_id: result.auth.user_id || '',
+          refresh_token: result.auth.refresh_token || '',
+          application_token: result.auth.application_token || '',
+        },
+      };
+    };
+    
     if (contentType.includes('application/x-www-form-urlencoded')) {
       const params = new URLSearchParams(bodyText);
-      const dataStr = params.get('data') || '';
-      const authStr = params.get('auth') || '';
-      eventData = {
-        event: params.get('event') || 'ONAPPINSTALL',
-        data: dataStr ? JSON.parse(dataStr) : {},
-        ts: params.get('ts') || '',
-        auth: authStr ? JSON.parse(authStr) : {},
-      };
+      console.log('Raw params count:', Array.from(params.entries()).length);
+      console.log('Sample param keys:', Array.from(params.keys()).slice(0, 10));
+      eventData = parsePhpStyleFormData(params);
     } else {
       eventData = JSON.parse(bodyText);
     }
