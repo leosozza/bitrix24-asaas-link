@@ -21,9 +21,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Plug, CreditCard, CheckCircle, Loader2 } from 'lucide-react';
+import { CheckCircle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-
+import bitrix24Logo from '@/assets/bitrix24-logo.png';
+import asaasLogo from '@/assets/asaas-logo.png';
 export default function DashboardIntegrations() {
   const [bitrixStatus, setBitrixStatus] = useState<'active' | 'expired' | 'revoked' | null>(null);
   const [asaasStatus, setAsaasStatus] = useState<'active' | 'expired' | 'revoked' | null>(null);
@@ -90,7 +91,7 @@ export default function DashboardIntegrations() {
           <IntegrationCard
             title="Bitrix24"
             description="Conecte seu CRM Bitrix24 para sincronizar negócios, faturas e contatos automaticamente."
-            icon={<Plug className="h-6 w-6" />}
+            icon={<img src={bitrix24Logo} alt="Bitrix24" className="h-6 w-6 object-contain" />}
             status={bitrixStatus}
             onConfigure={() => setShowBitrixDialog(true)}
             onDisconnect={bitrixStatus === 'active' ? () => handleDisconnect('bitrix') : undefined}
@@ -100,7 +101,7 @@ export default function DashboardIntegrations() {
           <IntegrationCard
             title="Asaas"
             description="Configure sua conta Asaas para processar cobranças via PIX, boleto e cartão de crédito."
-            icon={<CreditCard className="h-6 w-6" />}
+            icon={<img src={asaasLogo} alt="Asaas" className="h-6 w-6 object-contain" />}
             status={asaasStatus}
             onConfigure={() => setShowAsaasDialog(true)}
             onDisconnect={asaasStatus === 'active' ? () => handleDisconnect('asaas') : undefined}
@@ -123,7 +124,7 @@ export default function DashboardIntegrations() {
               {bitrixStatus === 'active' && (
                 <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
                   <div className="flex items-center gap-3">
-                    <Plug className="h-5 w-5 text-primary" />
+                    <img src={bitrix24Logo} alt="Bitrix24" className="h-5 w-5 object-contain" />
                     <div>
                       <p className="font-medium">Bitrix24</p>
                       <p className="text-sm text-muted-foreground">{bitrixDomain || 'seuportal.bitrix24.com.br'}</p>
@@ -135,7 +136,7 @@ export default function DashboardIntegrations() {
               {asaasStatus === 'active' && (
                 <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
                   <div className="flex items-center gap-3">
-                    <CreditCard className="h-5 w-5 text-primary" />
+                    <img src={asaasLogo} alt="Asaas" className="h-5 w-5 object-contain" />
                     <div>
                       <p className="font-medium">Asaas</p>
                       <p className="text-sm text-muted-foreground">

@@ -1,7 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Zap, Shield, RefreshCw, CheckCircle2 } from "lucide-react";
 import { Link } from "react-router-dom";
-
+import bitrix24Logo from "@/assets/bitrix24-logo.png";
+import asaasLogo from "@/assets/asaas-logo.png";
 export function Hero() {
   return (
     <section className="relative pt-28 pb-20 md:pt-36 md:pb-28 overflow-hidden">
@@ -80,8 +81,8 @@ export function Hero() {
                 <div className="flex items-center justify-between gap-4 mb-8">
                   {/* Bitrix24 */}
                   <div className="flex flex-col items-center gap-3 flex-1">
-                    <div className="w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-bitrix flex items-center justify-center shadow-lg">
-                      <span className="font-display font-bold text-xl md:text-2xl text-bitrix">B24</span>
+                    <div className="w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-white flex items-center justify-center shadow-lg p-2">
+                      <img src={bitrix24Logo} alt="Bitrix24" className="w-full h-full object-contain" />
                     </div>
                     <div className="text-center">
                       <span className="font-semibold text-foreground text-sm">Bitrix24</span>
@@ -103,8 +104,8 @@ export function Hero() {
 
                   {/* Asaas */}
                   <div className="flex flex-col items-center gap-3 flex-1">
-                    <div className="w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-asaas flex items-center justify-center shadow-lg">
-                      <span className="font-display font-bold text-xl md:text-2xl text-asaas">A$</span>
+                    <div className="w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-white flex items-center justify-center shadow-lg p-2">
+                      <img src={asaasLogo} alt="Asaas" className="w-full h-full object-contain" />
                     </div>
                     <div className="text-center">
                       <span className="font-semibold text-foreground text-sm">Asaas</span>
