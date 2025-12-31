@@ -344,6 +344,53 @@ export type Database = {
         }
         Relationships: []
       }
+      split_configurations: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+          split_type: Database["public"]["Enums"]["split_type"]
+          split_value: number
+          tenant_id: string
+          updated_at: string
+          wallet_id: string
+          wallet_name: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          split_type?: Database["public"]["Enums"]["split_type"]
+          split_value: number
+          tenant_id: string
+          updated_at?: string
+          wallet_id: string
+          wallet_name?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          split_type?: Database["public"]["Enums"]["split_type"]
+          split_value?: number
+          tenant_id?: string
+          updated_at?: string
+          wallet_id?: string
+          wallet_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "split_configurations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       subscription_plans: {
         Row: {
           created_at: string
@@ -491,6 +538,47 @@ export type Database = {
           },
         ]
       }
+      transaction_splits: {
+        Row: {
+          created_at: string
+          id: string
+          split_amount: number
+          split_type: Database["public"]["Enums"]["split_type"]
+          split_value: number
+          transaction_id: string
+          wallet_id: string
+          wallet_name: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          split_amount: number
+          split_type: Database["public"]["Enums"]["split_type"]
+          split_value: number
+          transaction_id: string
+          wallet_id: string
+          wallet_name?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          split_amount?: number
+          split_type?: Database["public"]["Enums"]["split_type"]
+          split_value?: number
+          transaction_id?: string
+          wallet_id?: string
+          wallet_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transaction_splits_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       transactions: {
         Row: {
           amount: number
@@ -613,6 +701,7 @@ export type Database = {
       bitrix_status: "active" | "expired" | "revoked"
       log_status: "success" | "error"
       payment_method: "pix" | "boleto" | "credit_card"
+      split_type: "fixed" | "percentage"
       subscription_cycle:
         | "WEEKLY"
         | "BIWEEKLY"
@@ -763,6 +852,7 @@ export const Constants = {
       bitrix_status: ["active", "expired", "revoked"],
       log_status: ["success", "error"],
       payment_method: ["pix", "boleto", "credit_card"],
+      split_type: ["fixed", "percentage"],
       subscription_cycle: [
         "WEEKLY",
         "BIWEEKLY",
