@@ -59,13 +59,17 @@ export type Database = {
         Row: {
           access_token: string | null
           app_id: string | null
+          application_token: string | null
           bitrix_user_id: string | null
+          client_endpoint: string | null
           created_at: string
           domain: string
           expires_at: string | null
           id: string
+          member_id: string | null
           refresh_token: string | null
           scope: string | null
+          server_endpoint: string | null
           status: Database["public"]["Enums"]["bitrix_status"]
           tenant_id: string
           updated_at: string
@@ -73,13 +77,17 @@ export type Database = {
         Insert: {
           access_token?: string | null
           app_id?: string | null
+          application_token?: string | null
           bitrix_user_id?: string | null
+          client_endpoint?: string | null
           created_at?: string
           domain: string
           expires_at?: string | null
           id?: string
+          member_id?: string | null
           refresh_token?: string | null
           scope?: string | null
+          server_endpoint?: string | null
           status?: Database["public"]["Enums"]["bitrix_status"]
           tenant_id: string
           updated_at?: string
@@ -87,13 +95,17 @@ export type Database = {
         Update: {
           access_token?: string | null
           app_id?: string | null
+          application_token?: string | null
           bitrix_user_id?: string | null
+          client_endpoint?: string | null
           created_at?: string
           domain?: string
           expires_at?: string | null
           id?: string
+          member_id?: string | null
           refresh_token?: string | null
           scope?: string | null
+          server_endpoint?: string | null
           status?: Database["public"]["Enums"]["bitrix_status"]
           tenant_id?: string
           updated_at?: string
@@ -104,6 +116,50 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bitrix_pay_systems: {
+        Row: {
+          created_at: string
+          entity_type: string | null
+          handler_id: string | null
+          id: string
+          installation_id: string
+          is_active: boolean
+          pay_system_id: string | null
+          payment_method: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          entity_type?: string | null
+          handler_id?: string | null
+          id?: string
+          installation_id: string
+          is_active?: boolean
+          pay_system_id?: string | null
+          payment_method: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          entity_type?: string | null
+          handler_id?: string | null
+          id?: string
+          installation_id?: string
+          is_active?: boolean
+          pay_system_id?: string | null
+          payment_method?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bitrix_pay_systems_installation_id_fkey"
+            columns: ["installation_id"]
+            isOneToOne: false
+            referencedRelation: "bitrix_installations"
             referencedColumns: ["id"]
           },
         ]

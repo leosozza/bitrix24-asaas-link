@@ -1,1 +1,19 @@
 project_id = "prpvoabbenonecgzufhb"
+
+[functions.bitrix-install]
+verify_jwt = false
+
+[functions.bitrix-uninstall]
+verify_jwt = false
+
+[functions.bitrix-payment-iframe]
+verify_jwt = false
+
+[functions.bitrix-payment-process]
+verify_jwt = false
+
+[functions.bitrix-refresh-token]
+verify_jwt = false
+
+[functions.asaas-webhook]
+verify_jwt = false
