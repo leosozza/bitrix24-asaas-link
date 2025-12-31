@@ -35,22 +35,59 @@ interface BitrixInstallEvent {
 
 async function callBitrixApi(endpoint: string, method: string, params: Record<string, unknown>, accessToken: string) {
   const url = `${endpoint}${method}`;
-  console.log(`Calling Bitrix API: ${url}`);
+  console.log(`[Bitrix API] Calling: ${method}`);
+  console.log(`[Bitrix API] URL: ${url}`);
   
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      ...params,
-      auth: accessToken,
-    }),
-  });
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        ...params,
+        auth: accessToken,
+      }),
+    });
+    
+    const data = await response.json();
+    
+    if (data.error) {
+      console.error(`[Bitrix API] Error in ${method}:`, data.error, data.error_description);
+    } else {
+      console.log(`[Bitrix API] Success in ${method}:`, JSON.stringify(data.result).substring(0, 300));
+    }
+    
+    return data;
+  } catch (error) {
+    console.error(`[Bitrix API] Fetch error in ${method}:`, error);
+    throw error;
+  }
+}
+
+// Fetch portal info using app.info to get the real domain
+async function getPortalInfo(serverEndpoint: string, accessToken: string): Promise<{ domain: string | null; clientEndpoint: string | null }> {
+  console.log('[getPortalInfo] Fetching portal info from:', serverEndpoint);
   
-  const data = await response.json();
-  console.log(`Bitrix API response for ${method}:`, JSON.stringify(data));
-  return data;
+  try {
+    const result = await callBitrixApi(serverEndpoint, 'app.info', {}, accessToken);
+    
+    if (result.result) {
+      const domain = result.result.DOMAIN || result.result.domain || null;
+      const clientEndpoint = domain ? `https://${domain}/rest/` : null;
+      
+      console.log('[getPortalInfo] Extracted domain:', domain);
+      console.log('[getPortalInfo] Constructed clientEndpoint:', clientEndpoint);
+      
+      return { domain, clientEndpoint };
+    }
+    
+    console.log('[getPortalInfo] No result from app.info');
+    return { domain: null, clientEndpoint: null };
+  } catch (error) {
+    console.error('[getPortalInfo] Error:', error);
+    return { domain: null, clientEndpoint: null };
+  }
 }
 
 async function registerPaySystemHandler(clientEndpoint: string, accessToken: string, appDomain: string) {
@@ -436,24 +473,48 @@ serve(async (req) => {
     installationId = upsertedInstall.id;
     console.log('Upserted installation:', installationId);
 
-    // Determine API endpoint - prefer client_endpoint, fallback to server_endpoint
-    const apiEndpoint = auth.client_endpoint || auth.server_endpoint;
+    // Fetch the real portal domain via app.info
+    let portalClientEndpoint = auth.client_endpoint;
+    let portalDomain = auth.domain;
     
-    if (apiEndpoint && auth.access_token) {
+    if (auth.server_endpoint && auth.access_token) {
+      console.log('Fetching portal info via app.info...');
+      const portalInfo = await getPortalInfo(auth.server_endpoint, auth.access_token);
+      
+      if (portalInfo.domain && portalInfo.clientEndpoint) {
+        portalDomain = portalInfo.domain;
+        portalClientEndpoint = portalInfo.clientEndpoint;
+        
+        // Update installation with real domain and client_endpoint
+        await supabase
+          .from('bitrix_installations')
+          .update({
+            domain: portalDomain,
+            client_endpoint: portalClientEndpoint,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', installationId);
+        
+        console.log('Updated installation with portal domain:', portalDomain);
+      }
+    }
+    
+    // Use portal client_endpoint for pay system registration
+    if (portalClientEndpoint && auth.access_token && !portalClientEndpoint.includes('oauth.bitrix.info')) {
       // Build the app domain for iframe URL
       const supabaseUrl = SUPABASE_URL.replace('https://', '').replace('.supabase.co', '');
       const iframeBaseUrl = `https://${supabaseUrl}.supabase.co`;
       
-      console.log('Registering pay systems using endpoint:', apiEndpoint);
+      console.log('Registering pay systems using portal endpoint:', portalClientEndpoint);
       
       // Register pay system handler
-      await registerPaySystemHandler(apiEndpoint, auth.access_token, iframeBaseUrl);
+      await registerPaySystemHandler(portalClientEndpoint, auth.access_token, iframeBaseUrl);
       
       // Create pay systems
-      await createPaySystems(apiEndpoint, auth.access_token, installationId, supabase as any);
+      await createPaySystems(portalClientEndpoint, auth.access_token, installationId, supabase as any);
     } else {
-      console.log('Skipping pay system registration - no valid endpoint');
-      console.log('client_endpoint:', auth.client_endpoint);
+      console.log('Skipping pay system registration - no valid portal endpoint');
+      console.log('portalClientEndpoint:', portalClientEndpoint);
       console.log('server_endpoint:', auth.server_endpoint);
     }
 
