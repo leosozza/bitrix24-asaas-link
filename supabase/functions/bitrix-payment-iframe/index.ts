@@ -263,7 +263,7 @@ async function createPaySystems(clientEndpoint: string, accessToken: string, ins
       ENTITY_REGISTRY_TYPE: 'ORDER',
       PERSON_TYPE_ID: personTypeId,
       NEW_WINDOW: 'N',
-      LOGOTYPE: ASAAS_LOGO_BASE64,
+      LOGOTIP: ASAAS_LOGO_BASE64,
       SETTINGS: {
         PAYMENT_METHOD: { TYPE: 'VALUE', VALUE: method.code },
       },
@@ -311,7 +311,7 @@ async function updatePaySystemsLogo(clientEndpoint: string, accessToken: string,
     const updateResult = await callBitrixApi(clientEndpoint, 'sale.paysystem.update', {
       ID: ps.pay_system_id,
       FIELDS: {
-        LOGOTYPE: ASAAS_LOGO_BASE64
+        LOGOTIP: ASAAS_LOGO_BASE64
       }
     }, accessToken);
     
@@ -328,9 +328,11 @@ async function updatePaySystemsLogo(clientEndpoint: string, accessToken: string,
 }
 
 // Register automation robots (Asaas: Criar Cobrança, Asaas: Verificar Pagamento)
-async function registerAutomationRobots(clientEndpoint: string, accessToken: string): Promise<{ success: boolean; registered: string[] }> {
+// forceReregister: if true, always delete and re-add robots (for repair/reinstall scenarios)
+async function registerAutomationRobots(clientEndpoint: string, accessToken: string, forceReregister: boolean = false): Promise<{ success: boolean; registered: string[] }> {
   console.log('[Robots] Starting automation robots registration...');
   console.log('[Robots] Using endpoint:', clientEndpoint);
+  console.log('[Robots] Force reregister:', forceReregister);
   
   const handlerUrl = `${SUPABASE_URL}/functions/v1/bitrix-robot-handler`;
   
@@ -409,12 +411,17 @@ async function registerAutomationRobots(clientEndpoint: string, accessToken: str
   const registered: string[] = [];
 
   for (const robot of robots) {
-    // Try to delete existing robot first (for reinstallations)
+    // Always delete existing robot first (handles reinstallations and repairs)
     console.log(`[Robots] Deleting existing robot ${robot.CODE}...`);
     const deleteResult = await callBitrixApi(clientEndpoint, 'bizproc.robot.delete', {
       CODE: robot.CODE,
     }, accessToken);
-    console.log(`[Robots] Delete ${robot.CODE}:`, deleteResult.result || deleteResult.error || 'done');
+    // Ignore "not found" errors - robot may not exist
+    if (deleteResult.error && !deleteResult.error.includes('NOT_FOUND')) {
+      console.log(`[Robots] Delete ${robot.CODE}:`, deleteResult.error);
+    } else {
+      console.log(`[Robots] Delete ${robot.CODE}: done`);
+    }
 
     // Register the robot
     console.log(`[Robots] Registering robot ${robot.CODE}...`);
@@ -430,6 +437,30 @@ async function registerAutomationRobots(clientEndpoint: string, accessToken: str
   
   console.log(`[Robots] Registration complete: ${registered.length}/${robots.length} robots registered`);
   return { success: registered.length > 0, registered };
+}
+
+// Repair/auto-repair robots - always tries to re-register regardless of database flag
+async function repairAutomationRobots(clientEndpoint: string, accessToken: string, installationId: string, supabase: any): Promise<{ success: boolean; message: string }> {
+  console.log('[Robots Repair] Starting repair process...');
+  
+  const result = await registerAutomationRobots(clientEndpoint, accessToken, true);
+  
+  if (result.success) {
+    // Update database to mark robots as registered
+    await supabase
+      .from('bitrix_installations')
+      .update({ 
+        robots_registered: true,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', installationId);
+    
+    console.log('[Robots Repair] Success - registered:', result.registered);
+    return { success: true, message: `Robots reparados: ${result.registered.join(', ')}` };
+  } else {
+    console.log('[Robots Repair] Failed - no robots registered');
+    return { success: false, message: 'Falha ao reparar robots' };
+  }
 }
 
 async function registerPaySystemsLazy(
