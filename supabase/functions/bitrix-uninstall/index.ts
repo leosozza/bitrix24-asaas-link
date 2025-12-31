@@ -67,8 +67,9 @@ serve(async (req) => {
     
     const { auth } = eventData;
     
-    if (!auth?.domain || !auth?.member_id) {
-      console.error('Missing required auth data for uninstall');
+    // member_id is required, domain is optional
+    if (!auth?.member_id) {
+      console.error('Missing required member_id for uninstall');
       return new Response(JSON.stringify({ success: true }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -77,13 +78,14 @@ serve(async (req) => {
     // Initialize Supabase client with service role
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     
-    // Find the installation
+    // Find the installation by member_id (primary key for installations)
     const { data: installation, error: findError } = await supabase
       .from('bitrix_installations')
       .select('id')
-      .eq('domain', auth.domain)
       .eq('member_id', auth.member_id)
-      .single();
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
     if (findError || !installation) {
       console.log('Installation not found, nothing to uninstall');

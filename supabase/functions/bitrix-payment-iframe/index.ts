@@ -1088,12 +1088,18 @@ serve(async (req) => {
     let asaasConfig = null;
     
     if (paymentData.memberId) {
-      // Find installation by member_id
-      const { data: inst } = await supabase
+      // Find installation by member_id - use maybeSingle with order to handle duplicates gracefully
+      const { data: inst, error: instError } = await supabase
         .from('bitrix_installations')
         .select('tenant_id, domain')
         .eq('member_id', paymentData.memberId)
-        .single();
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      if (instError) {
+        console.error('Error finding installation:', instError);
+      }
       
       installation = inst;
       console.log('Installation found:', installation);

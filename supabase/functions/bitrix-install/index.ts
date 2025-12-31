@@ -328,68 +328,34 @@ serve(async (req) => {
     // Use member_id as the primary identifier for installations
     const domainValue = auth.domain || auth.member_id;
     
-    // Check if installation already exists
-    const { data: existingInstall } = await supabase
+    // Upsert installation - create or update based on member_id
+    const { data: upsertedInstall, error: upsertError } = await supabase
       .from('bitrix_installations')
+      .upsert({
+        domain: domainValue,
+        member_id: auth.member_id,
+        access_token: auth.access_token,
+        refresh_token: auth.refresh_token,
+        expires_at: new Date(Date.now() + parseInt(auth.expires_in) * 1000).toISOString(),
+        scope: auth.scope,
+        bitrix_user_id: auth.user_id,
+        application_token: auth.application_token,
+        server_endpoint: auth.server_endpoint,
+        client_endpoint: auth.client_endpoint,
+        status: 'active',
+        updated_at: new Date().toISOString(),
+      }, {
+        onConflict: 'member_id',
+        ignoreDuplicates: false,
+      })
       .select('id')
-      .eq('member_id', auth.member_id)
       .single();
 
     let installationId: string;
-    
-    if (existingInstall) {
-      // Update existing installation
-      const { error: updateError } = await supabase
-        .from('bitrix_installations')
-        .update({
-          access_token: auth.access_token,
-          refresh_token: auth.refresh_token,
-          expires_at: new Date(Date.now() + parseInt(auth.expires_in) * 1000).toISOString(),
-          scope: auth.scope,
-          bitrix_user_id: auth.user_id,
-          application_token: auth.application_token,
-          server_endpoint: auth.server_endpoint,
-          client_endpoint: auth.client_endpoint,
-          status: 'active',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', existingInstall.id);
       
-      if (updateError) {
-        console.error('Error updating installation:', updateError);
-        throw updateError;
-      }
-      
-      installationId = existingInstall.id;
-      console.log('Updated existing installation:', installationId);
-    } else {
-      // We need a tenant_id - for marketplace apps, we'll create a placeholder
-      // The user will link their account later through the dashboard
-      // For now, we'll use a system tenant or handle this differently
-      
-      // Create new installation without tenant_id (will be linked after user signup/login)
-      const { data: newInstall, error: insertError } = await supabase
-        .from('bitrix_installations')
-        .insert({
-          domain: domainValue,
-          member_id: auth.member_id,
-          access_token: auth.access_token,
-          refresh_token: auth.refresh_token,
-          expires_at: new Date(Date.now() + parseInt(auth.expires_in) * 1000).toISOString(),
-          scope: auth.scope,
-          bitrix_user_id: auth.user_id,
-          application_token: auth.application_token,
-          server_endpoint: auth.server_endpoint,
-          client_endpoint: auth.client_endpoint,
-          status: 'active',
-          // tenant_id is NULL - will be linked when user creates account
-        })
-        .select('id')
-        .single();
-      
-      if (insertError) {
-        console.error('Error creating installation:', insertError);
-        const errorHtml = `
+    if (upsertError || !upsertedInstall) {
+      console.error('Error upserting installation:', upsertError);
+      const errorHtml = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -408,7 +374,7 @@ serve(async (req) => {
     <div class="error-icon">⚠️</div>
     <h1>Erro na Instalação</h1>
     <p>Ocorreu um erro ao registrar a instalação. Por favor, tente novamente.</p>
-    <p style="font-size: 12px; margin-top: 20px;">Erro: ${insertError.message}</p>
+    <p style="font-size: 12px; margin-top: 20px;">Erro: ${upsertError?.message || 'Unknown error'}</p>
   </div>
   <script>
     BX24.init(function() {
@@ -419,14 +385,13 @@ serve(async (req) => {
   </script>
 </body>
 </html>`;
-        return new Response(errorHtml, {
-          headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' },
-        });
-      }
-      
-      installationId = newInstall.id;
-      console.log('Created new installation:', installationId);
+      return new Response(errorHtml, {
+        headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' },
+      });
     }
+    
+    installationId = upsertedInstall.id;
+    console.log('Upserted installation:', installationId);
 
     // Register pay system handler
     await registerPaySystemHandler(auth.client_endpoint, auth.access_token, installationId);

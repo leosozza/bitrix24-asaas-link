@@ -245,13 +245,18 @@ serve(async (req) => {
       cardData
     );
     
-    // Find installation to get tenant_id
-    const { data: installation } = await supabase
+    // Find installation to get tenant_id - use member_id as primary key
+    const { data: installation, error: instError } = await supabase
       .from('bitrix_installations')
       .select('tenant_id')
-      .eq('domain', paymentRequest.domain)
       .eq('member_id', paymentRequest.memberId)
-      .single();
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    
+    if (instError) {
+      console.error('Error finding installation:', instError);
+    }
     
     // Store transaction in database
     if (installation?.tenant_id) {
