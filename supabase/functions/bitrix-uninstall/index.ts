@@ -25,20 +25,42 @@ serve(async (req) => {
 
   try {
     console.log('Bitrix Uninstall Handler called');
+    console.log('Method:', req.method);
     
-    // Parse the incoming request
+    // Handle GET requests (marketplace validation)
+    if (req.method === 'GET') {
+      console.log('GET request - returning validation OK');
+      return new Response('<html><body>OK</body></html>', {
+        headers: { ...corsHeaders, 'Content-Type': 'text/html' },
+      });
+    }
+    
+    // Parse the incoming request body
     const contentType = req.headers.get('content-type') || '';
+    const bodyText = await req.text();
+    
+    console.log('Content-Type:', contentType);
+    console.log('Body length:', bodyText.length);
+    
+    // Handle empty body (marketplace validation POST)
+    if (!bodyText || bodyText.trim() === '') {
+      console.log('Empty body - returning validation OK');
+      return new Response('<html><body>OK</body></html>', {
+        headers: { ...corsHeaders, 'Content-Type': 'text/html' },
+      });
+    }
+    
     let eventData: BitrixUninstallEvent;
     
     if (contentType.includes('application/x-www-form-urlencoded')) {
-      const formData = await req.formData();
-      const authStr = formData.get('auth') as string;
+      const params = new URLSearchParams(bodyText);
+      const authStr = params.get('auth') || '';
       eventData = {
-        event: formData.get('event') as string || 'ONAPPUNINSTALL',
+        event: params.get('event') || 'ONAPPUNINSTALL',
         auth: authStr ? JSON.parse(authStr) : {},
       };
     } else {
-      eventData = await req.json();
+      eventData = JSON.parse(bodyText);
     }
     
     console.log('Uninstall event data:', JSON.stringify(eventData));
