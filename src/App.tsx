@@ -11,6 +11,7 @@ import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import DashboardTransactions from "./pages/DashboardTransactions";
 import DashboardSubscriptions from "./pages/DashboardSubscriptions";
+import DashboardSplits from "./pages/DashboardSplits";
 import DashboardIntegrations from "./pages/DashboardIntegrations";
 import DashboardMcp from "./pages/DashboardMcp";
 import DashboardSettings from "./pages/DashboardSettings";
@@ -50,6 +51,14 @@ const App = () => (
                 element={
                   <ProtectedRoute>
                     <DashboardSubscriptions />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/dashboard/splits"
+                element={
+                  <ProtectedRoute>
+                    <DashboardSplits />
                   </ProtectedRoute>
                 }
               />

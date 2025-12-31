@@ -6,7 +6,8 @@ import {
   Settings, 
   Zap,
   LogOut,
-  CalendarDays
+  CalendarDays,
+  GitBranch
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
@@ -28,6 +29,7 @@ const menuItems = [
   { title: 'Visão Geral', url: '/dashboard', icon: LayoutDashboard },
   { title: 'Transações', url: '/dashboard/transactions', icon: Receipt },
   { title: 'Assinaturas', url: '/dashboard/subscriptions', icon: CalendarDays },
+  { title: 'Split de Pagamento', url: '/dashboard/splits', icon: GitBranch },
   { title: 'Integrações', url: '/dashboard/integrations', icon: Plug },
   { title: 'Servidores MCP', url: '/dashboard/mcp', icon: Zap },
   { title: 'Configurações', url: '/dashboard/settings', icon: Settings },

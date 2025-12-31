@@ -102,6 +102,28 @@ async function findOrCreateCustomer(
   return customer;
 }
 
+interface SplitConfig {
+  wallet_id: string;
+  wallet_name: string | null;
+  split_type: 'fixed' | 'percentage';
+  split_value: number;
+}
+
+interface AppliedSplit {
+  wallet_id: string;
+  wallet_name: string | null;
+  split_type: 'fixed' | 'percentage';
+  split_value: number;
+  split_amount: number;
+}
+
+function calculateSplitAmount(splitConfig: SplitConfig, totalAmount: number): number {
+  if (splitConfig.split_type === 'fixed') {
+    return Math.min(splitConfig.split_value, totalAmount);
+  }
+  return (splitConfig.split_value / 100) * totalAmount;
+}
+
 async function createAsaasPayment(
   apiKey: string,
   baseUrl: string,
@@ -109,8 +131,9 @@ async function createAsaasPayment(
   paymentMethod: string,
   amount: number,
   externalReference: string,
-  cardData?: { number: string; expiry: string; cvv: string; name: string }
-): Promise<AsaasPayment> {
+  cardData?: { number: string; expiry: string; cvv: string; name: string },
+  splitConfigs?: SplitConfig[]
+): Promise<{ payment: AsaasPayment; appliedSplits: AppliedSplit[] }> {
   console.log(`Creating Asaas ${paymentMethod} payment...`);
   
   const billingTypeMap: Record<string, string> = {
@@ -130,6 +153,31 @@ async function createAsaasPayment(
     externalReference,
     description: `Pagamento Pedido #${externalReference}`,
   };
+  
+  // Calculate and add splits if configured
+  const appliedSplits: AppliedSplit[] = [];
+  if (splitConfigs && splitConfigs.length > 0) {
+    const splitArray = splitConfigs.map(config => {
+      const splitAmount = calculateSplitAmount(config, amount);
+      appliedSplits.push({
+        wallet_id: config.wallet_id,
+        wallet_name: config.wallet_name,
+        split_type: config.split_type,
+        split_value: config.split_value,
+        split_amount: splitAmount,
+      });
+      
+      return {
+        walletId: config.wallet_id,
+        ...(config.split_type === 'fixed' 
+          ? { fixedValue: config.split_value }
+          : { percentualValue: config.split_value }),
+      };
+    });
+    
+    paymentPayload.split = splitArray;
+    console.log('Applied splits:', JSON.stringify(splitArray));
+  }
   
   // Add credit card data if applicable
   if (paymentMethod === 'credit_card' && cardData) {
@@ -178,7 +226,7 @@ async function createAsaasPayment(
     payment.pixCopiaECola = pixData.payload;
   }
   
-  return payment;
+  return { payment, appliedSplits };
 }
 
 serve(async (req) => {
@@ -234,17 +282,6 @@ serve(async (req) => {
       };
     }
     
-    // Create payment in Asaas
-    const payment = await createAsaasPayment(
-      paymentRequest.asaasApiKey,
-      baseUrl,
-      customer.id,
-      paymentRequest.paymentMethod,
-      amount,
-      externalReference,
-      cardData
-    );
-    
     // Find installation to get tenant_id - use member_id as primary key
     const { data: installation, error: instError } = await supabase
       .from('bitrix_installations')
@@ -258,6 +295,33 @@ serve(async (req) => {
       console.error('Error finding installation:', instError);
     }
     
+    // Fetch active split configurations for the tenant
+    let splitConfigs: SplitConfig[] = [];
+    if (installation?.tenant_id) {
+      const { data: splits } = await supabase
+        .from('split_configurations')
+        .select('wallet_id, wallet_name, split_type, split_value')
+        .eq('tenant_id', installation.tenant_id)
+        .eq('is_active', true);
+      
+      if (splits && splits.length > 0) {
+        splitConfigs = splits as SplitConfig[];
+        console.log('Found active splits:', splitConfigs.length);
+      }
+    }
+    
+    // Create payment in Asaas with splits
+    const { payment, appliedSplits } = await createAsaasPayment(
+      paymentRequest.asaasApiKey,
+      baseUrl,
+      customer.id,
+      paymentRequest.paymentMethod,
+      amount,
+      externalReference,
+      cardData,
+      splitConfigs
+    );
+    
     // Store transaction in database
     if (installation?.tenant_id) {
       const paymentMethodMap: Record<string, string> = {
@@ -266,7 +330,7 @@ serve(async (req) => {
         credit_card: 'credit_card',
       };
       
-      await supabase.from('transactions').insert({
+      const { data: insertedTransaction } = await supabase.from('transactions').insert({
         tenant_id: installation.tenant_id,
         asaas_id: payment.id,
         amount,
@@ -279,9 +343,24 @@ serve(async (req) => {
         payment_url: payment.invoiceUrl || payment.bankSlipUrl,
         bitrix_entity_type: 'invoice',
         bitrix_entity_id: paymentRequest.orderId,
-      });
+      }).select('id').single();
       
       console.log('Transaction stored in database');
+      
+      // Store applied splits
+      if (insertedTransaction && appliedSplits.length > 0) {
+        await supabase.from('transaction_splits').insert(
+          appliedSplits.map(split => ({
+            transaction_id: insertedTransaction.id,
+            wallet_id: split.wallet_id,
+            wallet_name: split.wallet_name,
+            split_type: split.split_type,
+            split_value: split.split_value,
+            split_amount: split.split_amount,
+          }))
+        );
+        console.log('Applied splits stored:', appliedSplits.length);
+      }
     }
     
     // Prepare response based on payment method

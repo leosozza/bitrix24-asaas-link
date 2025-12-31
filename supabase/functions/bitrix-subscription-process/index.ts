@@ -70,6 +70,12 @@ async function findOrCreateCustomer(apiKey: string, baseUrl: string, data: { nam
   return customer;
 }
 
+interface SplitConfig {
+  wallet_id: string;
+  split_type: 'fixed' | 'percentage';
+  split_value: number;
+}
+
 async function createSubscription(
   apiKey: string,
   baseUrl: string,
@@ -78,11 +84,12 @@ async function createSubscription(
   cycle: string,
   billingType: string,
   nextDueDate: string,
-  description: string
+  description: string,
+  splitConfigs?: SplitConfig[]
 ) {
   console.log('[Asaas] Creating subscription:', { customerId, value, cycle, billingType });
   
-  const subscriptionData = {
+  const subscriptionData: Record<string, unknown> = {
     customer: customerId,
     billingType: billingType.toUpperCase(),
     value,
@@ -90,6 +97,17 @@ async function createSubscription(
     nextDueDate,
     description,
   };
+  
+  // Add splits if configured
+  if (splitConfigs && splitConfigs.length > 0) {
+    subscriptionData.split = splitConfigs.map(config => ({
+      walletId: config.wallet_id,
+      ...(config.split_type === 'fixed' 
+        ? { fixedValue: config.split_value }
+        : { percentualValue: config.split_value }),
+    }));
+    console.log('[Asaas] Subscription splits:', JSON.stringify(subscriptionData.split));
+  }
   
   const response = await fetch(`${baseUrl}/subscriptions`, {
     method: 'POST',
@@ -201,7 +219,22 @@ serve(async (req) => {
         // Calculate next due date if not provided
         const nextDueDate = requestData.next_due_date || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
         
-        // Create subscription in Asaas
+        // Fetch active split configurations for the tenant
+        const { data: splits } = await supabase
+          .from('split_configurations')
+          .select('wallet_id, split_type, split_value')
+          .eq('tenant_id', tenantId)
+          .eq('is_active', true);
+        
+        const splitConfigs: SplitConfig[] = (splits || []).map(s => ({
+          wallet_id: s.wallet_id,
+          split_type: s.split_type as 'fixed' | 'percentage',
+          split_value: s.split_value,
+        }));
+        
+        console.log('[Subscription] Found active splits:', splitConfigs.length);
+        
+        // Create subscription in Asaas with splits
         const subscription = await createSubscription(
           asaasConfig.api_key,
           baseUrl,
@@ -210,7 +243,8 @@ serve(async (req) => {
           requestData.cycle,
           requestData.billing_type,
           nextDueDate,
-          requestData.description || 'Assinatura via ConnectPay'
+          requestData.description || 'Assinatura via ConnectPay',
+          splitConfigs.length > 0 ? splitConfigs : undefined
         );
         
         if (subscription.errors) {
