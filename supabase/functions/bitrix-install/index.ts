@@ -305,6 +305,10 @@ serve(async (req) => {
         clientEndpoint = `https://${portalDomain}/rest/`;
       }
       
+      // For marketplace apps, use server_endpoint if no client_endpoint
+      // The oauth.bitrix.info server acts as a proxy for API calls
+      let apiEndpoint = clientEndpoint || nestedServerEndpoint;
+      
       console.log('Parsed install params:', {
         domain: portalDomain,
         memberId: nestedMemberId,
@@ -312,6 +316,7 @@ serve(async (req) => {
         refreshToken: nestedRefreshToken ? '***exists***' : 'missing',
         clientEndpoint,
         serverEndpoint: nestedServerEndpoint,
+        apiEndpoint,
       });
       
       return {
@@ -431,20 +436,25 @@ serve(async (req) => {
     installationId = upsertedInstall.id;
     console.log('Upserted installation:', installationId);
 
-    // Only register pay systems if we have a valid client_endpoint (not oauth endpoint)
-    if (auth.client_endpoint && !auth.client_endpoint.includes('oauth.bitrix.info')) {
+    // Determine API endpoint - prefer client_endpoint, fallback to server_endpoint
+    const apiEndpoint = auth.client_endpoint || auth.server_endpoint;
+    
+    if (apiEndpoint && auth.access_token) {
       // Build the app domain for iframe URL
       const supabaseUrl = SUPABASE_URL.replace('https://', '').replace('.supabase.co', '');
       const iframeBaseUrl = `https://${supabaseUrl}.supabase.co`;
       
+      console.log('Registering pay systems using endpoint:', apiEndpoint);
+      
       // Register pay system handler
-      await registerPaySystemHandler(auth.client_endpoint, auth.access_token, iframeBaseUrl);
+      await registerPaySystemHandler(apiEndpoint, auth.access_token, iframeBaseUrl);
       
       // Create pay systems
-      await createPaySystems(auth.client_endpoint, auth.access_token, installationId, supabase as any);
+      await createPaySystems(apiEndpoint, auth.access_token, installationId, supabase as any);
     } else {
-      console.log('Skipping pay system registration - no valid client_endpoint. Domain:', auth.domain);
-      console.log('client_endpoint value:', auth.client_endpoint);
+      console.log('Skipping pay system registration - no valid endpoint');
+      console.log('client_endpoint:', auth.client_endpoint);
+      console.log('server_endpoint:', auth.server_endpoint);
     }
 
     // Build auth URL with member_id and domain params for automatic linking
