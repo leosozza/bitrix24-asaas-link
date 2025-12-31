@@ -480,6 +480,57 @@ async function registerAutomationRobots(clientEndpoint: string, accessToken: str
         },
       },
     },
+    {
+      CODE: 'asaas_create_invoice',
+      NAME: 'Asaas: Emitir Nota Fiscal',
+      HANDLER: handlerUrl,
+      AUTH_USER_ID: 1,
+      USE_SUBSCRIPTION: 'Y',
+      PROPERTIES: {
+        charge_id: {
+          Name: 'ID da Cobrança (opcional)',
+          Type: 'string',
+          Required: 'N',
+        },
+        value: {
+          Name: 'Valor (se não vinculada a cobrança)',
+          Type: 'double',
+          Required: 'N',
+        },
+        service_description: {
+          Name: 'Descrição do Serviço',
+          Type: 'string',
+          Required: 'N',
+        },
+        observations: {
+          Name: 'Observações',
+          Type: 'string',
+          Required: 'N',
+        },
+      },
+      RETURN_PROPERTIES: {
+        invoice_id: {
+          Name: 'ID da Nota Fiscal',
+          Type: 'string',
+        },
+        invoice_status: {
+          Name: 'Status',
+          Type: 'string',
+        },
+        invoice_number: {
+          Name: 'Número da NF',
+          Type: 'string',
+        },
+        invoice_url: {
+          Name: 'URL da NF',
+          Type: 'string',
+        },
+        error: {
+          Name: 'Mensagem de Erro',
+          Type: 'string',
+        },
+      },
+    },
   ];
 
   for (const robot of robots) {

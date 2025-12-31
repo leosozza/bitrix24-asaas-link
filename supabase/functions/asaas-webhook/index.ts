@@ -34,10 +34,24 @@ interface AsaasWebhookSubscription {
   description?: string;
 }
 
+interface AsaasWebhookInvoice {
+  id: string;
+  payment?: string;
+  customer: string;
+  value: number;
+  status: string;
+  number?: string;
+  invoiceUrl?: string;
+  effectiveDate?: string;
+  externalReference?: string;
+  observations?: string;
+}
+
 interface AsaasWebhookEvent {
   event: string;
   payment?: AsaasWebhookPayment;
   subscription?: AsaasWebhookSubscription;
+  invoice?: AsaasWebhookInvoice;
 }
 
 const asaasStatusMap: Record<string, string> = {
@@ -175,9 +189,90 @@ serve(async (req) => {
       );
     }
     
+    // Handle INVOICE events
+    if (event.startsWith('INVOICE_')) {
+      const invoice = webhookData.invoice;
+      if (!invoice) {
+        console.log('No invoice data in event');
+        return new Response(
+          JSON.stringify({ success: true, message: 'No invoice data' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      console.log('Invoice data:', JSON.stringify(invoice));
+      
+      // Find existing invoice in database
+      const { data: existingInvoice } = await supabase
+        .from('invoices')
+        .select('*')
+        .eq('asaas_invoice_id', invoice.id)
+        .single();
+      
+      if (existingInvoice) {
+        const statusMap: Record<string, string> = {
+          SCHEDULED: 'scheduled',
+          SYNCHRONIZED: 'synchronized',
+          AUTHORIZED: 'authorized',
+          CANCELED: 'canceled',
+          ERROR: 'error',
+        };
+        
+        const newStatus = statusMap[invoice.status] || invoice.status.toLowerCase();
+        
+        // Update invoice
+        await supabase
+          .from('invoices')
+          .update({
+            status: newStatus,
+            invoice_number: invoice.number || existingInvoice.invoice_number,
+            invoice_url: invoice.invoiceUrl || existingInvoice.invoice_url,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', existingInvoice.id);
+        
+        console.log(`Updated invoice ${existingInvoice.id} to status: ${newStatus}`);
+        
+        // Log the event
+        await supabase.from('integration_logs').insert({
+          tenant_id: existingInvoice.tenant_id,
+          action: `asaas_webhook_${event.toLowerCase()}`,
+          entity_type: 'invoice',
+          entity_id: invoice.id,
+          status: 'success',
+          request_data: webhookData,
+          response_data: { newStatus },
+        });
+        
+        // If invoice is authorized and linked to a transaction, update Bitrix24
+        if (newStatus === 'authorized' && existingInvoice.bitrix_entity_id) {
+          const { data: installation } = await supabase
+            .from('bitrix_installations')
+            .select('client_endpoint, access_token')
+            .eq('tenant_id', existingInvoice.tenant_id)
+            .eq('status', 'active')
+            .single();
+          
+          if (installation?.client_endpoint && installation?.access_token) {
+            try {
+              // Update custom field in Bitrix24 with invoice info
+              console.log('Would update Bitrix24 with invoice:', invoice.number);
+            } catch (error) {
+              console.error('Error updating Bitrix with invoice:', error);
+            }
+          }
+        }
+      }
+      
+      return new Response(
+        JSON.stringify({ success: true, event }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
     // Handle PAYMENT events
     if (!event.startsWith('PAYMENT_')) {
-      console.log('Ignoring non-payment/subscription event:', event);
+      console.log('Ignoring non-payment/subscription/invoice event:', event);
       return new Response(
         JSON.stringify({ success: true, message: 'Event ignored' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
