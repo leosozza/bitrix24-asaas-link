@@ -439,13 +439,62 @@ async function registerAutomationRobots(clientEndpoint: string, accessToken: str
   return { success: registered.length > 0, registered };
 }
 
-// Repair/auto-repair robots - always tries to re-register regardless of database flag
-async function repairAutomationRobots(clientEndpoint: string, accessToken: string, installationId: string, supabase: any): Promise<{ success: boolean; message: string }> {
-  console.log('[Robots Repair] Starting repair process...');
+// Self-healing robots - checks if robots exist and re-registers if missing
+async function ensureAutomationRobots(
+  clientEndpoint: string, 
+  accessToken: string, 
+  installationId: string, 
+  supabase: any,
+  forceRepair: boolean = false
+): Promise<{ success: boolean; message: string; action: 'none' | 'repaired' | 'failed' }> {
+  console.log('[Robots Ensure] Checking robot status...');
+  console.log('[Robots Ensure] Client endpoint:', clientEndpoint);
+  console.log('[Robots Ensure] Force repair:', forceRepair);
   
-  const result = await registerAutomationRobots(clientEndpoint, accessToken, true);
+  const expectedRobots = ['asaas_create_charge', 'asaas_check_payment'];
   
-  if (result.success) {
+  // Step 1: Call bizproc.robot.list to check which robots exist
+  console.log('[Robots Ensure] Calling bizproc.robot.list...');
+  const listResult = await callBitrixApi(clientEndpoint, 'bizproc.robot.list', {}, accessToken);
+  
+  let existingRobots: string[] = [];
+  
+  if (listResult.result && Array.isArray(listResult.result)) {
+    // Extract robot codes from the list
+    existingRobots = listResult.result
+      .filter((r: any) => r.CODE && expectedRobots.includes(r.CODE))
+      .map((r: any) => r.CODE);
+    console.log('[Robots Ensure] Found existing robots:', existingRobots);
+  } else if (listResult.error) {
+    console.log('[Robots Ensure] bizproc.robot.list error:', listResult.error, listResult.error_description);
+    // If we can't list robots, assume we need to try registering
+    existingRobots = [];
+  }
+  
+  // Step 2: Determine if we need to (re)register
+  const missingRobots = expectedRobots.filter(code => !existingRobots.includes(code));
+  console.log('[Robots Ensure] Missing robots:', missingRobots);
+  
+  if (missingRobots.length === 0 && !forceRepair) {
+    console.log('[Robots Ensure] All robots present, no action needed');
+    
+    // Ensure database is in sync
+    await supabase
+      .from('bitrix_installations')
+      .update({ 
+        robots_registered: true,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', installationId);
+    
+    return { success: true, message: 'Todos os robots já estão registrados', action: 'none' };
+  }
+  
+  // Step 3: Register missing robots (or all if forceRepair)
+  console.log('[Robots Ensure] Registering robots...');
+  const registerResult = await registerAutomationRobots(clientEndpoint, accessToken, true);
+  
+  if (registerResult.success) {
     // Update database to mark robots as registered
     await supabase
       .from('bitrix_installations')
@@ -455,11 +504,15 @@ async function repairAutomationRobots(clientEndpoint: string, accessToken: strin
       })
       .eq('id', installationId);
     
-    console.log('[Robots Repair] Success - registered:', result.registered);
-    return { success: true, message: `Robots reparados: ${result.registered.join(', ')}` };
+    console.log('[Robots Ensure] Success - registered:', registerResult.registered);
+    return { 
+      success: true, 
+      message: `Robots registrados: ${registerResult.registered.join(', ')}`,
+      action: 'repaired'
+    };
   } else {
-    console.log('[Robots Repair] Failed - no robots registered');
-    return { success: false, message: 'Falha ao reparar robots' };
+    console.log('[Robots Ensure] Failed to register robots');
+    return { success: false, message: 'Falha ao registrar robots', action: 'failed' };
   }
 }
 
@@ -2143,30 +2196,36 @@ serve(async (req) => {
             }
           }
           
-          // 2. Lazy robots registration
-          if (!installation.robots_registered && clientEndpoint) {
-            console.log('Attempting lazy robots registration...');
-            const robotsResult = await registerAutomationRobots(clientEndpoint, tokenForRegistration);
+          // 2. Self-healing robots registration
+          // Check URL for repair parameter
+          const requestUrl = new URL(req.url);
+          const forceRepair = requestUrl.searchParams.get('repair') === 'true';
+          
+          if (clientEndpoint) {
+            // Always use ensureAutomationRobots - it will check if robots exist and repair if needed
+            console.log('Checking/ensuring automation robots...');
+            const robotsResult = await ensureAutomationRobots(
+              clientEndpoint, 
+              tokenForRegistration, 
+              installation.id, 
+              supabase,
+              forceRepair || !installation.robots_registered // Force repair if flag is set or robots not registered
+            );
             
-            if (robotsResult.success) {
-              // Update database to mark robots as registered
+            console.log('Robots ensure result:', robotsResult);
+            
+            // Update domain if we got a valid one
+            if (portalDomain && portalDomain.includes('.')) {
               await supabase
                 .from('bitrix_installations')
                 .update({ 
-                  robots_registered: true,
                   domain: portalDomain,
                   updated_at: new Date().toISOString()
                 })
                 .eq('id', installation.id);
-              
-              console.log('Robots registered and database updated');
-            } else {
-              console.log('Robots registration failed or no robots registered');
             }
-          } else if (installation.robots_registered) {
-            console.log('Robots already registered');
           } else {
-            console.log('Cannot register robots - missing client endpoint');
+            console.log('Cannot ensure robots - missing client endpoint');
           }
         } else {
           console.log('Cannot perform lazy registration - missing access_token');

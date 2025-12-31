@@ -537,6 +537,8 @@ serve(async (req) => {
     const domainValue = auth.domain || auth.member_id;
     
     // Upsert installation - create or update based on member_id
+    // IMPORTANT: Reset pay_systems_registered and robots_registered to false on reinstall
+    // This ensures lazy registration runs again on first app open
     const { data: upsertedInstall, error: upsertError } = await supabase
       .from('bitrix_installations')
       .upsert({
@@ -551,6 +553,8 @@ serve(async (req) => {
         server_endpoint: auth.server_endpoint,
         client_endpoint: auth.client_endpoint,
         status: 'active',
+        pay_systems_registered: false,
+        robots_registered: false,
         updated_at: new Date().toISOString(),
       }, {
         onConflict: 'member_id',
