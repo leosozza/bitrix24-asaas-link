@@ -13,6 +13,7 @@ const signupSchema = z.object({
   companyName: z.string().trim().min(2, 'Nome da empresa é obrigatório').max(100, 'Nome muito longo'),
   email: z.string().trim().email('Email inválido').max(255, 'Email muito longo'),
   phone: z.string().trim().max(20, 'Telefone muito longo').optional(),
+  bitrixDomain: z.string().trim().max(255, 'URL muito longa').optional(),
   password: z.string().min(6, 'Senha deve ter no mínimo 6 caracteres').max(100, 'Senha muito longa'),
   confirmPassword: z.string(),
 }).refine((data) => data.password === data.confirmPassword, {
@@ -24,9 +25,10 @@ type SignupFormData = z.infer<typeof signupSchema>;
 
 interface SignupFormProps {
   onSuccess: () => void;
+  bitrixDomain?: string;
 }
 
-export function SignupForm({ onSuccess }: SignupFormProps) {
+export function SignupForm({ onSuccess, bitrixDomain }: SignupFormProps) {
   const [isLoading, setIsLoading] = useState(false);
   const { signUp } = useAuth();
 
@@ -36,11 +38,14 @@ export function SignupForm({ onSuccess }: SignupFormProps) {
     formState: { errors },
   } = useForm<SignupFormData>({
     resolver: zodResolver(signupSchema),
+    defaultValues: {
+      bitrixDomain: bitrixDomain || '',
+    },
   });
 
   const onSubmit = async (data: SignupFormData) => {
     setIsLoading(true);
-    const { error } = await signUp(data.email, data.password, data.companyName, data.phone);
+    const { error } = await signUp(data.email, data.password, data.companyName, data.phone, data.bitrixDomain);
     setIsLoading(false);
 
     if (error) {
@@ -100,6 +105,20 @@ export function SignupForm({ onSuccess }: SignupFormProps) {
         {errors.phone && (
           <p className="text-sm text-destructive">{errors.phone.message}</p>
         )}
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="bitrixDomain">URL do Bitrix24 (opcional)</Label>
+        <Input
+          id="bitrixDomain"
+          type="text"
+          placeholder="suaempresa.bitrix24.com.br"
+          {...register('bitrixDomain')}
+          className="bg-background"
+        />
+        <p className="text-xs text-muted-foreground">
+          Se você instalou o app no Bitrix24, informe a URL para vincular automaticamente
+        </p>
       </div>
 
       <div className="space-y-2">

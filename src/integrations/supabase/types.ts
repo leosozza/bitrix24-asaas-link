@@ -71,7 +71,7 @@ export type Database = {
           scope: string | null
           server_endpoint: string | null
           status: Database["public"]["Enums"]["bitrix_status"]
-          tenant_id: string
+          tenant_id: string | null
           updated_at: string
         }
         Insert: {
@@ -89,7 +89,7 @@ export type Database = {
           scope?: string | null
           server_endpoint?: string | null
           status?: Database["public"]["Enums"]["bitrix_status"]
-          tenant_id: string
+          tenant_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -107,7 +107,7 @@ export type Database = {
           scope?: string | null
           server_endpoint?: string | null
           status?: Database["public"]["Enums"]["bitrix_status"]
-          tenant_id?: string
+          tenant_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -213,6 +213,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          bitrix_domain: string | null
           company_name: string
           created_at: string
           email: string
@@ -221,6 +222,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          bitrix_domain?: string | null
           company_name: string
           created_at?: string
           email: string
@@ -229,6 +231,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          bitrix_domain?: string | null
           company_name?: string
           created_at?: string
           email?: string

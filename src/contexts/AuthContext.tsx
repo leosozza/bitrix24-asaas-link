@@ -7,8 +7,9 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signUp: (email: string, password: string, companyName: string, phone?: string) => Promise<{ error: Error | null }>;
+  signUp: (email: string, password: string, companyName: string, phone?: string, bitrixDomain?: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
+  linkBitrixInstallation: (bitrixDomain: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -46,7 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error };
   };
 
-  const signUp = async (email: string, password: string, companyName: string, phone?: string) => {
+  const signUp = async (email: string, password: string, companyName: string, phone?: string, bitrixDomain?: string) => {
     const redirectUrl = `${window.location.origin}/dashboard`;
     
     const { error } = await supabase.auth.signUp({
@@ -57,6 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         data: {
           company_name: companyName,
           phone: phone,
+          bitrix_domain: bitrixDomain,
         },
       },
     });
@@ -67,8 +69,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
   };
 
+  const linkBitrixInstallation = async (bitrixDomain: string) => {
+    if (!user) return;
+    
+    try {
+      // Try to link any pending installation with matching domain
+      const { error } = await supabase
+        .from('bitrix_installations')
+        .update({ tenant_id: user.id, updated_at: new Date().toISOString() })
+        .ilike('domain', `%${bitrixDomain}%`)
+        .is('tenant_id', null)
+        .eq('status', 'active');
+      
+      if (error) {
+        console.error('Error linking Bitrix installation:', error);
+      } else {
+        console.log('Bitrix installation linked successfully');
+      }
+    } catch (err) {
+      console.error('Error in linkBitrixInstallation:', err);
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, session, loading, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ user, session, loading, signIn, signUp, signOut, linkBitrixInstallation }}>
       {children}
     </AuthContext.Provider>
   );
