@@ -37,8 +37,16 @@ serve(async (req) => {
 
     console.log('Config for domain:', domain, 'memberId:', memberId, 'environment:', environment);
 
-    if (!apiKey || !environment || !memberId || !domain) {
-      return new Response(JSON.stringify({ error: 'Campos obrigatórios faltando' }), {
+    if (!apiKey || !environment) {
+      return new Response(JSON.stringify({ error: 'API Key e ambiente são obrigatórios' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // If no memberId, we can't find the installation
+    if (!memberId) {
+      return new Response(JSON.stringify({ error: 'Identificação da instalação não encontrada. Recarregue a página.' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });

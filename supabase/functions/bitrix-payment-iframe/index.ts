@@ -210,8 +210,8 @@ function generateAuthPage(data: PaymentData): string {
   </div>
   
   <script>
-    const memberId = '${data.memberId}';
-    const domain = '${data.domain}';
+    let memberId = '${data.memberId}';
+    let domain = '${data.domain}';
     
     function showTab(tab) {
       document.getElementById('login-form').style.display = tab === 'login' ? 'block' : 'none';
@@ -329,9 +329,35 @@ function generateAuthPage(data: PaymentData): string {
       }
     }
     
-    // Initialize BX24
+    // Initialize BX24 and get memberId/domain if not set
     if (typeof BX24 !== 'undefined') {
-      BX24.init(function() { BX24.fitWindow(); });
+      BX24.init(function() {
+        BX24.fitWindow();
+        
+        // Try to get memberId and domain from BX24 SDK if not set
+        if (!memberId || !domain) {
+          try {
+            const auth = BX24.getAuth();
+            if (auth) {
+              memberId = memberId || auth.member_id || '';
+              domain = domain || auth.domain || '';
+              console.log('Got from BX24.getAuth():', memberId, domain);
+            }
+          } catch (e) {
+            console.log('BX24.getAuth() failed:', e);
+          }
+          
+          // Also try app.info as fallback
+          BX24.callMethod('app.info', {}, function(result) {
+            if (result.data()) {
+              const info = result.data();
+              memberId = memberId || info.member_id || '';
+              domain = domain || info.DOMAIN || '';
+              console.log('Got from app.info:', memberId, domain);
+            }
+          });
+        }
+      });
     }
   </script>
 </body>
@@ -510,8 +536,8 @@ function generateConfigPage(data: PaymentData): string {
   </div>
   
   <script>
-    const memberId = '${data.memberId}';
-    const domain = '${data.domain}';
+    let memberId = '${data.memberId}';
+    let domain = '${data.domain}';
     
     function showLoading() {
       document.getElementById('loading').classList.add('show');
@@ -544,6 +570,11 @@ function generateConfigPage(data: PaymentData): string {
         return;
       }
       
+      if (!memberId) {
+        showError('Identificação da instalação não encontrada. Recarregue a página.');
+        return;
+      }
+      
       showLoading();
       
       try {
@@ -573,9 +604,35 @@ function generateConfigPage(data: PaymentData): string {
       }
     }
     
-    // Initialize BX24
+    // Initialize BX24 and get memberId/domain if not set
     if (typeof BX24 !== 'undefined') {
-      BX24.init(function() { BX24.fitWindow(); });
+      BX24.init(function() {
+        BX24.fitWindow();
+        
+        // Try to get memberId and domain from BX24 SDK if not set
+        if (!memberId || !domain) {
+          try {
+            const auth = BX24.getAuth();
+            if (auth) {
+              memberId = memberId || auth.member_id || '';
+              domain = domain || auth.domain || '';
+              console.log('Got from BX24.getAuth():', memberId, domain);
+            }
+          } catch (e) {
+            console.log('BX24.getAuth() failed:', e);
+          }
+          
+          // Also try app.info as fallback
+          BX24.callMethod('app.info', {}, function(result) {
+            if (result.data()) {
+              const info = result.data();
+              memberId = memberId || info.member_id || '';
+              domain = domain || info.DOMAIN || '';
+              console.log('Got from app.info:', memberId, domain);
+            }
+          });
+        }
+      });
     }
   </script>
 </body>
@@ -981,17 +1038,41 @@ serve(async (req) => {
       const contentType = req.headers.get('content-type') || '';
       if (contentType.includes('application/x-www-form-urlencoded')) {
         const params = new URLSearchParams(bodyText);
+        
+        // Extract memberId and domain with multiple fallback names (Bitrix24 uses different conventions)
+        let memberId = params.get('memberId') || params.get('member_id') || params.get('MEMBER_ID') || '';
+        let domain = params.get('domain') || params.get('DOMAIN') || '';
+        
+        // Try to extract from PLACEMENT_OPTIONS (JSON data from Bitrix24 placement)
+        const placementOptions = params.get('PLACEMENT_OPTIONS');
+        if (placementOptions) {
+          try {
+            const options = JSON.parse(placementOptions);
+            memberId = memberId || options.member_id || options.memberId || '';
+            domain = domain || options.DOMAIN || options.domain || '';
+            console.log('Parsed PLACEMENT_OPTIONS:', options);
+          } catch (e) {
+            console.log('Failed to parse PLACEMENT_OPTIONS:', placementOptions);
+          }
+        }
+        
+        // Try to extract from auth params (sent during app loading)
+        const authMemberId = params.get('AUTH_MEMBER_ID') || params.get('auth[member_id]');
+        const authDomain = params.get('AUTH_DOMAIN') || params.get('auth[domain]');
+        memberId = memberId || authMemberId || '';
+        domain = domain || authDomain || '';
+        
         paymentData = {
-          paymentId: params.get('paymentId') || '',
-          orderId: params.get('orderId') || '',
-          amount: params.get('amount') || '0',
-          currency: params.get('currency') || 'BRL',
-          customerName: params.get('customerName') || '',
-          customerEmail: params.get('customerEmail') || '',
-          customerDocument: params.get('customerDocument') || '',
-          paymentMethod: params.get('paymentMethod') || 'pix',
-          domain: params.get('domain') || '',
-          memberId: params.get('memberId') || '',
+          paymentId: params.get('paymentId') || params.get('PAYMENT_ID') || '',
+          orderId: params.get('orderId') || params.get('ORDER_ID') || '',
+          amount: params.get('amount') || params.get('AMOUNT') || '0',
+          currency: params.get('currency') || params.get('CURRENCY') || 'BRL',
+          customerName: params.get('customerName') || params.get('CUSTOMER_NAME') || '',
+          customerEmail: params.get('customerEmail') || params.get('CUSTOMER_EMAIL') || '',
+          customerDocument: params.get('customerDocument') || params.get('CUSTOMER_DOCUMENT') || '',
+          paymentMethod: params.get('paymentMethod') || params.get('PAYMENT_METHOD') || 'pix',
+          domain: domain,
+          memberId: memberId,
         };
       } else {
         paymentData = JSON.parse(bodyText);
