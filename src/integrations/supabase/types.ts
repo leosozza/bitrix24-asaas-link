@@ -67,6 +67,7 @@ export type Database = {
           expires_at: string | null
           id: string
           member_id: string | null
+          pay_systems_registered: boolean
           refresh_token: string | null
           scope: string | null
           server_endpoint: string | null
@@ -85,6 +86,7 @@ export type Database = {
           expires_at?: string | null
           id?: string
           member_id?: string | null
+          pay_systems_registered?: boolean
           refresh_token?: string | null
           scope?: string | null
           server_endpoint?: string | null
@@ -103,6 +105,7 @@ export type Database = {
           expires_at?: string | null
           id?: string
           member_id?: string | null
+          pay_systems_registered?: boolean
           refresh_token?: string | null
           scope?: string | null
           server_endpoint?: string | null

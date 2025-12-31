@@ -499,38 +499,12 @@ serve(async (req) => {
       }
     }
     
-    // Use server_endpoint as OAuth proxy for pay system registration
-    // The oauth.bitrix.info server routes API calls to the correct portal based on access_token
-    const apiEndpoint = portalClientEndpoint || auth.server_endpoint;
-    
-    if (apiEndpoint && auth.access_token) {
-      // Build the app domain for iframe URL
-      const supabaseUrl = SUPABASE_URL.replace('https://', '').replace('.supabase.co', '');
-      const iframeBaseUrl = `https://${supabaseUrl}.supabase.co`;
-      
-      console.log('=== PAY SYSTEM REGISTRATION ===');
-      console.log('API Endpoint:', apiEndpoint);
-      console.log('Using OAuth proxy:', apiEndpoint.includes('oauth.bitrix.info') ? 'YES' : 'NO');
-      console.log('Iframe Base URL:', iframeBaseUrl);
-      
-      try {
-        // Register pay system handler
-        console.log('Step 1: Registering pay system handler...');
-        const handlerResult = await registerPaySystemHandler(apiEndpoint, auth.access_token, iframeBaseUrl);
-        console.log('Handler registration result:', JSON.stringify(handlerResult));
-        
-        // Create pay systems
-        console.log('Step 2: Creating pay systems...');
-        await createPaySystems(apiEndpoint, auth.access_token, installationId, supabase as any);
-        console.log('Pay system creation completed');
-      } catch (paySystemError) {
-        console.error('Error during pay system registration:', paySystemError);
-      }
-    } else {
-      console.log('Skipping pay system registration - missing endpoint or access_token');
-      console.log('apiEndpoint:', apiEndpoint);
-      console.log('access_token exists:', !!auth.access_token);
-    }
+    // NOTE: Pay system registration is deferred to bitrix-payment-iframe
+    // This is because oauth.bitrix.info proxy doesn't support sale.* methods
+    // We need the actual portal domain which is only available when the user opens the app
+    console.log('Installation complete - pay systems will be registered when user opens the app');
+    console.log('Portal domain available:', !!portalDomain);
+    console.log('Client endpoint available:', !!portalClientEndpoint);
 
     // Build auth URL with member_id and domain params for automatic linking
     const authUrl = `${APP_DOMAIN}/auth?member_id=${encodeURIComponent(auth.member_id)}&domain=${encodeURIComponent(domainValue)}`;
