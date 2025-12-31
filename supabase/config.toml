@@ -27,5 +27,8 @@ verify_jwt = false
 [functions.bitrix-robot-handler]
 verify_jwt = false
 
+[functions.bitrix-subscription-process]
+verify_jwt = false
+
 [functions.mcp-proxy]
 verify_jwt = false

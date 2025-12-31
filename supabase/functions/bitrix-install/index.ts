@@ -374,6 +374,112 @@ async function registerAutomationRobots(clientEndpoint: string, accessToken: str
         },
       },
     },
+    {
+      CODE: 'asaas_create_subscription',
+      NAME: 'Asaas: Criar Assinatura',
+      HANDLER: handlerUrl,
+      AUTH_USER_ID: 1,
+      USE_SUBSCRIPTION: 'Y',
+      PROPERTIES: {
+        payment_method: {
+          Name: 'Método de Pagamento',
+          Type: 'select',
+          Options: { pix: 'PIX', boleto: 'Boleto', credit_card: 'Cartão de Crédito' },
+          Required: 'Y',
+          Default: 'pix',
+        },
+        amount: {
+          Name: 'Valor (R$)',
+          Type: 'double',
+          Required: 'Y',
+        },
+        cycle: {
+          Name: 'Ciclo de Cobrança',
+          Type: 'select',
+          Options: { 
+            WEEKLY: 'Semanal', 
+            BIWEEKLY: 'Quinzenal', 
+            MONTHLY: 'Mensal', 
+            BIMONTHLY: 'Bimestral',
+            QUARTERLY: 'Trimestral',
+            SEMIANNUALLY: 'Semestral',
+            YEARLY: 'Anual',
+          },
+          Required: 'Y',
+          Default: 'MONTHLY',
+        },
+        customer_name: {
+          Name: 'Nome do Cliente',
+          Type: 'string',
+          Required: 'Y',
+        },
+        customer_email: {
+          Name: 'Email do Cliente',
+          Type: 'string',
+          Required: 'N',
+        },
+        customer_document: {
+          Name: 'CPF/CNPJ',
+          Type: 'string',
+          Required: 'Y',
+        },
+        first_due_days: {
+          Name: 'Dias para Primeira Cobrança',
+          Type: 'int',
+          Default: 7,
+        },
+      },
+      RETURN_PROPERTIES: {
+        subscription_id: {
+          Name: 'ID da Assinatura',
+          Type: 'string',
+        },
+        subscription_status: {
+          Name: 'Status',
+          Type: 'string',
+        },
+        next_due_date: {
+          Name: 'Próximo Vencimento',
+          Type: 'string',
+        },
+        customer_id: {
+          Name: 'ID do Cliente',
+          Type: 'string',
+        },
+        error: {
+          Name: 'Mensagem de Erro',
+          Type: 'string',
+        },
+      },
+    },
+    {
+      CODE: 'asaas_cancel_subscription',
+      NAME: 'Asaas: Cancelar Assinatura',
+      HANDLER: handlerUrl,
+      AUTH_USER_ID: 1,
+      USE_SUBSCRIPTION: 'Y',
+      PROPERTIES: {
+        subscription_id: {
+          Name: 'ID da Assinatura',
+          Type: 'string',
+          Required: 'Y',
+        },
+      },
+      RETURN_PROPERTIES: {
+        subscription_id: {
+          Name: 'ID da Assinatura',
+          Type: 'string',
+        },
+        status: {
+          Name: 'Status',
+          Type: 'string',
+        },
+        error: {
+          Name: 'Mensagem de Erro',
+          Type: 'string',
+        },
+      },
+    },
   ];
 
   for (const robot of robots) {

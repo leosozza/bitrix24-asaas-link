@@ -374,6 +374,72 @@ export type Database = {
         }
         Relationships: []
       }
+      subscriptions: {
+        Row: {
+          asaas_id: string
+          billing_type: Database["public"]["Enums"]["payment_method"]
+          bitrix_entity_id: string | null
+          bitrix_entity_type:
+            | Database["public"]["Enums"]["bitrix_status"]
+            | null
+          created_at: string
+          customer_document: string | null
+          customer_email: string | null
+          customer_id: string
+          customer_name: string | null
+          cycle: Database["public"]["Enums"]["subscription_cycle"]
+          description: string | null
+          id: string
+          next_due_date: string | null
+          status: Database["public"]["Enums"]["subscription_status_asaas"]
+          tenant_id: string
+          updated_at: string
+          value: number
+        }
+        Insert: {
+          asaas_id: string
+          billing_type: Database["public"]["Enums"]["payment_method"]
+          bitrix_entity_id?: string | null
+          bitrix_entity_type?:
+            | Database["public"]["Enums"]["bitrix_status"]
+            | null
+          created_at?: string
+          customer_document?: string | null
+          customer_email?: string | null
+          customer_id: string
+          customer_name?: string | null
+          cycle: Database["public"]["Enums"]["subscription_cycle"]
+          description?: string | null
+          id?: string
+          next_due_date?: string | null
+          status?: Database["public"]["Enums"]["subscription_status_asaas"]
+          tenant_id: string
+          updated_at?: string
+          value: number
+        }
+        Update: {
+          asaas_id?: string
+          billing_type?: Database["public"]["Enums"]["payment_method"]
+          bitrix_entity_id?: string | null
+          bitrix_entity_type?:
+            | Database["public"]["Enums"]["bitrix_status"]
+            | null
+          created_at?: string
+          customer_document?: string | null
+          customer_email?: string | null
+          customer_id?: string
+          customer_name?: string | null
+          cycle?: Database["public"]["Enums"]["subscription_cycle"]
+          description?: string | null
+          id?: string
+          next_due_date?: string | null
+          status?: Database["public"]["Enums"]["subscription_status_asaas"]
+          tenant_id?: string
+          updated_at?: string
+          value?: number
+        }
+        Relationships: []
+      }
       tenant_subscriptions: {
         Row: {
           created_at: string
@@ -443,6 +509,7 @@ export type Database = {
           payment_method: Database["public"]["Enums"]["payment_method"]
           payment_url: string | null
           status: Database["public"]["Enums"]["transaction_status"]
+          subscription_id: string | null
           tenant_id: string
           updated_at: string
         }
@@ -463,6 +530,7 @@ export type Database = {
           payment_method: Database["public"]["Enums"]["payment_method"]
           payment_url?: string | null
           status?: Database["public"]["Enums"]["transaction_status"]
+          subscription_id?: string | null
           tenant_id: string
           updated_at?: string
         }
@@ -483,10 +551,18 @@ export type Database = {
           payment_method?: Database["public"]["Enums"]["payment_method"]
           payment_url?: string | null
           status?: Database["public"]["Enums"]["transaction_status"]
+          subscription_id?: string | null
           tenant_id?: string
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "transactions_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "transactions_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -537,7 +613,16 @@ export type Database = {
       bitrix_status: "active" | "expired" | "revoked"
       log_status: "success" | "error"
       payment_method: "pix" | "boleto" | "credit_card"
+      subscription_cycle:
+        | "WEEKLY"
+        | "BIWEEKLY"
+        | "MONTHLY"
+        | "BIMONTHLY"
+        | "QUARTERLY"
+        | "SEMIANNUALLY"
+        | "YEARLY"
       subscription_status: "active" | "cancelled" | "expired" | "trial"
+      subscription_status_asaas: "active" | "canceled" | "expired" | "pending"
       transaction_status:
         | "pending"
         | "confirmed"
@@ -678,7 +763,17 @@ export const Constants = {
       bitrix_status: ["active", "expired", "revoked"],
       log_status: ["success", "error"],
       payment_method: ["pix", "boleto", "credit_card"],
+      subscription_cycle: [
+        "WEEKLY",
+        "BIWEEKLY",
+        "MONTHLY",
+        "BIMONTHLY",
+        "QUARTERLY",
+        "SEMIANNUALLY",
+        "YEARLY",
+      ],
       subscription_status: ["active", "cancelled", "expired", "trial"],
+      subscription_status_asaas: ["active", "canceled", "expired", "pending"],
       transaction_status: [
         "pending",
         "confirmed",

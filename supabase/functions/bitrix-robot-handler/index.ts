@@ -405,6 +405,140 @@ serve(async (req) => {
         break;
       }
       
+      case 'asaas_create_subscription': {
+        const { payment_method, amount, customer_name, customer_email, customer_document, cycle, first_due_days } = robotData.properties;
+        
+        if (!amount || !customer_document || !cycle) {
+          returnValues = { error: 'Valor, CPF/CNPJ e ciclo são obrigatórios' };
+          logMessage = 'Erro: Dados incompletos';
+          break;
+        }
+        
+        const parsedAmount = parseFloat(amount);
+        if (isNaN(parsedAmount) || parsedAmount <= 0) {
+          returnValues = { error: 'Valor inválido' };
+          logMessage = 'Erro: Valor inválido';
+          break;
+        }
+        
+        // Create or find customer
+        const customer = await findOrCreateCustomer(asaasConfig.api_key, baseUrl, {
+          name: customer_name || 'Cliente',
+          email: customer_email || '',
+          cpfCnpj: customer_document,
+        });
+        
+        if (customer.errors) {
+          returnValues = { error: customer.errors[0]?.description || 'Erro ao criar cliente' };
+          logMessage = `Erro: ${customer.errors[0]?.description}`;
+          break;
+        }
+        
+        // Calculate first due date
+        const dueDays = parseInt(first_due_days) || 7;
+        const nextDueDate = new Date();
+        nextDueDate.setDate(nextDueDate.getDate() + dueDays);
+        
+        // Map billing type
+        const billingTypeMap: Record<string, string> = {
+          pix: 'PIX',
+          boleto: 'BOLETO',
+          credit_card: 'CREDIT_CARD',
+        };
+        
+        // Create subscription in Asaas
+        const docId = robotData.document_id[2] || robotData.document_id[0] || 'unknown';
+        
+        const subscriptionResponse = await fetch(`${baseUrl}/subscriptions`, {
+          method: 'POST',
+          headers: {
+            'access_token': asaasConfig.api_key,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            customer: customer.id,
+            billingType: billingTypeMap[payment_method] || 'PIX',
+            value: parsedAmount,
+            cycle: cycle.toUpperCase(),
+            nextDueDate: nextDueDate.toISOString().split('T')[0],
+            description: `Assinatura - Bitrix ${docId}`,
+          }),
+        });
+        
+        const subscription = await subscriptionResponse.json();
+        console.log('[Asaas] Subscription created:', subscription.id, subscription.status);
+        
+        if (subscription.errors) {
+          returnValues = { error: subscription.errors[0]?.description || 'Erro ao criar assinatura' };
+          logMessage = `Erro: ${subscription.errors[0]?.description}`;
+          break;
+        }
+        
+        // Save subscription to database
+        if (installation.tenant_id) {
+          await supabase.from('subscriptions').insert({
+            tenant_id: installation.tenant_id,
+            asaas_id: subscription.id,
+            customer_id: customer.id,
+            customer_name: customer_name,
+            customer_email: customer_email,
+            customer_document: customer_document,
+            value: parsedAmount,
+            billing_type: payment_method || 'pix',
+            cycle: cycle.toUpperCase(),
+            next_due_date: subscription.nextDueDate,
+            status: 'active',
+            description: `Assinatura - Bitrix ${docId}`,
+            bitrix_entity_id: docId,
+            bitrix_entity_type: 'deal',
+          });
+        }
+        
+        returnValues = {
+          subscription_id: subscription.id,
+          subscription_status: subscription.status,
+          next_due_date: subscription.nextDueDate,
+          customer_id: customer.id,
+        };
+        logMessage = `Assinatura criada: ${subscription.id} - R$ ${parsedAmount}/${cycle}`;
+        break;
+      }
+      
+      case 'asaas_cancel_subscription': {
+        const { subscription_id } = robotData.properties;
+        
+        if (!subscription_id) {
+          returnValues = { error: 'ID da assinatura é obrigatório' };
+          logMessage = 'Erro: ID não informado';
+          break;
+        }
+        
+        // Cancel subscription in Asaas
+        const cancelResponse = await fetch(`${baseUrl}/subscriptions/${subscription_id}`, {
+          method: 'DELETE',
+          headers: { 'access_token': asaasConfig.api_key },
+        });
+        
+        if (cancelResponse.ok) {
+          // Update in database
+          await supabase
+            .from('subscriptions')
+            .update({ status: 'canceled', updated_at: new Date().toISOString() })
+            .eq('asaas_id', subscription_id);
+          
+          returnValues = {
+            subscription_id: subscription_id,
+            status: 'canceled',
+          };
+          logMessage = `Assinatura cancelada: ${subscription_id}`;
+        } else {
+          const errorData = await cancelResponse.json();
+          returnValues = { error: errorData.errors?.[0]?.description || 'Erro ao cancelar assinatura' };
+          logMessage = `Erro: ${errorData.errors?.[0]?.description}`;
+        }
+        break;
+      }
+      
       default:
         console.error('Unknown robot code:', robotData.code);
         returnValues = { error: `Robot não reconhecido: ${robotData.code}` };
