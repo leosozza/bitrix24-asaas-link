@@ -69,6 +69,7 @@ export type Database = {
           member_id: string | null
           pay_systems_registered: boolean
           refresh_token: string | null
+          robots_registered: boolean | null
           scope: string | null
           server_endpoint: string | null
           status: Database["public"]["Enums"]["bitrix_status"]
@@ -88,6 +89,7 @@ export type Database = {
           member_id?: string | null
           pay_systems_registered?: boolean
           refresh_token?: string | null
+          robots_registered?: boolean | null
           scope?: string | null
           server_endpoint?: string | null
           status?: Database["public"]["Enums"]["bitrix_status"]
@@ -107,6 +109,7 @@ export type Database = {
           member_id?: string | null
           pay_systems_registered?: boolean
           refresh_token?: string | null
+          robots_registered?: boolean | null
           scope?: string | null
           server_endpoint?: string | null
           status?: Database["public"]["Enums"]["bitrix_status"]

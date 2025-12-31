@@ -327,6 +327,111 @@ async function updatePaySystemsLogo(clientEndpoint: string, accessToken: string,
   return updatedCount;
 }
 
+// Register automation robots (Asaas: Criar Cobrança, Asaas: Verificar Pagamento)
+async function registerAutomationRobots(clientEndpoint: string, accessToken: string): Promise<{ success: boolean; registered: string[] }> {
+  console.log('[Robots] Starting automation robots registration...');
+  console.log('[Robots] Using endpoint:', clientEndpoint);
+  
+  const handlerUrl = `${SUPABASE_URL}/functions/v1/bitrix-robot-handler`;
+  
+  const robots = [
+    {
+      CODE: 'asaas_create_charge',
+      NAME: 'Asaas: Criar Cobrança',
+      HANDLER: handlerUrl,
+      AUTH_USER_ID: 1,
+      USE_SUBSCRIPTION: 'Y',
+      PROPERTIES: {
+        payment_method: {
+          Name: 'Método de Pagamento',
+          Type: 'select',
+          Options: { pix: 'PIX', boleto: 'Boleto', credit_card: 'Cartão de Crédito' },
+          Required: 'Y',
+          Default: 'pix',
+        },
+        amount: {
+          Name: 'Valor (R$)',
+          Type: 'double',
+          Required: 'Y',
+        },
+        customer_name: {
+          Name: 'Nome do Cliente',
+          Type: 'string',
+          Required: 'Y',
+        },
+        customer_email: {
+          Name: 'Email do Cliente',
+          Type: 'string',
+          Required: 'N',
+        },
+        customer_document: {
+          Name: 'CPF/CNPJ',
+          Type: 'string',
+          Required: 'Y',
+        },
+        due_days: {
+          Name: 'Dias para Vencimento',
+          Type: 'int',
+          Default: 3,
+        },
+      },
+      RETURN_PROPERTIES: {
+        charge_id: { Name: 'ID da Cobrança', Type: 'string' },
+        charge_status: { Name: 'Status', Type: 'string' },
+        payment_url: { Name: 'Link de Pagamento', Type: 'string' },
+        pix_code: { Name: 'Código PIX Copia-Cola', Type: 'string' },
+        boleto_url: { Name: 'URL do Boleto', Type: 'string' },
+        error: { Name: 'Mensagem de Erro', Type: 'string' },
+      },
+    },
+    {
+      CODE: 'asaas_check_payment',
+      NAME: 'Asaas: Verificar Pagamento',
+      HANDLER: handlerUrl,
+      AUTH_USER_ID: 1,
+      USE_SUBSCRIPTION: 'Y',
+      PROPERTIES: {
+        charge_id: {
+          Name: 'ID da Cobrança',
+          Type: 'string',
+          Required: 'Y',
+        },
+      },
+      RETURN_PROPERTIES: {
+        status: { Name: 'Status do Pagamento', Type: 'string' },
+        paid_at: { Name: 'Data do Pagamento', Type: 'string' },
+        paid_value: { Name: 'Valor Pago', Type: 'double' },
+        error: { Name: 'Mensagem de Erro', Type: 'string' },
+      },
+    },
+  ];
+
+  const registered: string[] = [];
+
+  for (const robot of robots) {
+    // Try to delete existing robot first (for reinstallations)
+    console.log(`[Robots] Deleting existing robot ${robot.CODE}...`);
+    const deleteResult = await callBitrixApi(clientEndpoint, 'bizproc.robot.delete', {
+      CODE: robot.CODE,
+    }, accessToken);
+    console.log(`[Robots] Delete ${robot.CODE}:`, deleteResult.result || deleteResult.error || 'done');
+
+    // Register the robot
+    console.log(`[Robots] Registering robot ${robot.CODE}...`);
+    const addResult = await callBitrixApi(clientEndpoint, 'bizproc.robot.add', robot, accessToken);
+    
+    if (addResult.error) {
+      console.error(`[Robots] Failed to register ${robot.CODE}:`, addResult.error, addResult.error_description);
+    } else {
+      console.log(`[Robots] Successfully registered ${robot.CODE}:`, addResult.result);
+      registered.push(robot.CODE);
+    }
+  }
+  
+  console.log(`[Robots] Registration complete: ${registered.length}/${robots.length} robots registered`);
+  return { success: registered.length > 0, registered };
+}
+
 async function registerPaySystemsLazy(
   domain: string | null,
   accessToken: string,
@@ -1494,10 +1599,10 @@ serve(async (req) => {
     let asaasConfig = null;
     
     if (paymentData.memberId) {
-      // Find installation by member_id - include pay_systems_registered flag
+      // Find installation by member_id - include pay_systems_registered and robots_registered flags
       const { data: inst, error: instError } = await supabase
         .from('bitrix_installations')
-        .select('id, tenant_id, domain, pay_systems_registered, access_token')
+        .select('id, tenant_id, domain, pay_systems_registered, robots_registered, access_token')
         .eq('member_id', paymentData.memberId)
         .order('updated_at', { ascending: false })
         .limit(1)
@@ -1512,11 +1617,12 @@ serve(async (req) => {
         id: installation?.id,
         tenant_id: installation?.tenant_id, 
         domain: installation?.domain,
-        pay_systems_registered: installation?.pay_systems_registered 
+        pay_systems_registered: installation?.pay_systems_registered,
+        robots_registered: installation?.robots_registered
       });
       
-      // Try lazy pay system registration if we have access_token
-      if (installation && !installation.pay_systems_registered) {
+      // Lazy registration: pay systems, logos, and robots
+      if (installation) {
         // Use access_token from POST params or from installation record
         const tokenForRegistration = paymentData.accessToken || installation.access_token;
         // Get server endpoint from POST params (oauth.bitrix.info/rest/)
@@ -1525,24 +1631,80 @@ serve(async (req) => {
         const domainHint = paymentData.domain || installation.domain;
         
         if (tokenForRegistration) {
-          console.log('Attempting lazy pay system registration...');
-          console.log('Domain hint:', domainHint);
-          console.log('Server endpoint:', serverEndpoint);
+          // Build client endpoint for direct API calls (needed for sale.* and bizproc.* methods)
+          let clientEndpoint: string | null = null;
+          let portalDomain = domainHint;
           
-          const registrationResult = await registerPaySystemsLazy(
-            domainHint,
-            tokenForRegistration,
-            serverEndpoint,
-            installation.id,
-            supabase
-          );
+          // If we don't have a valid domain, try to get it from the API
+          if (!portalDomain || portalDomain.length < 5 || !portalDomain.includes('.')) {
+            console.log('Domain invalid, attempting to fetch from API...');
+            const fetchedDomain = await getPortalDomainFromProfile(serverEndpoint, tokenForRegistration);
+            if (fetchedDomain) {
+              portalDomain = fetchedDomain;
+              console.log('Fetched domain from API:', portalDomain);
+            }
+          }
           
-          console.log('Lazy registration result:', registrationResult);
+          if (portalDomain && portalDomain.includes('.')) {
+            clientEndpoint = `https://${portalDomain}/rest/`;
+            console.log('Client endpoint for lazy registration:', clientEndpoint);
+          }
+          
+          // 1. Lazy pay system registration
+          if (!installation.pay_systems_registered) {
+            console.log('Attempting lazy pay system registration...');
+            const registrationResult = await registerPaySystemsLazy(
+              domainHint,
+              tokenForRegistration,
+              serverEndpoint,
+              installation.id,
+              supabase
+            );
+            console.log('Lazy pay system registration result:', registrationResult);
+            
+            // Update portalDomain if registration succeeded
+            if (registrationResult.domain) {
+              portalDomain = registrationResult.domain;
+              clientEndpoint = `https://${portalDomain}/rest/`;
+            }
+          } else {
+            console.log('Pay systems already registered');
+            
+            // Still try to update logos if we have a valid client endpoint
+            if (clientEndpoint) {
+              console.log('Updating pay system logos...');
+              await updatePaySystemsLogo(clientEndpoint, tokenForRegistration, installation.id, supabase);
+            }
+          }
+          
+          // 2. Lazy robots registration
+          if (!installation.robots_registered && clientEndpoint) {
+            console.log('Attempting lazy robots registration...');
+            const robotsResult = await registerAutomationRobots(clientEndpoint, tokenForRegistration);
+            
+            if (robotsResult.success) {
+              // Update database to mark robots as registered
+              await supabase
+                .from('bitrix_installations')
+                .update({ 
+                  robots_registered: true,
+                  domain: portalDomain,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', installation.id);
+              
+              console.log('Robots registered and database updated');
+            } else {
+              console.log('Robots registration failed or no robots registered');
+            }
+          } else if (installation.robots_registered) {
+            console.log('Robots already registered');
+          } else {
+            console.log('Cannot register robots - missing client endpoint');
+          }
         } else {
-          console.log('Cannot register pay systems - missing access_token');
+          console.log('Cannot perform lazy registration - missing access_token');
         }
-      } else if (installation?.pay_systems_registered) {
-        console.log('Pay systems already registered for this installation');
       }
       
       if (installation?.tenant_id) {
