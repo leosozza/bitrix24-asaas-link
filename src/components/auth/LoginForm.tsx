@@ -18,11 +18,12 @@ type LoginFormData = z.infer<typeof loginSchema>;
 
 interface LoginFormProps {
   onSuccess: () => void;
+  bitrixDomain?: string;
 }
 
-export function LoginForm({ onSuccess }: LoginFormProps) {
+export function LoginForm({ onSuccess, bitrixDomain }: LoginFormProps) {
   const [isLoading, setIsLoading] = useState(false);
-  const { signIn } = useAuth();
+  const { signIn, linkBitrixInstallation } = useAuth();
 
   const {
     register,
@@ -46,6 +47,11 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
         toast.error('Erro ao fazer login. Tente novamente.');
       }
       return;
+    }
+
+    // If coming from Bitrix installation, try to link the installation
+    if (bitrixDomain) {
+      await linkBitrixInstallation(bitrixDomain);
     }
 
     toast.success('Login realizado com sucesso!');

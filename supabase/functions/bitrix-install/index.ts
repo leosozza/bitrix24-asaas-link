@@ -367,8 +367,7 @@ serve(async (req) => {
       // The user will link their account later through the dashboard
       // For now, we'll use a system tenant or handle this differently
       
-      // Create new installation with a temporary system reference
-      // This will be linked to a real tenant when they configure their account
+      // Create new installation without tenant_id (will be linked after user signup/login)
       const { data: newInstall, error: insertError } = await supabase
         .from('bitrix_installations')
         .insert({
@@ -383,24 +382,46 @@ serve(async (req) => {
           server_endpoint: auth.server_endpoint,
           client_endpoint: auth.client_endpoint,
           status: 'active',
-          // tenant_id will need to be handled - see note below
+          // tenant_id is NULL - will be linked when user creates account
         })
         .select('id')
         .single();
       
       if (insertError) {
         console.error('Error creating installation:', insertError);
-        // If tenant_id is required, we need to handle this differently
-        // Return success to Bitrix but log the issue
-        return new Response(
-          `<script>
-            alert('Instalação iniciada! Configure sua conta em ${APP_DOMAIN}/dashboard');
-            BX24.installFinish();
-          </script>`,
-          { 
-            headers: { ...corsHeaders, 'Content-Type': 'text/html' },
-          }
-        );
+        const errorHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <script src="//api.bitrix24.com/api/v1/"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: #fff; }
+    .container { text-align: center; padding: 40px; }
+    .error-icon { color: #ef4444; font-size: 48px; margin-bottom: 16px; }
+    h1 { margin: 0 0 16px; }
+    p { opacity: 0.8; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="error-icon">⚠️</div>
+    <h1>Erro na Instalação</h1>
+    <p>Ocorreu um erro ao registrar a instalação. Por favor, tente novamente.</p>
+    <p style="font-size: 12px; margin-top: 20px;">Erro: ${insertError.message}</p>
+  </div>
+  <script>
+    BX24.init(function() {
+      setTimeout(function() {
+        BX24.installFinish();
+      }, 5000);
+    });
+  </script>
+</body>
+</html>`;
+        return new Response(errorHtml, {
+          headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' },
+        });
       }
       
       installationId = newInstall.id;
@@ -413,6 +434,9 @@ serve(async (req) => {
     // Create pay systems
     await createPaySystems(auth.client_endpoint, auth.access_token, installationId, supabase as any);
 
+    // Build auth URL with member_id and domain params for automatic linking
+    const authUrl = `${APP_DOMAIN}/auth?member_id=${encodeURIComponent(auth.member_id)}&domain=${encodeURIComponent(domainValue)}`;
+    
     // Return success response with BX24.installFinish()
     const successHtml = `
 <!DOCTYPE html>
@@ -435,6 +459,7 @@ serve(async (req) => {
     .container {
       text-align: center;
       padding: 40px;
+      max-width: 500px;
     }
     .success-icon {
       width: 80px;
@@ -453,16 +478,32 @@ serve(async (req) => {
     }
     h1 { margin: 0 0 16px; font-size: 24px; }
     p { margin: 0 0 24px; opacity: 0.8; }
+    .btn {
+      display: inline-block;
+      background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+      color: white;
+      text-decoration: none;
+      padding: 14px 32px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 16px;
+      transition: transform 0.2s, box-shadow 0.2s;
+      box-shadow: 0 4px 14px rgba(59, 130, 246, 0.4);
+    }
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(59, 130, 246, 0.5);
+    }
     .info-box {
       background: rgba(255,255,255,0.1);
       border-radius: 8px;
       padding: 20px;
-      margin-top: 20px;
+      margin-top: 24px;
       text-align: left;
     }
     .info-box h3 { margin: 0 0 12px; font-size: 16px; }
     .info-box ul { margin: 0; padding-left: 20px; }
-    .info-box li { margin: 8px 0; opacity: 0.9; }
+    .info-box li { margin: 8px 0; opacity: 0.9; font-size: 14px; }
   </style>
 </head>
 <body>
@@ -471,14 +512,17 @@ serve(async (req) => {
       <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
     </div>
     <h1>Asaas Pagamentos Instalado!</h1>
-    <p>O sistema de pagamentos Asaas foi configurado com sucesso.</p>
+    <p>O sistema de pagamentos foi configurado com sucesso no seu Bitrix24.</p>
+    
+    <a href="${authUrl}" target="_blank" class="btn">
+      Ativar Integração
+    </a>
     
     <div class="info-box">
       <h3>Próximos passos:</h3>
       <ul>
-        <li>Acesse Configurações > Sistemas de Pagamento</li>
-        <li>Configure sua Chave API do Asaas em cada método</li>
-        <li>Selecione o ambiente (Sandbox ou Produção)</li>
+        <li>Clique em "Ativar Integração" para criar sua conta</li>
+        <li>Configure sua Chave API do Asaas no painel</li>
         <li>Comece a receber pagamentos via PIX, Boleto ou Cartão!</li>
       </ul>
     </div>
@@ -488,7 +532,7 @@ serve(async (req) => {
     BX24.init(function() {
       setTimeout(function() {
         BX24.installFinish();
-      }, 3000);
+      }, 2000);
     });
   </script>
 </body>

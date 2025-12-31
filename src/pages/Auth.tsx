@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -12,7 +12,12 @@ import { Link } from 'react-router-dom';
 export default function Auth() {
   const [activeTab, setActiveTab] = useState('login');
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user, loading } = useAuth();
+
+  // Get Bitrix params from URL (passed from installation flow)
+  const memberId = searchParams.get('member_id') || undefined;
+  const bitrixDomain = searchParams.get('domain') || undefined;
 
   useEffect(() => {
     if (!loading && user) {
@@ -52,11 +57,11 @@ export default function Auth() {
                 <TabsTrigger value="login">Entrar</TabsTrigger>
                 <TabsTrigger value="signup">Criar Conta</TabsTrigger>
               </TabsList>
-              <TabsContent value="login">
-                <LoginForm onSuccess={handleSuccess} />
+            <TabsContent value="login">
+                <LoginForm onSuccess={handleSuccess} bitrixDomain={bitrixDomain} />
               </TabsContent>
               <TabsContent value="signup">
-                <SignupForm onSuccess={handleSuccess} />
+                <SignupForm onSuccess={handleSuccess} bitrixDomain={bitrixDomain} />
               </TabsContent>
             </Tabs>
           </CardContent>
