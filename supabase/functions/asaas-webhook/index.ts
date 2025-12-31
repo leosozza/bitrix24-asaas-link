@@ -423,7 +423,7 @@ serve(async (req) => {
       response_data: { newStatus, transactionId: transaction.id },
     });
     
-    // If payment confirmed/received, update Bitrix24
+    // If payment confirmed/received, update Bitrix24 and auto-emit invoice
     if (newStatus === 'confirmed' || newStatus === 'received') {
       // Get Bitrix installation for this tenant
       const { data: installation } = await supabase
@@ -444,6 +444,131 @@ serve(async (req) => {
           bitrixPaymentId,
           newStatus
         );
+      }
+      
+      // Check fiscal configuration for auto-emit
+      const { data: fiscalConfig } = await supabase
+        .from('fiscal_configurations')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true)
+        .single();
+      
+      if (fiscalConfig?.auto_emit_on_payment && fiscalConfig.municipal_service_id) {
+        console.log('Auto-emit invoice enabled for tenant:', tenantId);
+        
+        // Check if invoice already exists for this transaction
+        const { data: existingInvoice } = await supabase
+          .from('invoices')
+          .select('id')
+          .eq('transaction_id', transaction.id)
+          .maybeSingle();
+        
+        if (!existingInvoice) {
+          // Get Asaas configuration
+          const { data: asaasConfig } = await supabase
+            .from('asaas_configurations')
+            .select('api_key, environment')
+            .eq('tenant_id', tenantId)
+            .eq('is_active', true)
+            .single();
+          
+          if (asaasConfig?.api_key) {
+            const baseUrl = asaasConfig.environment === 'production'
+              ? 'https://api.asaas.com/v3'
+              : 'https://sandbox.asaas.com/api/v3';
+            
+            try {
+              // Create invoice via Asaas API
+              const invoicePayload = {
+                payment: payment.id,
+                serviceDescription: fiscalConfig.observations_template || `Serviço referente ao pagamento ${payment.id}`,
+                observations: fiscalConfig.observations_template || '',
+                municipalServiceId: fiscalConfig.municipal_service_id,
+                municipalServiceCode: fiscalConfig.municipal_service_code,
+                municipalServiceName: fiscalConfig.municipal_service_name,
+                taxes: {
+                  retainIss: false,
+                  iss: fiscalConfig.default_iss || 0,
+                },
+              };
+              
+              console.log('Creating auto invoice:', invoicePayload);
+              
+              const invoiceResponse = await fetch(`${baseUrl}/invoices`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'access_token': asaasConfig.api_key,
+                },
+                body: JSON.stringify(invoicePayload),
+              });
+              
+              const invoiceResult = await invoiceResponse.json();
+              console.log('Auto invoice result:', invoiceResult);
+              
+              if (invoiceResult.id) {
+                // Save invoice to database
+                await supabase.from('invoices').insert({
+                  tenant_id: tenantId,
+                  transaction_id: transaction.id,
+                  asaas_invoice_id: invoiceResult.id,
+                  customer_id: payment.customer,
+                  customer_name: transaction.customer_name,
+                  customer_email: transaction.customer_email,
+                  customer_document: transaction.customer_document,
+                  value: payment.value,
+                  service_description: fiscalConfig.observations_template || `Serviço referente ao pagamento ${payment.id}`,
+                  observations: fiscalConfig.observations_template,
+                  status: 'scheduled',
+                  effective_date: payment.paymentDate || new Date().toISOString().split('T')[0],
+                  bitrix_entity_type: transaction.bitrix_entity_type,
+                  bitrix_entity_id: transaction.bitrix_entity_id,
+                });
+                
+                console.log('Auto invoice created and saved:', invoiceResult.id);
+                
+                // Log the auto-emit
+                await supabase.from('integration_logs').insert({
+                  tenant_id: tenantId,
+                  action: 'asaas_auto_invoice_created',
+                  entity_type: 'invoice',
+                  entity_id: invoiceResult.id,
+                  status: 'success',
+                  request_data: invoicePayload,
+                  response_data: invoiceResult,
+                });
+              } else {
+                console.error('Failed to create auto invoice:', invoiceResult);
+                
+                await supabase.from('integration_logs').insert({
+                  tenant_id: tenantId,
+                  action: 'asaas_auto_invoice_error',
+                  entity_type: 'invoice',
+                  entity_id: payment.id,
+                  status: 'error',
+                  error_message: invoiceResult.errors?.[0]?.description || 'Failed to create invoice',
+                  request_data: invoicePayload,
+                  response_data: invoiceResult,
+                });
+              }
+            } catch (invoiceError) {
+              console.error('Error creating auto invoice:', invoiceError);
+              
+              await supabase.from('integration_logs').insert({
+                tenant_id: tenantId,
+                action: 'asaas_auto_invoice_error',
+                entity_type: 'invoice',
+                entity_id: payment.id,
+                status: 'error',
+                error_message: invoiceError instanceof Error ? invoiceError.message : 'Unknown error',
+                request_data: { payment_id: payment.id },
+              });
+            }
+          }
+        } else {
+          console.log('Invoice already exists for transaction:', transaction.id);
+        }
       }
     }
     
