@@ -22,6 +22,7 @@ interface PaymentData {
   domain: string;
   memberId: string;
   accessToken?: string;
+  serverEndpoint?: string;
 }
 
 // ============= BITRIX API FUNCTIONS FOR PAY SYSTEM REGISTRATION =============
@@ -47,6 +48,78 @@ async function callBitrixApi(endpoint: string, method: string, params: Record<st
   }
   
   return result;
+}
+
+// Get real portal domain via profile API
+async function getPortalDomainFromProfile(serverEndpoint: string, accessToken: string): Promise<string | null> {
+  console.log('[getPortalDomain] Fetching domain via profile endpoint...');
+  
+  try {
+    // Call profile to get portal domain
+    const profileResult = await callBitrixApi(serverEndpoint, 'profile', {}, accessToken);
+    
+    if (profileResult.result) {
+      // The profile response contains ADMIN_MODE and other info
+      // The actual domain comes from the response headers or needs to be extracted differently
+      console.log('[getPortalDomain] Profile result:', JSON.stringify(profileResult.result).substring(0, 300));
+    }
+    
+    // Try server.info which might return the portal domain
+    const serverInfoResult = await callBitrixApi(serverEndpoint, 'server.info', {}, accessToken);
+    
+    if (serverInfoResult.result) {
+      console.log('[getPortalDomain] Server info result:', JSON.stringify(serverInfoResult.result).substring(0, 300));
+    }
+    
+    // Try app.info which returns more details
+    const appInfoResult = await callBitrixApi(serverEndpoint, 'app.info', {}, accessToken);
+    
+    if (appInfoResult.result) {
+      console.log('[getPortalDomain] App info result:', JSON.stringify(appInfoResult.result).substring(0, 500));
+      
+      // Check if there's a client_endpoint or domain in the response
+      const installInfo = appInfoResult.result.install || appInfoResult.result;
+      if (installInfo.client_endpoint) {
+        // Extract domain from client_endpoint: https://domain.bitrix24.com.br/rest/
+        const match = installInfo.client_endpoint.match(/https?:\/\/([^\/]+)/);
+        if (match) {
+          console.log('[getPortalDomain] Extracted domain from client_endpoint:', match[1]);
+          return match[1];
+        }
+      }
+    }
+    
+    // Try scope endpoint to get portal info
+    const scopeResult = await callBitrixApi(serverEndpoint, 'scope', {}, accessToken);
+    
+    if (scopeResult.result) {
+      console.log('[getPortalDomain] Scope result:', JSON.stringify(scopeResult.result).substring(0, 300));
+    }
+    
+    // Try user.current which might contain portal info
+    const userResult = await callBitrixApi(serverEndpoint, 'user.current', {}, accessToken);
+    
+    if (userResult.result) {
+      console.log('[getPortalDomain] User current result:', JSON.stringify(userResult.result).substring(0, 300));
+      
+      // Check if there's a portal domain in user data
+      const portalUrl = userResult.result.PERSONAL_WWW || userResult.result.portal || null;
+      if (portalUrl) {
+        const match = portalUrl.match(/https?:\/\/([^\/]+)/);
+        if (match) {
+          console.log('[getPortalDomain] Extracted domain from user data:', match[1]);
+          return match[1];
+        }
+      }
+    }
+    
+    console.log('[getPortalDomain] Could not extract domain from any API response');
+    return null;
+    
+  } catch (error) {
+    console.error('[getPortalDomain] Error:', error);
+    return null;
+  }
 }
 
 async function registerPaySystemHandler(clientEndpoint: string, accessToken: string, iframeBaseUrl: string) {
@@ -133,17 +206,42 @@ async function createPaySystems(clientEndpoint: string, accessToken: string, ins
 }
 
 async function registerPaySystemsLazy(
-  domain: string,
+  domain: string | null,
   accessToken: string,
+  serverEndpoint: string,
   installationId: string,
   supabase: any
-): Promise<{ success: boolean; message: string }> {
+): Promise<{ success: boolean; message: string; domain?: string }> {
   console.log('=== LAZY PAY SYSTEM REGISTRATION ===');
-  console.log('Domain:', domain);
+  console.log('Initial domain:', domain);
+  console.log('Server endpoint:', serverEndpoint);
   console.log('Installation ID:', installationId);
   
+  let portalDomain = domain;
+  
+  // If we don't have a valid domain, try to get it from the profile API
+  if (!portalDomain || portalDomain.length < 5 || !portalDomain.includes('.')) {
+    console.log('Domain invalid or missing, attempting to fetch from profile API...');
+    
+    const fetchedDomain = await getPortalDomainFromProfile(serverEndpoint, accessToken);
+    
+    if (fetchedDomain) {
+      portalDomain = fetchedDomain;
+      console.log('Successfully fetched domain from API:', portalDomain);
+    } else {
+      console.log('Failed to fetch domain from API');
+      return { success: false, message: 'Could not determine portal domain. Please reinstall the app or contact support.' };
+    }
+  }
+  
+  // Validate domain format
+  if (!portalDomain || !portalDomain.includes('.')) {
+    console.log('Invalid domain format:', portalDomain);
+    return { success: false, message: `Invalid domain format: ${portalDomain}` };
+  }
+  
   // Build the REST endpoint from domain
-  const clientEndpoint = `https://${domain}/rest/`;
+  const clientEndpoint = `https://${portalDomain}/rest/`;
   console.log('Client endpoint:', clientEndpoint);
   
   // Build iframe URL
@@ -164,14 +262,18 @@ async function registerPaySystemsLazy(
     const successCount = await createPaySystems(clientEndpoint, accessToken, installationId, supabase);
     
     if (successCount > 0) {
-      // Mark installation as having pay systems registered
+      // Mark installation as having pay systems registered and update domain
       await supabase
         .from('bitrix_installations')
-        .update({ pay_systems_registered: true, updated_at: new Date().toISOString() })
+        .update({ 
+          pay_systems_registered: true, 
+          domain: portalDomain,
+          updated_at: new Date().toISOString() 
+        })
         .eq('id', installationId);
       
       console.log(`Pay system registration completed: ${successCount}/3 created`);
-      return { success: true, message: `${successCount} pay systems created successfully` };
+      return { success: true, message: `${successCount} pay systems created successfully`, domain: portalDomain };
     } else {
       return { success: false, message: 'No pay systems were created' };
     }
@@ -1207,6 +1309,7 @@ serve(async (req) => {
         let memberId = params.get('memberId') || params.get('member_id') || params.get('MEMBER_ID') || '';
         let domain = params.get('domain') || params.get('DOMAIN') || '';
         let accessToken = params.get('AUTH_ID') || params.get('auth[access_token]') || '';
+        let serverEndpoint = params.get('SERVER_ENDPOINT') || params.get('server_endpoint') || 'https://oauth.bitrix.info/rest/';
         
         // Try to extract from PLACEMENT_OPTIONS (JSON data from Bitrix24 placement)
         const placementOptions = params.get('PLACEMENT_OPTIONS');
@@ -1228,6 +1331,7 @@ serve(async (req) => {
         domain = domain || authDomain || '';
         
         console.log('Extracted - Domain:', domain, 'MemberId:', memberId, 'AccessToken:', accessToken ? '***exists***' : 'MISSING');
+        console.log('Server endpoint:', serverEndpoint);
         
         paymentData = {
           paymentId: params.get('paymentId') || params.get('PAYMENT_ID') || '',
@@ -1241,6 +1345,7 @@ serve(async (req) => {
           domain: domain,
           memberId: memberId,
           accessToken: accessToken,
+          serverEndpoint: serverEndpoint,
         };
       } else {
         paymentData = JSON.parse(bodyText);
@@ -1277,38 +1382,31 @@ serve(async (req) => {
         pay_systems_registered: installation?.pay_systems_registered 
       });
       
-      // Try lazy pay system registration if we have domain and access_token
+      // Try lazy pay system registration if we have access_token
       if (installation && !installation.pay_systems_registered) {
-        // Use domain from POST params or from installation record
-        const domainForRegistration = paymentData.domain || installation.domain;
         // Use access_token from POST params or from installation record
         const tokenForRegistration = paymentData.accessToken || installation.access_token;
+        // Get server endpoint from POST params (oauth.bitrix.info/rest/)
+        const serverEndpoint = paymentData.serverEndpoint || 'https://oauth.bitrix.info/rest/';
+        // Use domain from POST params or from installation record (may be invalid/empty)
+        const domainHint = paymentData.domain || installation.domain;
         
-        if (domainForRegistration && tokenForRegistration) {
+        if (tokenForRegistration) {
           console.log('Attempting lazy pay system registration...');
-          console.log('Using domain:', domainForRegistration);
+          console.log('Domain hint:', domainHint);
+          console.log('Server endpoint:', serverEndpoint);
           
           const registrationResult = await registerPaySystemsLazy(
-            domainForRegistration,
+            domainHint,
             tokenForRegistration,
+            serverEndpoint,
             installation.id,
             supabase
           );
           
           console.log('Lazy registration result:', registrationResult);
-          
-          // Update domain in installation if we got it from POST params
-          if (paymentData.domain && paymentData.domain !== installation.domain) {
-            await supabase
-              .from('bitrix_installations')
-              .update({ domain: paymentData.domain, updated_at: new Date().toISOString() })
-              .eq('id', installation.id);
-            console.log('Updated installation domain to:', paymentData.domain);
-          }
         } else {
-          console.log('Cannot register pay systems - missing domain or access_token');
-          console.log('Domain available:', !!domainForRegistration);
-          console.log('AccessToken available:', !!tokenForRegistration);
+          console.log('Cannot register pay systems - missing access_token');
         }
       } else if (installation?.pay_systems_registered) {
         console.log('Pay systems already registered for this installation');
