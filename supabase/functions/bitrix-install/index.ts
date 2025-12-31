@@ -223,57 +223,79 @@ serve(async (req) => {
     
     let eventData: BitrixInstallEvent;
     
-    // Helper function to parse PHP-style form data (auth[access_token]=xxx)
-    const parsePhpStyleFormData = (params: URLSearchParams): BitrixInstallEvent => {
-      const result: Record<string, Record<string, string>> = {
-        auth: {},
-        data: {},
-      };
-      let event = '';
-      let ts = '';
+    // Parse Bitrix form data - handles both flat params (AUTH_ID) and nested (auth[access_token])
+    const parseBitrixFormData = (params: URLSearchParams): BitrixInstallEvent => {
+      // Log all params for debugging
+      console.log('All params:', Object.fromEntries(params.entries()));
       
-      for (const [key, value] of params.entries()) {
-        // Handle simple keys
-        if (key === 'event') { event = value; continue; }
-        if (key === 'ts') { ts = value; continue; }
-        
-        // Handle nested keys like auth[access_token], data[VERSION]
-        const match = key.match(/^(\w+)\[(\w+)\]$/);
-        if (match) {
-          const [, parentKey, childKey] = match;
-          if (parentKey === 'auth' || parentKey === 'data') {
-            result[parentKey][childKey.toLowerCase()] = value;
-          }
+      // Try to get PLACEMENT_OPTIONS which contains JSON with auth data
+      const placementOptions = params.get('PLACEMENT_OPTIONS');
+      let parsedOptions: Record<string, string> = {};
+      
+      if (placementOptions) {
+        try {
+          parsedOptions = JSON.parse(placementOptions);
+          console.log('Parsed PLACEMENT_OPTIONS:', parsedOptions);
+        } catch (e) {
+          console.log('Failed to parse PLACEMENT_OPTIONS');
         }
       }
       
-      console.log('Parsed auth keys:', Object.keys(result.auth));
-      console.log('Parsed auth values preview:', {
-        access_token: result.auth.access_token ? '***exists***' : 'missing',
-        domain: result.auth.domain || 'missing',
-        member_id: result.auth.member_id || 'missing',
+      // Extract domain from SERVER_ENDPOINT or AUTH_ID
+      const serverEndpoint = params.get('SERVER_ENDPOINT') || '';
+      let domain = '';
+      if (serverEndpoint) {
+        // SERVER_ENDPOINT format: https://oauth.bitrix.info/rest/
+        // We need the actual portal domain - try to get from other params
+        const authId = params.get('AUTH_ID') || '';
+        // For marketplace apps, we need to determine the domain differently
+        // Check if there's a domain in the referrer or elsewhere
+      }
+      
+      // For REST apps, Bitrix sends flat parameters
+      const accessToken = params.get('AUTH_ID') || '';
+      const refreshToken = params.get('REFRESH_ID') || '';
+      const authExpires = params.get('AUTH_EXPIRES') || '';
+      const memberId = params.get('member_id') || '';
+      const status = params.get('status') || '';
+      const serverEp = params.get('SERVER_ENDPOINT') || '';
+      
+      // Calculate domain from server endpoint or use member_id for API calls
+      // For REST API calls, we need to use the server endpoint
+      // The actual portal domain can be derived from the member_id lookup
+      
+      // For now, construct client endpoint from server endpoint
+      // Bitrix24 REST apps use SERVER_ENDPOINT for OAuth and need client_endpoint for API calls
+      // The client_endpoint format is: https://{domain}/rest/
+      
+      console.log('Parsed flat params:', {
+        accessToken: accessToken ? '***exists***' : 'missing',
+        refreshToken: refreshToken ? '***exists***' : 'missing',
+        memberId,
+        status,
+        serverEndpoint: serverEp,
       });
       
       return {
-        event: event || 'ONAPPINSTALL',
+        event: params.get('event') || 'ONAPPINSTALL',
         data: {
-          VERSION: result.data.version || '',
-          ACTIVE: result.data.active || '',
+          VERSION: '',
+          ACTIVE: '',
         },
-        ts,
+        ts: '',
         auth: {
-          access_token: result.auth.access_token || '',
-          expires: result.auth.expires || '',
-          expires_in: result.auth.expires_in || '3600',
-          scope: result.auth.scope || '',
-          domain: result.auth.domain || '',
-          server_endpoint: result.auth.server_endpoint || '',
-          status: result.auth.status || '',
-          client_endpoint: result.auth.client_endpoint || '',
-          member_id: result.auth.member_id || '',
-          user_id: result.auth.user_id || '',
-          refresh_token: result.auth.refresh_token || '',
-          application_token: result.auth.application_token || '',
+          access_token: accessToken,
+          expires: authExpires,
+          expires_in: '3600',
+          scope: params.get('scope') || '',
+          domain: memberId, // Use member_id as domain identifier for now
+          server_endpoint: serverEp,
+          status: status,
+          client_endpoint: serverEp, // Will need to be updated after OAuth flow
+          member_id: memberId,
+          user_id: '',
+          refresh_token: refreshToken,
+          application_token: params.get('APP_SID') || '',
         },
       };
     };
@@ -281,8 +303,7 @@ serve(async (req) => {
     if (contentType.includes('application/x-www-form-urlencoded')) {
       const params = new URLSearchParams(bodyText);
       console.log('Raw params count:', Array.from(params.entries()).length);
-      console.log('Sample param keys:', Array.from(params.keys()).slice(0, 10));
-      eventData = parsePhpStyleFormData(params);
+      eventData = parseBitrixFormData(params);
     } else {
       eventData = JSON.parse(bodyText);
     }
@@ -291,8 +312,8 @@ serve(async (req) => {
     
     const { auth } = eventData;
     
-    if (!auth?.access_token || !auth?.domain) {
-      console.error('Missing required auth data');
+    if (!auth?.access_token || !auth?.member_id) {
+      console.error('Missing required auth data - access_token or member_id');
       return new Response(
         `<script>BX24.installFinish();</script>`,
         { 
@@ -304,11 +325,13 @@ serve(async (req) => {
     // Initialize Supabase client with service role
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     
+    // Use member_id as the primary identifier for installations
+    const domainValue = auth.domain || auth.member_id;
+    
     // Check if installation already exists
     const { data: existingInstall } = await supabase
       .from('bitrix_installations')
       .select('id')
-      .eq('domain', auth.domain)
       .eq('member_id', auth.member_id)
       .single();
 
@@ -349,7 +372,7 @@ serve(async (req) => {
       const { data: newInstall, error: insertError } = await supabase
         .from('bitrix_installations')
         .insert({
-          domain: auth.domain,
+          domain: domainValue,
           member_id: auth.member_id,
           access_token: auth.access_token,
           refresh_token: auth.refresh_token,
