@@ -263,7 +263,7 @@ async function createPaySystems(clientEndpoint: string, accessToken: string, ins
       ENTITY_REGISTRY_TYPE: 'ORDER',
       PERSON_TYPE_ID: personTypeId,
       NEW_WINDOW: 'N',
-      LOGOTIP: ASAAS_LOGO_BASE64,
+      LOGOTYPE: ASAAS_LOGO_BASE64,
       SETTINGS: {
         PAYMENT_METHOD: { TYPE: 'VALUE', VALUE: method.code },
       },
@@ -311,7 +311,7 @@ async function updatePaySystemsLogo(clientEndpoint: string, accessToken: string,
     const updateResult = await callBitrixApi(clientEndpoint, 'sale.paysystem.update', {
       ID: ps.pay_system_id,
       FIELDS: {
-        LOGOTIP: ASAAS_LOGO_BASE64
+        LOGOTYPE: ASAAS_LOGO_BASE64
       }
     }, accessToken);
     
