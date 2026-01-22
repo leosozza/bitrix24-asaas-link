@@ -113,12 +113,29 @@ serve(async (req) => {
       .eq('tenant_id', tenantId)
       .single();
 
-    // Register webhook with Asaas
-    const APP_DOMAIN = Deno.env.get('APP_DOMAIN') || 'https://prpvoabbenonecgzufhb.supabase.co';
-    const webhookUrl = `${APP_DOMAIN}/functions/v1/asaas-webhook`;
+    // Register webhook with Asaas - IMPORTANT: Use Supabase URL directly, not APP_DOMAIN
+    const webhookUrl = `${SUPABASE_URL}/functions/v1/asaas-webhook`;
+    console.log('Registering webhook at URL:', webhookUrl);
     
     let webhookId: string | null = null;
     let webhookSecret: string | null = null;
+    
+    // Events to monitor for payment status updates
+    const webhookEvents = [
+      'PAYMENT_CREATED',
+      'PAYMENT_RECEIVED',
+      'PAYMENT_CONFIRMED',
+      'PAYMENT_OVERDUE',
+      'PAYMENT_REFUNDED',
+      'PAYMENT_UPDATED',
+      'PAYMENT_DELETED',
+      'SUBSCRIPTION_CREATED',
+      'SUBSCRIPTION_UPDATED',
+      'SUBSCRIPTION_DELETED',
+      'INVOICE_AUTHORIZED',
+      'INVOICE_ERROR',
+      'INVOICE_CANCELED'
+    ];
     
     try {
       // First, list existing webhooks to check if our webhook is already registered
@@ -128,6 +145,8 @@ serve(async (req) => {
       
       if (listResponse.ok) {
         const webhookList = await listResponse.json();
+        console.log('Existing webhooks:', JSON.stringify(webhookList.data?.map((w: { id: string; url: string }) => ({ id: w.id, url: w.url }))));
+        
         const existingWebhook = webhookList.data?.find((wh: { url: string }) => wh.url === webhookUrl);
         
         if (existingWebhook) {
@@ -135,34 +154,45 @@ serve(async (req) => {
           webhookSecret = existingWebhook.authToken || null;
           console.log('Webhook already registered:', webhookId);
         } else {
-          // Register new webhook
+          // Register new webhook with specific events
+          const authToken = crypto.randomUUID();
+          const webhookPayload = {
+            url: webhookUrl,
+            email: 'webhook@connectpay.app',
+            enabled: true,
+            interrupted: false,
+            apiVersion: 3,
+            authToken: authToken,
+            sendType: 'SEQUENTIALLY',
+            events: webhookEvents
+          };
+          
+          console.log('Registering new webhook with payload:', JSON.stringify(webhookPayload));
+          
           const webhookResponse = await fetch(`${baseUrl}/webhooks`, {
             method: 'POST',
             headers: { 
               'access_token': apiKey,
               'Content-Type': 'application/json'
             },
-            body: JSON.stringify({
-              url: webhookUrl,
-              email: 'webhook@connectpay.app',
-              enabled: true,
-              interrupted: false,
-              apiVersion: 3,
-              authToken: crypto.randomUUID(),
-              sendType: 'SEQUENTIALLY'
-            }),
+            body: JSON.stringify(webhookPayload),
           });
           
+          const webhookResponseText = await webhookResponse.text();
+          console.log('Webhook registration response status:', webhookResponse.status);
+          console.log('Webhook registration response:', webhookResponseText);
+          
           if (webhookResponse.ok) {
-            const webhookData = await webhookResponse.json();
+            const webhookData = JSON.parse(webhookResponseText);
             webhookId = webhookData.id;
-            webhookSecret = webhookData.authToken || null;
-            console.log('Webhook registered:', webhookId);
+            webhookSecret = webhookData.authToken || authToken;
+            console.log('Webhook registered successfully:', webhookId);
           } else {
-            const webhookError = await webhookResponse.json().catch(() => ({}));
-            console.error('Failed to register webhook:', webhookError);
+            console.error('Failed to register webhook:', webhookResponseText);
           }
         }
+      } else {
+        console.error('Failed to list webhooks:', await listResponse.text());
       }
     } catch (webhookErr) {
       console.error('Error registering webhook:', webhookErr);
