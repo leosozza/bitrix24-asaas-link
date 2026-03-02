@@ -1224,11 +1224,20 @@ function generateConfigPage(data: PaymentData): string {
           <small>Encontre em: Asaas → Configurações → Integrações → API</small>
         </div>
         <button class="btn btn-success" onclick="saveConfig()">✅ Ativar Pagamentos</button>
+        
+        <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee;">
+          <button class="btn" onclick="repairWebhook()" id="repairBtn" style="background: #f59e0b; color: white; font-size: 14px; padding: 10px 16px;">
+            🔧 Reparar Webhook
+          </button>
+          <p style="font-size: 11px; color: #888; margin-top: 6px;">
+            Use se os status de pagamento não estão atualizando automaticamente
+          </p>
+        </div>
       </div>
       
       <div class="loading" id="loading">
         <div class="spinner"></div>
-        <p>Validando configuração...</p>
+        <p id="loadingText">Validando configuração...</p>
       </div>
       
       <div class="help-link">
@@ -1306,7 +1315,40 @@ function generateConfigPage(data: PaymentData): string {
       }
     }
     
-    // Initialize BX24 and get memberId/domain if not set
+    async function repairWebhook() {
+      if (!memberId) {
+        showError('Identificação da instalação não encontrada. Recarregue a página.');
+        return;
+      }
+      
+      document.getElementById('loadingText').textContent = 'Reparando webhook...';
+      showLoading();
+      
+      try {
+        const response = await fetch('${SUPABASE_URL}/functions/v1/bitrix-config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ memberId, domain, action: 'repair_webhook' }),
+        });
+        
+        const result = await response.json();
+        
+        hideLoading();
+        document.getElementById('loadingText').textContent = 'Validando configuração...';
+        
+        if (!response.ok) {
+          showError(result.error || 'Erro ao reparar webhook');
+          return;
+        }
+        
+        showSuccess(result.message);
+      } catch (err) {
+        hideLoading();
+        document.getElementById('loadingText').textContent = 'Validando configuração...';
+        showError('Erro de conexão. Tente novamente.');
+      }
+    }
+    
     if (typeof BX24 !== 'undefined') {
       BX24.init(function() {
         BX24.fitWindow();

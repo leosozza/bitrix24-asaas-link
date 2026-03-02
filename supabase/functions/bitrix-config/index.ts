@@ -11,10 +11,100 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 interface ConfigRequest {
-  apiKey: string;
-  environment: 'sandbox' | 'production';
+  apiKey?: string;
+  environment?: 'sandbox' | 'production';
   memberId: string;
-  domain: string;
+  domain?: string;
+  action?: 'save' | 'repair_webhook';
+}
+
+// Webhook registration logic extracted for reuse
+async function registerAsaasWebhook(apiKey: string, environment: string): Promise<{ webhookId: string | null; webhookSecret: string | null }> {
+  const baseUrl = environment === 'production' 
+    ? 'https://api.asaas.com/v3' 
+    : 'https://sandbox.asaas.com/api/v3';
+  
+  const webhookUrl = `${SUPABASE_URL}/functions/v1/asaas-webhook`;
+  console.log('Registering webhook at URL:', webhookUrl);
+  
+  let webhookId: string | null = null;
+  let webhookSecret: string | null = null;
+  
+  const webhookEvents = [
+    'PAYMENT_CREATED', 'PAYMENT_RECEIVED', 'PAYMENT_CONFIRMED',
+    'PAYMENT_OVERDUE', 'PAYMENT_REFUNDED', 'PAYMENT_UPDATED', 'PAYMENT_DELETED',
+    'SUBSCRIPTION_CREATED', 'SUBSCRIPTION_UPDATED', 'SUBSCRIPTION_DELETED',
+    'INVOICE_AUTHORIZED', 'INVOICE_ERROR', 'INVOICE_CANCELED'
+  ];
+
+  // List existing webhooks
+  const listResponse = await fetch(`${baseUrl}/webhooks`, {
+    headers: { 'access_token': apiKey },
+  });
+
+  if (listResponse.ok) {
+    const webhookList = await listResponse.json();
+    console.log('Existing webhooks:', JSON.stringify(webhookList.data?.map((w: { id: string; url: string }) => ({ id: w.id, url: w.url }))));
+
+    // Check for existing webhook with correct URL
+    const existingWebhook = webhookList.data?.find((wh: { url: string }) => wh.url === webhookUrl);
+
+    if (existingWebhook) {
+      webhookId = existingWebhook.id;
+      webhookSecret = existingWebhook.authToken || null;
+      console.log('Webhook already registered:', webhookId);
+    } else {
+      // Delete any old webhooks pointing to wrong URLs (cleanup)
+      const oldWebhooks = webhookList.data?.filter((wh: { url: string }) => 
+        wh.url.includes('asaas-webhook') && wh.url !== webhookUrl
+      ) || [];
+      for (const old of oldWebhooks) {
+        console.log('Deleting old webhook:', old.id, old.url);
+        await fetch(`${baseUrl}/webhooks/${old.id}`, {
+          method: 'DELETE',
+          headers: { 'access_token': apiKey },
+        });
+      }
+
+      // Register new webhook
+      const authToken = crypto.randomUUID();
+      const webhookPayload = {
+        url: webhookUrl,
+        email: 'webhook@connectpay.app',
+        enabled: true,
+        interrupted: false,
+        apiVersion: 3,
+        authToken,
+        sendType: 'SEQUENTIALLY',
+        events: webhookEvents
+      };
+
+      console.log('Registering new webhook with payload:', JSON.stringify(webhookPayload));
+
+      const webhookResponse = await fetch(`${baseUrl}/webhooks`, {
+        method: 'POST',
+        headers: { 'access_token': apiKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify(webhookPayload),
+      });
+
+      const webhookResponseText = await webhookResponse.text();
+      console.log('Webhook registration response status:', webhookResponse.status);
+      console.log('Webhook registration response:', webhookResponseText);
+
+      if (webhookResponse.ok) {
+        const webhookData = JSON.parse(webhookResponseText);
+        webhookId = webhookData.id;
+        webhookSecret = webhookData.authToken || authToken;
+        console.log('Webhook registered successfully:', webhookId);
+      } else {
+        console.error('Failed to register webhook:', webhookResponseText);
+      }
+    }
+  } else {
+    console.error('Failed to list webhooks:', await listResponse.text());
+  }
+
+  return { webhookId, webhookSecret };
 }
 
 serve(async (req) => {
@@ -33,18 +123,10 @@ serve(async (req) => {
     }
 
     const body: ConfigRequest = await req.json();
-    const { apiKey, environment, memberId, domain } = body;
+    const { memberId, action } = body;
 
-    console.log('Config for domain:', domain, 'memberId:', memberId, 'environment:', environment);
+    console.log('Config action:', action || 'save', 'memberId:', memberId);
 
-    if (!apiKey || !environment) {
-      return new Response(JSON.stringify({ error: 'API Key e ambiente são obrigatórios' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    // If no memberId, we can't find the installation
     if (!memberId) {
       return new Response(JSON.stringify({ error: 'Identificação da instalação não encontrada. Recarregue a página.' }), {
         status: 400,
@@ -77,7 +159,69 @@ serve(async (req) => {
     }
 
     const tenantId = installation.tenant_id;
-    console.log('Saving config for tenant:', tenantId);
+
+    // ========== REPAIR WEBHOOK ACTION ==========
+    if (action === 'repair_webhook') {
+      console.log('Repair webhook for tenant:', tenantId);
+
+      // Get existing config
+      const { data: existingConfig, error: configError } = await supabase
+        .from('asaas_configurations')
+        .select('api_key, environment')
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true)
+        .single();
+
+      if (configError || !existingConfig || !existingConfig.api_key) {
+        return new Response(JSON.stringify({ error: 'Configuração do Asaas não encontrada. Configure a API Key primeiro.' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      try {
+        const { webhookId, webhookSecret } = await registerAsaasWebhook(existingConfig.api_key, existingConfig.environment);
+
+        // Update config with webhook info
+        await supabase
+          .from('asaas_configurations')
+          .update({
+            webhook_id: webhookId,
+            webhook_secret: webhookSecret,
+            webhook_configured: !!webhookId,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('tenant_id', tenantId);
+
+        return new Response(JSON.stringify({
+          success: true,
+          message: webhookId
+            ? 'Webhook reparado com sucesso! As notificações de pagamento serão recebidas automaticamente.'
+            : 'Não foi possível registrar o webhook. Verifique sua API Key.',
+          webhookConfigured: !!webhookId,
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      } catch (webhookErr) {
+        console.error('Error repairing webhook:', webhookErr);
+        return new Response(JSON.stringify({ error: 'Erro ao reparar webhook. Tente novamente.' }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
+    // ========== SAVE CONFIG ACTION (default) ==========
+    const { apiKey, environment, domain } = body;
+
+    if (!apiKey || !environment) {
+      return new Response(JSON.stringify({ error: 'API Key e ambiente são obrigatórios' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    console.log('Saving config for tenant:', tenantId, 'environment:', environment);
 
     // Validate API key by making a test request to Asaas
     const baseUrl = environment === 'production' 
@@ -113,94 +257,19 @@ serve(async (req) => {
       .eq('tenant_id', tenantId)
       .single();
 
-    // Register webhook with Asaas - IMPORTANT: Use Supabase URL directly, not APP_DOMAIN
-    const webhookUrl = `${SUPABASE_URL}/functions/v1/asaas-webhook`;
-    console.log('Registering webhook at URL:', webhookUrl);
-    
+    // Register webhook using shared function
     let webhookId: string | null = null;
     let webhookSecret: string | null = null;
     
-    // Events to monitor for payment status updates
-    const webhookEvents = [
-      'PAYMENT_CREATED',
-      'PAYMENT_RECEIVED',
-      'PAYMENT_CONFIRMED',
-      'PAYMENT_OVERDUE',
-      'PAYMENT_REFUNDED',
-      'PAYMENT_UPDATED',
-      'PAYMENT_DELETED',
-      'SUBSCRIPTION_CREATED',
-      'SUBSCRIPTION_UPDATED',
-      'SUBSCRIPTION_DELETED',
-      'INVOICE_AUTHORIZED',
-      'INVOICE_ERROR',
-      'INVOICE_CANCELED'
-    ];
-    
     try {
-      // First, list existing webhooks to check if our webhook is already registered
-      const listResponse = await fetch(`${baseUrl}/webhooks`, {
-        headers: { 'access_token': apiKey },
-      });
-      
-      if (listResponse.ok) {
-        const webhookList = await listResponse.json();
-        console.log('Existing webhooks:', JSON.stringify(webhookList.data?.map((w: { id: string; url: string }) => ({ id: w.id, url: w.url }))));
-        
-        const existingWebhook = webhookList.data?.find((wh: { url: string }) => wh.url === webhookUrl);
-        
-        if (existingWebhook) {
-          webhookId = existingWebhook.id;
-          webhookSecret = existingWebhook.authToken || null;
-          console.log('Webhook already registered:', webhookId);
-        } else {
-          // Register new webhook with specific events
-          const authToken = crypto.randomUUID();
-          const webhookPayload = {
-            url: webhookUrl,
-            email: 'webhook@connectpay.app',
-            enabled: true,
-            interrupted: false,
-            apiVersion: 3,
-            authToken: authToken,
-            sendType: 'SEQUENTIALLY',
-            events: webhookEvents
-          };
-          
-          console.log('Registering new webhook with payload:', JSON.stringify(webhookPayload));
-          
-          const webhookResponse = await fetch(`${baseUrl}/webhooks`, {
-            method: 'POST',
-            headers: { 
-              'access_token': apiKey,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(webhookPayload),
-          });
-          
-          const webhookResponseText = await webhookResponse.text();
-          console.log('Webhook registration response status:', webhookResponse.status);
-          console.log('Webhook registration response:', webhookResponseText);
-          
-          if (webhookResponse.ok) {
-            const webhookData = JSON.parse(webhookResponseText);
-            webhookId = webhookData.id;
-            webhookSecret = webhookData.authToken || authToken;
-            console.log('Webhook registered successfully:', webhookId);
-          } else {
-            console.error('Failed to register webhook:', webhookResponseText);
-          }
-        }
-      } else {
-        console.error('Failed to list webhooks:', await listResponse.text());
-      }
+      const result = await registerAsaasWebhook(apiKey!, environment!);
+      webhookId = result.webhookId;
+      webhookSecret = result.webhookSecret;
     } catch (webhookErr) {
       console.error('Error registering webhook:', webhookErr);
-      // Continue anyway - webhook can be configured manually
     }
 
     if (existingConfig) {
-      // Update existing config
       const { error: updateError } = await supabase
         .from('asaas_configurations')
         .update({
@@ -221,10 +290,8 @@ serve(async (req) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
-
       console.log('Config updated for tenant:', tenantId);
     } else {
-      // Insert new config
       const { error: insertError } = await supabase
         .from('asaas_configurations')
         .insert({
@@ -244,7 +311,6 @@ serve(async (req) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
-
       console.log('Config created for tenant:', tenantId);
     }
 
