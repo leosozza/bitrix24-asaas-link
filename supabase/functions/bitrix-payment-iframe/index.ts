@@ -1997,7 +1997,7 @@ async function generateDashboardPage(
     }
     
     /* CONTENT */
-    .content { padding: 24px; max-width: 960px; margin: 0 auto; }
+    .content { padding: 24px; width: 100%; box-sizing: border-box; }
     .tab-content { display: none; }
     .tab-content.active { display: block; }
     
