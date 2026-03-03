@@ -2235,10 +2235,6 @@ async function generateDashboardPage(
         <span class="dock-label">Assinaturas</span>
       </button>
       <div class="dock-separator"></div>
-      <button class="dock-tab" onclick="switchTab('splits')" data-tab="splits">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M11 18H8a2 2 0 0 1-2-2V9"/></svg>
-        <span class="dock-label">Splits</span>
-      </button>
       <button class="dock-tab" onclick="switchTab('invoices')" data-tab="invoices">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
         <span class="dock-label">Notas Fiscais</span>
@@ -2360,21 +2356,6 @@ async function generateDashboardPage(
       </div>
     </div>
     
-    <!-- SPLITS TAB -->
-    <div id="tab-splits" class="tab-content">
-      <div class="card">
-        <div class="card-header">
-          <h3>Split de Pagamento</h3>
-          <button class="btn btn-primary" onclick="openModal('split-modal')">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            Novo Split
-          </button>
-        </div>
-        <div class="card-body" id="split-table">
-          <div class="loading-overlay"><div class="spinner-sm"></div> Carregando...</div>
-        </div>
-      </div>
-    </div>
     
     <!-- INVOICES TAB -->
     <div id="tab-invoices" class="tab-content">
@@ -2403,6 +2384,18 @@ async function generateDashboardPage(
     <div id="tab-settings" class="tab-content">
       <div id="settings-content">
         <div class="loading-overlay"><div class="spinner-sm"></div> Carregando...</div>
+      </div>
+      <div class="card" style="margin-top:24px;">
+        <div class="card-header">
+          <h3>Split de Pagamento</h3>
+          <button class="btn btn-primary" onclick="openModal('split-modal')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Novo Split
+          </button>
+        </div>
+        <div class="card-body" id="split-table">
+          <div class="loading-overlay"><div class="spinner-sm"></div> Carregando...</div>
+        </div>
       </div>
     </div>
   </div>
@@ -2519,10 +2512,9 @@ async function generateDashboardPage(
         switch(tab) {
           case 'transactions': loadTransactions(); break;
           case 'subscriptions': loadSubscriptions(); break;
-          case 'splits': loadSplits(); break;
           case 'invoices': loadInvoices(); break;
           case 'integrations': loadIntegrations(); break;
-          case 'settings': loadSettings(); break;
+          case 'settings': loadSettings(); loadSplits(); break;
         }
       }
       
