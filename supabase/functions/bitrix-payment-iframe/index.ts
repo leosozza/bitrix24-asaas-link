@@ -723,6 +723,78 @@ async function registerPaySystemsLazy(
   }
 }
 
+// Register CRM placements (detail tabs for Lead, Deal)
+async function registerPlacements(clientEndpoint: string, accessToken: string): Promise<{ success: boolean; registered: string[] }> {
+  console.log('[Placements] Registering CRM detail tab placements...');
+  
+  const handlerUrl = `${SUPABASE_URL}/functions/v1/bitrix-crm-detail-tab`;
+  const placements = [
+    { placement: 'CRM_LEAD_DETAIL_TAB', title: 'Pagamentos Asaas' },
+    { placement: 'CRM_DEAL_DETAIL_TAB', title: 'Pagamentos Asaas' },
+  ];
+
+  const registered: string[] = [];
+
+  for (const p of placements) {
+    // Unbind first to avoid duplicates
+    await callBitrixApi(clientEndpoint, 'placement.unbind', {
+      PLACEMENT: p.placement,
+      HANDLER: handlerUrl,
+    }, accessToken);
+
+    const result = await callBitrixApi(clientEndpoint, 'placement.bind', {
+      PLACEMENT: p.placement,
+      HANDLER: handlerUrl,
+      TITLE: p.title,
+    }, accessToken);
+
+    if (result.result || (result.error && String(result.error).includes('ALREADY'))) {
+      console.log(`[Placements] Registered ${p.placement}`);
+      registered.push(p.placement);
+    } else {
+      console.error(`[Placements] Failed ${p.placement}:`, result.error);
+    }
+  }
+
+  return { success: registered.length > 0, registered };
+}
+
+// Register CRM activity badges
+async function registerBadges(clientEndpoint: string, accessToken: string): Promise<{ success: boolean; registered: string[] }> {
+  console.log('[Badges] Registering CRM activity badges...');
+
+  const badges = [
+    { code: 'asaas_charge_created', title: 'Asaas', value: 'Cobrança Criada', type: 'primary' },
+    { code: 'asaas_charge_viewed', title: 'Asaas', value: 'Cobrança Visualizada', type: 'warning' },
+    { code: 'asaas_charge_overdue', title: 'Asaas', value: 'Cobrança em Atraso', type: 'failure' },
+    { code: 'asaas_charge_paid', title: 'Asaas', value: 'Cobrança Paga', type: 'success' },
+    { code: 'asaas_charge_cancelled', title: 'Asaas', value: 'Cobrança Cancelada', type: 'secondary' },
+  ];
+
+  const registered: string[] = [];
+
+  for (const b of badges) {
+    // Delete first to avoid duplicates
+    await callBitrixApi(clientEndpoint, 'crm.activity.badge.delete', { code: b.code }, accessToken);
+
+    const result = await callBitrixApi(clientEndpoint, 'crm.activity.badge.add', {
+      code: b.code,
+      title: b.title,
+      value: b.value,
+      type: b.type,
+    }, accessToken);
+
+    if (result.result || (result.error && String(result.error).includes('ALREADY'))) {
+      console.log(`[Badges] Registered ${b.code}`);
+      registered.push(b.code);
+    } else {
+      console.error(`[Badges] Failed ${b.code}:`, result.error, result.error_description);
+    }
+  }
+
+  return { success: registered.length > 0, registered };
+}
+
 // ============= END BITRIX API FUNCTIONS =============
 
 // Generate auth page when installation is not linked
@@ -2278,7 +2350,7 @@ serve(async (req) => {
       // Find installation by member_id - include pay_systems_registered and robots_registered flags
       const { data: inst, error: instError } = await supabase
         .from('bitrix_installations')
-        .select('id, tenant_id, domain, pay_systems_registered, robots_registered, access_token')
+        .select('id, tenant_id, domain, pay_systems_registered, robots_registered, placements_registered, badges_registered, access_token')
         .eq('member_id', paymentData.memberId)
         .order('updated_at', { ascending: false })
         .limit(1)
@@ -2370,6 +2442,34 @@ serve(async (req) => {
             );
             
             console.log('Robots ensure result:', robotsResult);
+            
+            // 3. Lazy placements registration
+            if (!installation.placements_registered) {
+              console.log('Registering CRM placements...');
+              const placementsResult = await registerPlacements(clientEndpoint, tokenForRegistration);
+              console.log('Placements result:', placementsResult);
+              
+              if (placementsResult.success) {
+                await supabase
+                  .from('bitrix_installations')
+                  .update({ placements_registered: true, updated_at: new Date().toISOString() })
+                  .eq('id', installation.id);
+              }
+            }
+            
+            // 4. Lazy badges registration
+            if (!installation.badges_registered) {
+              console.log('Registering CRM badges...');
+              const badgesResult = await registerBadges(clientEndpoint, tokenForRegistration);
+              console.log('Badges result:', badgesResult);
+              
+              if (badgesResult.success) {
+                await supabase
+                  .from('bitrix_installations')
+                  .update({ badges_registered: true, updated_at: new Date().toISOString() })
+                  .eq('id', installation.id);
+              }
+            }
             
             // Update domain if we got a valid one
             if (portalDomain && portalDomain.includes('.')) {

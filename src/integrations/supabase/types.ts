@@ -66,6 +66,7 @@ export type Database = {
           access_token: string | null
           app_id: string | null
           application_token: string | null
+          badges_registered: boolean
           bitrix_user_id: string | null
           client_endpoint: string | null
           created_at: string
@@ -74,6 +75,7 @@ export type Database = {
           id: string
           member_id: string | null
           pay_systems_registered: boolean
+          placements_registered: boolean
           refresh_token: string | null
           robots_registered: boolean | null
           scope: string | null
@@ -86,6 +88,7 @@ export type Database = {
           access_token?: string | null
           app_id?: string | null
           application_token?: string | null
+          badges_registered?: boolean
           bitrix_user_id?: string | null
           client_endpoint?: string | null
           created_at?: string
@@ -94,6 +97,7 @@ export type Database = {
           id?: string
           member_id?: string | null
           pay_systems_registered?: boolean
+          placements_registered?: boolean
           refresh_token?: string | null
           robots_registered?: boolean | null
           scope?: string | null
@@ -106,6 +110,7 @@ export type Database = {
           access_token?: string | null
           app_id?: string | null
           application_token?: string | null
+          badges_registered?: boolean
           bitrix_user_id?: string | null
           client_endpoint?: string | null
           created_at?: string
@@ -114,6 +119,7 @@ export type Database = {
           id?: string
           member_id?: string | null
           pay_systems_registered?: boolean
+          placements_registered?: boolean
           refresh_token?: string | null
           robots_registered?: boolean | null
           scope?: string | null
@@ -711,6 +717,7 @@ export type Database = {
         Row: {
           amount: number
           asaas_id: string | null
+          bitrix_activity_id: string | null
           bitrix_entity_id: string | null
           bitrix_entity_type:
             | Database["public"]["Enums"]["bitrix_entity_type"]
@@ -732,6 +739,7 @@ export type Database = {
         Insert: {
           amount: number
           asaas_id?: string | null
+          bitrix_activity_id?: string | null
           bitrix_entity_id?: string | null
           bitrix_entity_type?:
             | Database["public"]["Enums"]["bitrix_entity_type"]
@@ -753,6 +761,7 @@ export type Database = {
         Update: {
           amount?: number
           asaas_id?: string | null
+          bitrix_activity_id?: string | null
           bitrix_entity_id?: string | null
           bitrix_entity_type?:
             | Database["public"]["Enums"]["bitrix_entity_type"]
@@ -825,7 +834,7 @@ export type Database = {
     Enums: {
       app_role: "admin" | "user"
       asaas_environment: "sandbox" | "production"
-      bitrix_entity_type: "deal" | "invoice" | "contact" | "company"
+      bitrix_entity_type: "deal" | "invoice" | "contact" | "company" | "lead"
       bitrix_status: "active" | "expired" | "revoked"
       invoice_status:
         | "scheduled"
@@ -982,7 +991,7 @@ export const Constants = {
     Enums: {
       app_role: ["admin", "user"],
       asaas_environment: ["sandbox", "production"],
-      bitrix_entity_type: ["deal", "invoice", "contact", "company"],
+      bitrix_entity_type: ["deal", "invoice", "contact", "company", "lead"],
       bitrix_status: ["active", "expired", "revoked"],
       invoice_status: [
         "scheduled",
