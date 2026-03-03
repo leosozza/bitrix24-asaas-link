@@ -379,7 +379,6 @@ serve(async (req) => {
                   badgeCode: 'asaas_charge_created',
                 },
                 layout: {
-                  icon: { code: 'dollar' },
                   header: { title: `Cobrança Asaas - ${methodLabel[payment_method] || payment_method}` },
                   body: {
                     blocks: {

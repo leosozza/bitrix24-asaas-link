@@ -42,7 +42,6 @@ async function createConfigurableActivity(
       badgeCode: 'asaas_charge_created',
     },
     layout: {
-      icon: { code: 'dollar' },
       header: { title: `Cobrança Asaas - ${methodLabel[paymentMethod] || paymentMethod}` },
       body: {
         blocks: {
@@ -152,7 +151,7 @@ function generateDetailTabHTML(
         ${t.due_date ? new Date(t.due_date).toLocaleDateString('pt-BR') : '-'}
       </td>
       <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;font-size:13px;">
-        ${t.payment_url ? `<a href="${t.payment_url}" target="_blank" style="color:#0066cc;text-decoration:none;">Ver</a>` : '-'}
+        ${t.payment_url ? `<a href="${t.payment_url}" target="_blank" style="color:#0066cc;text-decoration:none;display:inline-flex;align-items:center;gap:4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>Ver</a>` : '-'}
       </td>
     </tr>
   `).join('');
@@ -335,7 +334,7 @@ function generateDetailTabHTML(
 
   <div class="section-title">
     <span>Cobranças Vinculadas</span>
-    <button class="btn-primary" onclick="showForm()">+ Gerar Cobrança</button>
+    <button class="btn-primary" onclick="showForm()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>Gerar Cobrança</button>
   </div>
 
   <div class="table-container">
@@ -357,7 +356,7 @@ function generateDetailTabHTML(
     </table>
     ` : `
     <div class="empty-state">
-      <p style="font-size:32px;margin-bottom:8px;">💰</p>
+      <p style="font-size:32px;margin-bottom:8px;"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></p>
       <p style="font-weight:600;margin-bottom:4px;">Nenhuma cobrança vinculada</p>
       <p style="font-size:13px;">Clique em "Gerar Cobrança" para criar uma nova.</p>
     </div>

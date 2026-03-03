@@ -874,7 +874,7 @@ serve(async (req) => {
 <body>
   <div class="container">
     <div class="success-icon">
-      <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
     </div>
     <h1>Asaas Pagamentos Instalado!</h1>
     <p>O sistema de pagamentos foi configurado com sucesso no seu Bitrix24.</p>

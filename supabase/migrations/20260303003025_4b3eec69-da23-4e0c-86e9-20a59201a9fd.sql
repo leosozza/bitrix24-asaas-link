@@ -1,0 +1,1 @@
+ALTER TABLE public.bitrix_installations ADD COLUMN IF NOT EXISTS icons_registered boolean DEFAULT false;

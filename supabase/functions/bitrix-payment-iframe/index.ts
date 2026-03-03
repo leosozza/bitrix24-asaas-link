@@ -935,7 +935,10 @@ function generateAuthPage(data: PaymentData): string {
 <body>
   <div class="auth-card">
     <div class="auth-header">
-      <h1>🔐 Ativar Integração Asaas</h1>
+      <h1>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        Ativar Integração Asaas
+      </h1>
       <p>Faça login ou crie uma conta para processar pagamentos</p>
     </div>
     
@@ -1273,7 +1276,10 @@ function generateConfigPage(data: PaymentData): string {
 <body>
   <div class="config-card">
     <div class="config-header">
-      <h1>⚙️ Configurar Asaas</h1>
+      <h1>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px;"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        Configurar Asaas
+      </h1>
       <p>Insira sua chave API para processar pagamentos</p>
     </div>
     
@@ -1285,8 +1291,8 @@ function generateConfigPage(data: PaymentData): string {
         <div class="form-group">
           <label for="environment">Ambiente</label>
           <select id="environment">
-            <option value="sandbox">🧪 Sandbox (Testes)</option>
-            <option value="production">🚀 Produção</option>
+            <option value="sandbox">Sandbox (Testes)</option>
+            <option value="production">Produção</option>
           </select>
           <small>Use Sandbox para testes e Produção para cobranças reais</small>
         </div>
@@ -1295,11 +1301,15 @@ function generateConfigPage(data: PaymentData): string {
           <input type="password" id="apiKey" placeholder="$aact_xxxxxxxxxxxxxxxx...">
           <small>Encontre em: Asaas → Configurações → Integrações → API</small>
         </div>
-        <button class="btn btn-success" onclick="saveConfig()">✅ Ativar Pagamentos</button>
+        <button class="btn btn-success" onclick="saveConfig()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          Ativar Pagamentos
+        </button>
         
         <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee;">
-          <button class="btn" onclick="repairWebhook()" id="repairBtn" style="background: #f59e0b; color: white; font-size: 14px; padding: 10px 16px;">
-            🔧 Reparar Webhook
+          <button class="btn" onclick="repairWebhook()" id="repairBtn" style="background: #f59e0b; color: white; font-size: 14px; padding: 10px 16px; display:inline-flex; align-items:center; gap:6px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+            Reparar Webhook
           </button>
           <p style="font-size: 11px; color: #888; margin-top: 6px;">
             Use se os status de pagamento não estão atualizando automaticamente
@@ -1750,10 +1760,9 @@ async function generateDashboardPage(
     <header class="dashboard-header">
       <div>
         <h1>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-            <path d="M2 17l10 5 10-5"/>
-            <path d="M2 12l10 5 10-5"/>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+            <path d="M22 6l-10 7L2 6"/>
           </svg>
           ConnectPay Dashboard
         </h1>
@@ -1761,9 +1770,8 @@ async function generateDashboardPage(
       </div>
       <div class="header-actions">
         <button class="btn btn-primary" onclick="openSettings()">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;">
-            <circle cx="12" cy="12" r="3"/>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;">
+            <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
           </svg>
           Configurações
         </button>
@@ -1774,14 +1782,18 @@ async function generateDashboardPage(
       <h2 class="section-title">Status das Conexões</h2>
       <div class="connection-grid">
         <div class="connection-card">
-          <div class="connection-icon bitrix">🔗</div>
+          <div class="connection-icon bitrix">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          </div>
           <div class="connection-info">
             <h3>Bitrix24</h3>
             <span class="connection-status">Conectado</span>
           </div>
         </div>
         <div class="connection-card">
-          <div class="connection-icon asaas">💳</div>
+          <div class="connection-icon asaas">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+          </div>
           <div class="connection-info">
             <h3>Asaas</h3>
             <span class="connection-status">
@@ -1849,11 +1861,9 @@ async function generateDashboardPage(
         </table>
         ` : `
         <div class="empty-state">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-            <line x1="3" y1="9" x2="21" y2="9"/>
-            <line x1="9" y1="21" x2="9" y2="9"/>
-          </svg>
+           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:48px;height:48px;margin-bottom:12px;opacity:0.5;">
+              <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+            </svg>
           <p>Nenhuma transação este mês</p>
           <p style="font-size:12px;margin-top:4px;">As transações aparecerão aqui quando você processar pagamentos</p>
         </div>
@@ -1896,9 +1906,9 @@ function generatePaymentPage(data: PaymentData, asaasConfig: { apiKey: string; e
   };
 
   const methodIcons: Record<string, string> = {
-    pix: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 2.68 1.07 5.11 2.81 6.89l-1.69 1.69c-.63.63-.18 1.71.71 1.71h6.91c.55 0 1-.45 1-1v-1.5c0-.55-.45-1-1-1H6.8l.9-.9c1.41 1.13 3.19 1.81 5.14 1.81 4.35 0 7.91-3.37 8.22-7.64.04-.54-.38-.97-.92-.97h-1.5c-.49 0-.9.36-.98.85-.28 1.89-1.89 3.36-3.82 3.36-2.12 0-3.85-1.73-3.85-3.85s1.73-3.85 3.85-3.85c.95 0 1.81.35 2.48.92l-1.06 1.06c-.39.39-.11 1.06.45 1.06h4.24c.41 0 .75-.34.75-.75V6.3c0-.56-.67-.84-1.06-.45l-.99.99C16.65 5.11 14.46 4 12.04 4V2z"/></svg>`,
-    boleto: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M2 4h2v16H2V4zm4 0h1v16H6V4zm3 0h2v16H9V4zm4 0h1v16h-1V4zm3 0h2v16h-2V4zm4 0h2v16h-2V4z"/></svg>`,
-    credit_card: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V6c0-1.11-.89-2-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v2z"/></svg>`,
+    pix: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>`,
+    boleto: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="2" height="16"/><rect x="6" y="4" width="1" height="16"/><rect x="9" y="4" width="2" height="16"/><rect x="13" y="4" width="1" height="16"/><rect x="16" y="4" width="2" height="16"/><rect x="20" y="4" width="2" height="16"/></svg>`,
+    credit_card: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>`,
   };
 
   return `
@@ -2177,31 +2187,31 @@ function generatePaymentPage(data: PaymentData, asaasConfig: { apiKey: string; e
         
         if (paymentData.paymentMethod === 'pix') {
           showResult(\`
-            <h3>✅ PIX Gerado com Sucesso!</h3>
+            <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>PIX Gerado com Sucesso!</h3>
             <div class="qr-code">
               <img src="\${result.qrCodeImage}" alt="QR Code PIX">
             </div>
             <p>Escaneie o QR Code ou copie o código abaixo:</p>
             <div class="pix-code" id="pixCode">\${result.pixCode}</div>
-            <button class="btn btn-primary copy-btn" onclick="copyPixCode()">📋 Copiar Código PIX</button>
+            <button class="btn btn-primary copy-btn" onclick="copyPixCode()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copiar Código PIX</button>
             <p style="margin-top: 16px; font-size: 14px; color: #666;">
               O pagamento será confirmado automaticamente após a transação.
             </p>
           \`);
         } else if (paymentData.paymentMethod === 'boleto') {
           showResult(\`
-            <h3>✅ Boleto Gerado com Sucesso!</h3>
+            <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>Boleto Gerado com Sucesso!</h3>
             <div class="boleto-info">
               <p><strong>Linha Digitável:</strong></p>
               <div class="boleto-line" id="boletoLine">\${result.boletoDigitableLine}</div>
               <p><strong>Vencimento:</strong> \${result.dueDate}</p>
             </div>
-            <button class="btn btn-primary" onclick="window.open('\${result.boletoUrl}', '_blank')">📄 Visualizar Boleto</button>
-            <button class="btn btn-primary copy-btn" onclick="copyBoletoLine()" style="background: #28a745;">📋 Copiar Linha Digitável</button>
+            <button class="btn btn-primary" onclick="window.open('\${result.boletoUrl}', '_blank')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Visualizar Boleto</button>
+            <button class="btn btn-primary copy-btn" onclick="copyBoletoLine()" style="background: #28a745;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copiar Linha Digitável</button>
           \`);
         } else {
           showResult(\`
-            <h3>✅ Pagamento Processado!</h3>
+            <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>Pagamento Processado!</h3>
             <p>Seu pagamento com cartão foi processado com sucesso.</p>
             <p style="margin-top: 16px; font-size: 14px; color: #666;">
               ID da Transação: \${result.transactionId}
