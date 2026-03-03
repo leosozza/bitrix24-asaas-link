@@ -370,7 +370,6 @@ serve(async (req) => {
                 ownerId: parseInt(paymentRequest.orderId) || 0,
                 fields: { completed: false, badgeCode: 'asaas_charge_created' },
                 layout: {
-                  icon: { code: 'dollar' },
                   header: { title: `Cobrança Asaas - ${methodLabel[paymentRequest.paymentMethod] || 'PIX'}` },
                   body: {
                     blocks: {

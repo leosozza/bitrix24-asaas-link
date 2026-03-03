@@ -136,7 +136,7 @@ async function updateActivityBadge(
           badgeCode,
         },
         layout: {
-          icon: { code: 'dollar' },
+          
           header: { title: 'Cobrança Asaas' },
           body: {
             blocks: {

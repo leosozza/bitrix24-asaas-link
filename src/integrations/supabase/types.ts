@@ -72,6 +72,7 @@ export type Database = {
           created_at: string
           domain: string
           expires_at: string | null
+          icons_registered: boolean | null
           id: string
           member_id: string | null
           pay_systems_registered: boolean
@@ -94,6 +95,7 @@ export type Database = {
           created_at?: string
           domain: string
           expires_at?: string | null
+          icons_registered?: boolean | null
           id?: string
           member_id?: string | null
           pay_systems_registered?: boolean
@@ -116,6 +118,7 @@ export type Database = {
           created_at?: string
           domain?: string
           expires_at?: string | null
+          icons_registered?: boolean | null
           id?: string
           member_id?: string | null
           pay_systems_registered?: boolean
