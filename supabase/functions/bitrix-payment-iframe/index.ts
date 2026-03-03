@@ -2522,12 +2522,18 @@ async function generateDashboardPage(
     }
     
     async function apiCall(action, extra = {}) {
-      const resp = await fetch(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, memberId: MEMBER_ID, ...extra }),
-      });
-      return resp.json();
+      try {
+        const resp = await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action, memberId: MEMBER_ID, ...extra }),
+        });
+        const text = await resp.text();
+        try { return JSON.parse(text); }
+        catch(e) { return { success: false, error: 'Resposta inválida do servidor' }; }
+      } catch(e) {
+        return { success: false, error: 'Erro de conexão' };
+      }
     }
     
     function showToast(msg, type = 'success') {
@@ -2633,6 +2639,10 @@ async function generateDashboardPage(
       document.getElementById('split-table').innerHTML = '<div class="loading-overlay"><div class="spinner-sm"></div> Carregando...</div>';
       
       const result = await apiCall('get_splits');
+      if (!result || !result.success) {
+        document.getElementById('split-table').innerHTML = '<div class="empty-state"><p>' + (result?.error || 'Erro ao carregar splits') + '</p></div>';
+        return;
+      }
       const splits = result.splits || [];
       
       if (splits.length === 0) {
@@ -2830,6 +2840,11 @@ async function generateDashboardPage(
     // ===== SETTINGS =====
     async function loadSettings() {
       const result = await apiCall('get_config');
+      
+      if (!result || !result.success) {
+        document.getElementById('settings-content').innerHTML = '<div class="empty-state"><p>' + (result?.error || 'Erro ao carregar configurações') + '</p></div>';
+        return;
+      }
       
       let html = '';
       
