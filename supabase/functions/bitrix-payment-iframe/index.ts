@@ -1465,15 +1465,404 @@ function generateConfigPage(data: PaymentData): string {
 </html>`;
 }
 
+// ============= ACTION HANDLERS FOR DASHBOARD TABS =============
+
+async function handleDashboardAction(body: any, supabase: any): Promise<Response> {
+  const { action, memberId, filters, data, splitId, invoiceId, subscriptionId } = body;
+  
+  // Find installation by memberId to get tenant_id
+  const { data: inst } = await supabase
+    .from('bitrix_installations')
+    .select('id, tenant_id, domain, access_token')
+    .eq('member_id', memberId)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  
+  if (!inst?.tenant_id) {
+    return new Response(JSON.stringify({ error: 'Installation not found or not linked' }), {
+      status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+  
+  const tenantId = inst.tenant_id;
+  
+  switch (action) {
+    case 'get_transactions': {
+      let query = supabase
+        .from('transactions')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .order('created_at', { ascending: false })
+        .limit(200);
+      
+      if (filters?.status && filters.status !== 'all') {
+        query = query.eq('status', filters.status);
+      }
+      if (filters?.method && filters.method !== 'all') {
+        query = query.eq('payment_method', filters.method);
+      }
+      if (filters?.search) {
+        query = query.or(`customer_name.ilike.%${filters.search}%,customer_email.ilike.%${filters.search}%`);
+      }
+      
+      const { data: transactions, error } = await query;
+      if (error) return jsonError(error.message);
+      return jsonSuccess({ transactions: transactions || [] });
+    }
+    
+    case 'get_subscriptions': {
+      let query = supabase
+        .from('subscriptions')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .order('created_at', { ascending: false })
+        .limit(200);
+      
+      if (filters?.status && filters.status !== 'all') {
+        query = query.eq('status', filters.status);
+      }
+      
+      const { data: subscriptions, error } = await query;
+      if (error) return jsonError(error.message);
+      return jsonSuccess({ subscriptions: subscriptions || [] });
+    }
+    
+    case 'cancel_subscription': {
+      if (!subscriptionId) return jsonError('subscriptionId required');
+      
+      // Get asaas config
+      const { data: asaasConf } = await supabase
+        .from('asaas_configurations')
+        .select('api_key, environment')
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true)
+        .single();
+      
+      if (!asaasConf?.api_key) return jsonError('Asaas not configured');
+      
+      // Get subscription asaas_id
+      const { data: sub } = await supabase
+        .from('subscriptions')
+        .select('asaas_id')
+        .eq('id', subscriptionId)
+        .eq('tenant_id', tenantId)
+        .single();
+      
+      if (!sub?.asaas_id) return jsonError('Subscription not found');
+      
+      const baseUrl = asaasConf.environment === 'production' 
+        ? 'https://api.asaas.com/v3' 
+        : 'https://sandbox.asaas.com/api/v3';
+      
+      const resp = await fetch(`${baseUrl}/subscriptions/${sub.asaas_id}`, {
+        method: 'DELETE',
+        headers: { 'access_token': asaasConf.api_key },
+      });
+      
+      if (resp.ok) {
+        await supabase
+          .from('subscriptions')
+          .update({ status: 'canceled', updated_at: new Date().toISOString() })
+          .eq('id', subscriptionId);
+        return jsonSuccess({ message: 'Assinatura cancelada' });
+      } else {
+        const err = await resp.json();
+        return jsonError(err.errors?.[0]?.description || 'Erro ao cancelar');
+      }
+    }
+    
+    case 'get_splits': {
+      const { data: splits, error } = await supabase
+        .from('split_configurations')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .order('created_at', { ascending: false });
+      
+      if (error) return jsonError(error.message);
+      return jsonSuccess({ splits: splits || [] });
+    }
+    
+    case 'create_split': {
+      if (!data?.name || !data?.wallet_id || !data?.split_value) {
+        return jsonError('name, wallet_id and split_value are required');
+      }
+      
+      const { data: newSplit, error } = await supabase
+        .from('split_configurations')
+        .insert({
+          tenant_id: tenantId,
+          name: data.name,
+          wallet_id: data.wallet_id,
+          wallet_name: data.wallet_name || null,
+          split_type: data.split_type || 'percentage',
+          split_value: data.split_value,
+          is_active: true,
+        })
+        .select()
+        .single();
+      
+      if (error) return jsonError(error.message);
+      return jsonSuccess({ split: newSplit, message: 'Split criado' });
+    }
+    
+    case 'delete_split': {
+      if (!splitId) return jsonError('splitId required');
+      
+      const { error } = await supabase
+        .from('split_configurations')
+        .delete()
+        .eq('id', splitId)
+        .eq('tenant_id', tenantId);
+      
+      if (error) return jsonError(error.message);
+      return jsonSuccess({ message: 'Split removido' });
+    }
+    
+    case 'toggle_split': {
+      if (!splitId) return jsonError('splitId required');
+      
+      const { data: current } = await supabase
+        .from('split_configurations')
+        .select('is_active')
+        .eq('id', splitId)
+        .eq('tenant_id', tenantId)
+        .single();
+      
+      if (!current) return jsonError('Split not found');
+      
+      const { error } = await supabase
+        .from('split_configurations')
+        .update({ is_active: !current.is_active, updated_at: new Date().toISOString() })
+        .eq('id', splitId)
+        .eq('tenant_id', tenantId);
+      
+      if (error) return jsonError(error.message);
+      return jsonSuccess({ message: current.is_active ? 'Split desativado' : 'Split ativado' });
+    }
+    
+    case 'get_invoices': {
+      const { data: invoices, error } = await supabase
+        .from('invoices')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .order('created_at', { ascending: false })
+        .limit(200);
+      
+      if (error) return jsonError(error.message);
+      return jsonSuccess({ invoices: invoices || [] });
+    }
+    
+    case 'create_invoice': {
+      if (!data?.service_description || !data?.value) {
+        return jsonError('service_description and value are required');
+      }
+      
+      // Call asaas-invoice-process
+      const resp = await fetch(`${SUPABASE_URL}/functions/v1/asaas-invoice-process`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+        body: JSON.stringify({
+          action: 'create',
+          tenant_id: tenantId,
+          service_description: data.service_description,
+          value: data.value,
+          observations: data.observations || '',
+        }),
+      });
+      
+      const result = await resp.json();
+      if (!resp.ok) return jsonError(result.error || 'Erro ao criar nota fiscal');
+      return jsonSuccess({ message: 'Nota fiscal criada', ...result });
+    }
+    
+    case 'authorize_invoice': {
+      if (!invoiceId) return jsonError('invoiceId required');
+      
+      // Get asaas_invoice_id
+      const { data: inv } = await supabase
+        .from('invoices')
+        .select('asaas_invoice_id')
+        .eq('id', invoiceId)
+        .eq('tenant_id', tenantId)
+        .single();
+      
+      if (!inv?.asaas_invoice_id) return jsonError('Invoice not found');
+      
+      const resp = await fetch(`${SUPABASE_URL}/functions/v1/asaas-invoice-process`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+        body: JSON.stringify({
+          action: 'authorize',
+          tenant_id: tenantId,
+          invoice_id: inv.asaas_invoice_id,
+        }),
+      });
+      
+      const result = await resp.json();
+      if (!resp.ok) return jsonError(result.error || 'Erro ao autorizar');
+      return jsonSuccess({ message: 'Nota fiscal autorizada', ...result });
+    }
+    
+    case 'cancel_invoice': {
+      if (!invoiceId) return jsonError('invoiceId required');
+      
+      const { data: inv } = await supabase
+        .from('invoices')
+        .select('asaas_invoice_id')
+        .eq('id', invoiceId)
+        .eq('tenant_id', tenantId)
+        .single();
+      
+      if (!inv?.asaas_invoice_id) return jsonError('Invoice not found');
+      
+      const resp = await fetch(`${SUPABASE_URL}/functions/v1/asaas-invoice-process`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+        body: JSON.stringify({
+          action: 'cancel',
+          tenant_id: tenantId,
+          invoice_id: inv.asaas_invoice_id,
+        }),
+      });
+      
+      const result = await resp.json();
+      if (!resp.ok) return jsonError(result.error || 'Erro ao cancelar');
+      return jsonSuccess({ message: 'Nota fiscal cancelada', ...result });
+    }
+    
+    case 'get_integrations_status': {
+      const { data: asaasConf } = await supabase
+        .from('asaas_configurations')
+        .select('environment, is_active, webhook_configured')
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true)
+        .single();
+      
+      return jsonSuccess({
+        bitrix: { connected: true, domain: inst.domain },
+        asaas: {
+          connected: !!asaasConf,
+          environment: asaasConf?.environment || null,
+          webhook_configured: asaasConf?.webhook_configured || false,
+        },
+      });
+    }
+    
+    case 'save_config': {
+      if (!data) return jsonError('data required');
+      
+      // Delegate to bitrix-config
+      const resp = await fetch(`${SUPABASE_URL}/functions/v1/bitrix-config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apiKey: data.apiKey,
+          environment: data.environment,
+          memberId,
+          domain: inst.domain,
+          action: data.action || 'save',
+        }),
+      });
+      
+      const result = await resp.json();
+      if (!resp.ok) return jsonError(result.error || 'Erro ao salvar');
+      return jsonSuccess({ message: result.message || 'Configuração salva' });
+    }
+    
+    case 'repair_webhook': {
+      const resp = await fetch(`${SUPABASE_URL}/functions/v1/bitrix-config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberId, domain: inst.domain, action: 'repair_webhook' }),
+      });
+      
+      const result = await resp.json();
+      if (!resp.ok) return jsonError(result.error || 'Erro ao reparar');
+      return jsonSuccess({ message: result.message || 'Webhook reparado' });
+    }
+    
+    case 'get_config': {
+      const { data: asaasConf } = await supabase
+        .from('asaas_configurations')
+        .select('environment, is_active, webhook_configured, api_key')
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true)
+        .single();
+      
+      const { data: fiscalConf } = await supabase
+        .from('fiscal_configurations')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+      
+      return jsonSuccess({
+        asaas: asaasConf ? {
+          environment: asaasConf.environment,
+          webhook_configured: asaasConf.webhook_configured,
+          has_api_key: !!asaasConf.api_key,
+          // Mask the API key
+          api_key_masked: asaasConf.api_key ? asaasConf.api_key.substring(0, 10) + '...' : null,
+        } : null,
+        fiscal: fiscalConf,
+      });
+    }
+    
+    case 'save_fiscal_config': {
+      if (!data) return jsonError('data required');
+      
+      const { data: existing } = await supabase
+        .from('fiscal_configurations')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+      
+      const fiscalData = {
+        tenant_id: tenantId,
+        municipal_service_id: data.municipal_service_id || null,
+        municipal_service_code: data.municipal_service_code || null,
+        municipal_service_name: data.municipal_service_name || null,
+        default_iss: data.default_iss || 0,
+        observations_template: data.observations_template || null,
+        auto_emit_on_payment: data.auto_emit_on_payment || false,
+        updated_at: new Date().toISOString(),
+      };
+      
+      if (existing) {
+        await supabase.from('fiscal_configurations').update(fiscalData).eq('id', existing.id);
+      } else {
+        await supabase.from('fiscal_configurations').insert(fiscalData);
+      }
+      
+      return jsonSuccess({ message: 'Configuração fiscal salva' });
+    }
+    
+    default:
+      return jsonError(`Unknown action: ${action}`);
+  }
+}
+
+function jsonSuccess(data: any): Response {
+  return new Response(JSON.stringify({ success: true, ...data }), {
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
+function jsonError(message: string, status = 400): Response {
+  return new Response(JSON.stringify({ success: false, error: message }), {
+    status, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
+// ============= DASHBOARD PAGE WITH TABS =============
+
 // Generate dashboard page for normal app context (not checkout)
 async function generateDashboardPage(
   installation: { id: string; tenant_id: string; domain: string },
   asaasConfig: { apiKey: string; environment: string },
   supabase: any
 ): Promise<string> {
-  const APP_DOMAIN = Deno.env.get('APP_DOMAIN') || 'https://asaas.thoth24.com';
-  
-  // Fetch metrics for current month
+  // Fetch metrics for current month (overview tab - server-side rendered)
   const startOfMonth = new Date();
   startOfMonth.setDate(1);
   startOfMonth.setHours(0, 0, 0, 0);
@@ -1486,35 +1875,30 @@ async function generateDashboardPage(
     .order('created_at', { ascending: false })
     .limit(100);
   
-  // Calculate metrics
   const total = transactions?.length || 0;
   const totalAmount = transactions?.reduce((sum: number, t: any) => sum + (parseFloat(t.amount) || 0), 0) || 0;
-  const confirmed = transactions?.filter((t: any) => 
-    ['confirmed', 'received'].includes(t.status)
-  ).length || 0;
+  const confirmed = transactions?.filter((t: any) => ['confirmed', 'received'].includes(t.status)).length || 0;
+  const successRate = total > 0 ? Math.round((confirmed / total) * 100) : 0;
   const pending = transactions?.filter((t: any) => t.status === 'pending').length || 0;
-  const successRate = total > 0 ? ((confirmed / total) * 100).toFixed(1) : '0';
-  
-  // Get recent transactions (last 5)
   const recentTransactions = (transactions || []).slice(0, 5);
   
   const statusLabels: Record<string, string> = {
-    pending: 'Pendente',
-    confirmed: 'Confirmado',
-    received: 'Recebido',
-    overdue: 'Vencido',
-    refunded: 'Reembolsado',
-    cancelled: 'Cancelado',
+    pending: 'Pendente', confirmed: 'Confirmado', received: 'Recebido',
+    overdue: 'Vencido', refunded: 'Reembolsado', cancelled: 'Cancelado',
   };
-  
   const statusColors: Record<string, string> = {
-    pending: '#f59e0b',
-    confirmed: '#10b981',
-    received: '#10b981',
-    overdue: '#ef4444',
-    refunded: '#8b5cf6',
-    cancelled: '#6b7280',
+    pending: '#f59e0b', confirmed: '#10b981', received: '#10b981',
+    overdue: '#ef4444', refunded: '#8b5cf6', cancelled: '#6b7280',
   };
+
+  // Fetch member_id for client-side API calls
+  const { data: instData } = await supabase
+    .from('bitrix_installations')
+    .select('member_id')
+    .eq('id', installation.id)
+    .single();
+  
+  const memberId = instData?.member_id || '';
 
   return `
 <!DOCTYPE html>
@@ -1531,87 +1915,95 @@ async function generateDashboardPage(
       background: #f3f4f6;
       color: #1f2937;
       line-height: 1.5;
-      padding: 24px;
     }
-    .dashboard {
-      max-width: 900px;
-      margin: 0 auto;
+    
+    /* TOP NAV */
+    .top-nav {
+      background: white;
+      border-bottom: 1px solid #e5e7eb;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      position: sticky;
+      top: 0;
+      z-index: 100;
     }
-    .dashboard-header {
+    .nav-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 24px;
-      padding-bottom: 16px;
-      border-bottom: 1px solid #e5e7eb;
+      padding: 12px 24px;
+      border-bottom: 1px solid #f3f4f6;
     }
-    .dashboard-header h1 {
-      font-size: 24px;
+    .nav-header h1 {
+      font-size: 18px;
       font-weight: 700;
       color: #111827;
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 8px;
     }
-    .dashboard-header h1 svg {
-      width: 32px;
-      height: 32px;
-      color: #0066cc;
-    }
-    .dashboard-header p {
-      color: #6b7280;
-      font-size: 14px;
-      margin-top: 4px;
-    }
-    .header-actions {
+    .nav-header h1 svg { color: #0066cc; }
+    .nav-tabs {
       display: flex;
-      gap: 12px;
+      overflow-x: auto;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+      padding: 0 16px;
     }
-    .btn {
+    .nav-tabs::-webkit-scrollbar { display: none; }
+    .nav-tab {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
-      padding: 10px 16px;
+      gap: 6px;
+      padding: 12px 16px;
       border: none;
-      border-radius: 8px;
-      font-size: 14px;
+      background: none;
+      font-size: 13px;
       font-weight: 500;
+      color: #6b7280;
       cursor: pointer;
+      white-space: nowrap;
+      border-bottom: 2px solid transparent;
       transition: all 0.2s;
     }
-    .btn-outline {
-      background: white;
-      border: 1px solid #d1d5db;
-      color: #374151;
+    .nav-tab:hover { color: #374151; background: #f9fafb; }
+    .nav-tab.active {
+      color: #0066cc;
+      border-bottom-color: #0066cc;
     }
-    .btn-outline:hover {
-      background: #f9fafb;
-      border-color: #9ca3af;
-    }
-    .btn-primary {
-      background: #0066cc;
-      color: white;
-    }
-    .btn-primary:hover {
-      background: #0052a3;
-    }
+    .nav-tab svg { width: 16px; height: 16px; }
     
-    /* Connection Status */
-    .connections-section {
+    /* CONTENT */
+    .content { padding: 24px; max-width: 960px; margin: 0 auto; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    
+    /* CARDS & METRICS */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
       margin-bottom: 24px;
     }
-    .section-title {
-      font-size: 14px;
-      font-weight: 600;
-      color: #374151;
-      margin-bottom: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
+    .metric-card {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
+    .metric-card .value { font-size: 28px; font-weight: 700; color: #111827; display: block; }
+    .metric-card .label { font-size: 13px; color: #6b7280; margin-top: 4px; }
+    .metric-card.highlight {
+      background: linear-gradient(135deg, #0066cc 0%, #0052a3 100%);
+    }
+    .metric-card.highlight .value,
+    .metric-card.highlight .label { color: white; }
+    
+    /* CONNECTION STATUS */
     .connection-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
       gap: 16px;
+      margin-bottom: 24px;
     }
     .connection-card {
       background: white;
@@ -1623,189 +2015,257 @@ async function generateDashboardPage(
       box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
     .connection-icon {
-      width: 40px;
-      height: 40px;
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 20px;
+      width: 40px; height: 40px; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
     }
     .connection-icon.bitrix { background: #f0f9ff; color: #0284c7; }
     .connection-icon.asaas { background: #f0fdf4; color: #16a34a; }
-    .connection-info h3 {
-      font-size: 14px;
-      font-weight: 600;
-      color: #111827;
-    }
     .connection-status {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 12px;
-      color: #16a34a;
+      display: flex; align-items: center; gap: 6px;
+      font-size: 12px; color: #16a34a;
     }
     .connection-status::before {
-      content: '';
-      width: 8px;
-      height: 8px;
-      background: #16a34a;
-      border-radius: 50%;
+      content: ''; width: 8px; height: 8px; background: #16a34a; border-radius: 50%;
     }
     .env-badge {
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: 4px;
-      font-size: 11px;
-      font-weight: 500;
-      text-transform: uppercase;
+      display: inline-block; padding: 2px 8px; border-radius: 4px;
+      font-size: 11px; font-weight: 500; text-transform: uppercase;
     }
     .env-badge.sandbox { background: #fef3c7; color: #92400e; }
     .env-badge.production { background: #dcfce7; color: #166534; }
     
-    /* Metrics */
-    .metrics-section {
-      margin-bottom: 24px;
-    }
-    .metrics-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 16px;
-    }
-    .metric-card {
-      background: white;
-      border-radius: 12px;
-      padding: 20px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    }
-    .metric-card .value {
-      font-size: 28px;
-      font-weight: 700;
-      color: #111827;
-      display: block;
-    }
-    .metric-card .label {
-      font-size: 13px;
-      color: #6b7280;
-      margin-top: 4px;
-    }
-    .metric-card.highlight {
-      background: linear-gradient(135deg, #0066cc 0%, #0052a3 100%);
-    }
-    .metric-card.highlight .value,
-    .metric-card.highlight .label {
-      color: white;
-    }
-    
-    /* Transactions */
-    .transactions-section {
-      margin-bottom: 24px;
-    }
-    .transactions-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 12px;
-    }
-    .transactions-table {
+    /* TABLE */
+    .card {
       background: white;
       border-radius: 12px;
       box-shadow: 0 1px 3px rgba(0,0,0,0.1);
       overflow: hidden;
+      margin-bottom: 24px;
     }
-    table {
-      width: 100%;
-      border-collapse: collapse;
+    .card-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid #e5e7eb;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
     }
+    .card-header h3 { font-size: 16px; font-weight: 600; }
+    .card-body { padding: 0; }
+    table { width: 100%; border-collapse: collapse; }
     th {
-      text-align: left;
-      padding: 12px 16px;
-      background: #f9fafb;
-      font-size: 12px;
-      font-weight: 600;
-      color: #6b7280;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
+      text-align: left; padding: 10px 16px; background: #f9fafb;
+      font-size: 12px; font-weight: 600; color: #6b7280;
+      text-transform: uppercase; letter-spacing: 0.05em;
       border-bottom: 1px solid #e5e7eb;
     }
     td {
-      padding: 12px 16px;
-      font-size: 14px;
+      padding: 10px 16px; font-size: 14px;
       border-bottom: 1px solid #f3f4f6;
     }
     tr:last-child td { border-bottom: none; }
     tr:hover { background: #f9fafb; }
     .status-badge {
-      display: inline-block;
-      padding: 4px 10px;
-      border-radius: 20px;
-      font-size: 12px;
-      font-weight: 500;
+      display: inline-block; padding: 3px 10px; border-radius: 20px;
+      font-size: 12px; font-weight: 500;
     }
     .empty-state {
-      text-align: center;
-      padding: 40px;
-      color: #6b7280;
+      text-align: center; padding: 40px; color: #6b7280;
     }
-    .empty-state svg {
-      width: 48px;
-      height: 48px;
-      margin-bottom: 12px;
-      opacity: 0.5;
+    .empty-state svg { width: 48px; height: 48px; margin-bottom: 12px; opacity: 0.5; }
+    
+    /* FILTERS */
+    .filters {
+      display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
     }
+    .filter-input {
+      padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 8px;
+      font-size: 14px; min-width: 180px;
+    }
+    .filter-input:focus { outline: none; border-color: #0066cc; }
+    .filter-select {
+      padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 8px;
+      font-size: 14px; background: white; cursor: pointer;
+    }
+    
+    /* BUTTONS */
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 16px; border: none; border-radius: 8px;
+      font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s;
+    }
+    .btn-primary { background: #0066cc; color: white; }
+    .btn-primary:hover { background: #0052a3; }
+    .btn-success { background: #10b981; color: white; }
+    .btn-success:hover { background: #059669; }
+    .btn-danger { background: #ef4444; color: white; }
+    .btn-danger:hover { background: #dc2626; }
+    .btn-warning { background: #f59e0b; color: white; }
+    .btn-warning:hover { background: #d97706; }
+    .btn-outline {
+      background: white; border: 1px solid #d1d5db; color: #374151;
+    }
+    .btn-outline:hover { background: #f9fafb; }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    
+    /* FORM */
+    .form-group { margin-bottom: 16px; }
+    .form-group label {
+      display: block; font-size: 14px; font-weight: 500;
+      margin-bottom: 6px; color: #333;
+    }
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%; padding: 10px 14px; border: 1px solid #d1d5db;
+      border-radius: 8px; font-size: 14px;
+    }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+      outline: none; border-color: #0066cc;
+    }
+    .form-group small { display: block; margin-top: 4px; color: #6b7280; font-size: 12px; }
+    
+    /* MODAL */
+    .modal-overlay {
+      display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.5); z-index: 200;
+      align-items: center; justify-content: center; padding: 20px;
+    }
+    .modal-overlay.show { display: flex; }
+    .modal {
+      background: white; border-radius: 16px; width: 100%; max-width: 500px;
+      max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    .modal-header {
+      padding: 20px 24px; border-bottom: 1px solid #e5e7eb;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .modal-header h3 { font-size: 18px; font-weight: 600; }
+    .modal-close {
+      width: 32px; height: 32px; border-radius: 8px; border: none;
+      background: #f3f4f6; cursor: pointer; font-size: 18px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .modal-body { padding: 24px; }
+    .modal-footer {
+      padding: 16px 24px; border-top: 1px solid #e5e7eb;
+      display: flex; gap: 12px; justify-content: flex-end;
+    }
+    
+    /* TOAST */
+    .toast {
+      position: fixed; bottom: 20px; right: 20px; z-index: 300;
+      padding: 12px 20px; border-radius: 8px; color: white;
+      font-size: 14px; font-weight: 500; transform: translateY(100px);
+      opacity: 0; transition: all 0.3s;
+    }
+    .toast.show { transform: translateY(0); opacity: 1; }
+    .toast.success { background: #10b981; }
+    .toast.error { background: #ef4444; }
+    
+    /* LOADING */
+    .loading-overlay {
+      display: flex; align-items: center; justify-content: center;
+      padding: 40px; color: #6b7280;
+    }
+    .spinner-sm {
+      width: 20px; height: 20px; border: 2px solid #e5e7eb;
+      border-top-color: #0066cc; border-radius: 50%;
+      animation: spin 0.8s linear infinite; margin-right: 8px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    
+    /* SECTION TITLE */
+    .section-title {
+      font-size: 14px; font-weight: 600; color: #374151;
+      margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em;
+    }
+
+    /* TOGGLE */
+    .toggle {
+      position: relative; width: 44px; height: 24px; border-radius: 12px;
+      background: #d1d5db; cursor: pointer; border: none; transition: 0.2s;
+    }
+    .toggle.on { background: #10b981; }
+    .toggle::after {
+      content: ''; position: absolute; top: 2px; left: 2px;
+      width: 20px; height: 20px; border-radius: 50%; background: white;
+      transition: 0.2s;
+    }
+    .toggle.on::after { left: 22px; }
   </style>
 </head>
 <body>
-  <div class="dashboard">
-    <header class="dashboard-header">
-      <div>
-        <h1>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-            <path d="M22 6l-10 7L2 6"/>
-          </svg>
-          ConnectPay Dashboard
-        </h1>
-        <p>Gestão de pagamentos Asaas no Bitrix24</p>
-      </div>
-      <div class="header-actions">
-        <button class="btn btn-primary" onclick="openSettings()">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;">
-            <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-          </svg>
-          Configurações
-        </button>
-      </div>
-    </header>
-    
-    <section class="connections-section">
-      <h2 class="section-title">Status das Conexões</h2>
-      <div class="connection-grid">
+  <nav class="top-nav">
+    <div class="nav-header">
+      <h1>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+          <path d="M22 6l-10 7L2 6"/>
+        </svg>
+        ConnectPay
+      </h1>
+      <span class="env-badge ${asaasConfig.environment}">${asaasConfig.environment === 'production' ? 'Produção' : 'Sandbox'}</span>
+    </div>
+    <div class="nav-tabs">
+      <button class="nav-tab active" onclick="switchTab('overview')" data-tab="overview">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Visão Geral
+      </button>
+      <button class="nav-tab" onclick="switchTab('transactions')" data-tab="transactions">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        Transações
+      </button>
+      <button class="nav-tab" onclick="switchTab('subscriptions')" data-tab="subscriptions">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg>
+        Assinaturas
+      </button>
+      <button class="nav-tab" onclick="switchTab('splits')" data-tab="splits">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M11 18H8a2 2 0 0 1-2-2V9"/></svg>
+        Splits
+      </button>
+      <button class="nav-tab" onclick="switchTab('invoices')" data-tab="invoices">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        Notas Fiscais
+      </button>
+      <button class="nav-tab" onclick="switchTab('integrations')" data-tab="integrations">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        Integrações
+      </button>
+      <button class="nav-tab" onclick="switchTab('settings')" data-tab="settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        Configurações
+      </button>
+    </div>
+  </nav>
+  
+  <div class="content">
+    <!-- OVERVIEW TAB -->
+    <div id="tab-overview" class="tab-content active">
+      <section class="connection-grid" style="margin-bottom:24px;">
         <div class="connection-card">
           <div class="connection-icon bitrix">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
           </div>
-          <div class="connection-info">
-            <h3>Bitrix24</h3>
+          <div>
+            <div style="font-size:14px;font-weight:600;">Bitrix24</div>
             <span class="connection-status">Conectado</span>
           </div>
         </div>
         <div class="connection-card">
           <div class="connection-icon asaas">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
           </div>
-          <div class="connection-info">
-            <h3>Asaas</h3>
+          <div>
+            <div style="font-size:14px;font-weight:600;">Asaas</div>
             <span class="connection-status">
               Ativo
-              <span class="env-badge ${asaasConfig.environment}">${asaasConfig.environment === 'production' ? 'Produção' : 'Sandbox'}</span>
+              <span class="env-badge ${asaasConfig.environment}" style="margin-left:6px;">${asaasConfig.environment === 'production' ? 'Produção' : 'Sandbox'}</span>
             </span>
           </div>
         </div>
-      </div>
-    </section>
-    
-    <section class="metrics-section">
+      </section>
+      
       <h2 class="section-title">Métricas do Mês</h2>
       <div class="metrics-grid">
         <div class="metric-card highlight">
@@ -1825,72 +2285,662 @@ async function generateDashboardPage(
           <span class="label">Pendentes</span>
         </div>
       </div>
-    </section>
-    
-    <section class="transactions-section">
-      <div class="transactions-header">
-        <h2 class="section-title">Últimas Transações</h2>
-      </div>
-      <div class="transactions-table">
-        ${recentTransactions.length > 0 ? `
-        <table>
-          <thead>
-            <tr>
-              <th>Cliente</th>
-              <th>Valor</th>
-              <th>Método</th>
-              <th>Status</th>
-              <th>Data</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${recentTransactions.map((t: any) => `
-              <tr>
-                <td>${t.customer_name || 'N/A'}</td>
-                <td>R$ ${(parseFloat(t.amount) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                <td>${t.payment_method === 'pix' ? 'PIX' : t.payment_method === 'boleto' ? 'Boleto' : 'Cartão'}</td>
-                <td>
-                  <span class="status-badge" style="background: ${statusColors[t.status] || '#6b7280'}20; color: ${statusColors[t.status] || '#6b7280'}">
-                    ${statusLabels[t.status] || t.status}
-                  </span>
-                </td>
-                <td>${new Date(t.created_at).toLocaleDateString('pt-BR')}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-        ` : `
-        <div class="empty-state">
-           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:48px;height:48px;margin-bottom:12px;opacity:0.5;">
-              <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
-            </svg>
-          <p>Nenhuma transação este mês</p>
-          <p style="font-size:12px;margin-top:4px;">As transações aparecerão aqui quando você processar pagamentos</p>
+      
+      <h2 class="section-title">Últimas Transações</h2>
+      <div class="card">
+        <div class="card-body">
+          ${recentTransactions.length > 0 ? \`
+          <table>
+            <thead><tr><th>Cliente</th><th>Valor</th><th>Método</th><th>Status</th><th>Data</th></tr></thead>
+            <tbody>
+              ${recentTransactions.map((t: any) => \`
+                <tr>
+                  <td>\${t.customer_name || 'N/A'}</td>
+                  <td>R$ \${(parseFloat(t.amount) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                  <td>\${t.payment_method === 'pix' ? 'PIX' : t.payment_method === 'boleto' ? 'Boleto' : 'Cartão'}</td>
+                  <td><span class="status-badge" style="background:\${statusColors[t.status] || '#6b7280'}20;color:\${statusColors[t.status] || '#6b7280'}">\${statusLabels[t.status] || t.status}</span></td>
+                  <td>\${new Date(t.created_at).toLocaleDateString('pt-BR')}</td>
+                </tr>
+              \`).join('')}
+            </tbody>
+          </table>
+          \` : \`
+          <div class="empty-state">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:48px;height:48px;margin-bottom:12px;opacity:0.5;"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            <p>Nenhuma transação este mês</p>
+          </div>
+          \`}
         </div>
-        `}
       </div>
-    </section>
+    </div>
+    
+    <!-- TRANSACTIONS TAB -->
+    <div id="tab-transactions" class="tab-content">
+      <div class="card">
+        <div class="card-header">
+          <h3>Transações</h3>
+          <div class="filters">
+            <input type="text" class="filter-input" id="txn-search" placeholder="Buscar cliente..." oninput="loadTransactions()">
+            <select class="filter-select" id="txn-status" onchange="loadTransactions()">
+              <option value="all">Todos status</option>
+              <option value="pending">Pendente</option>
+              <option value="confirmed">Confirmado</option>
+              <option value="received">Recebido</option>
+              <option value="overdue">Vencido</option>
+              <option value="refunded">Reembolsado</option>
+              <option value="cancelled">Cancelado</option>
+            </select>
+            <select class="filter-select" id="txn-method" onchange="loadTransactions()">
+              <option value="all">Todos métodos</option>
+              <option value="pix">PIX</option>
+              <option value="boleto">Boleto</option>
+              <option value="credit_card">Cartão</option>
+            </select>
+          </div>
+        </div>
+        <div class="card-body" id="txn-table">
+          <div class="loading-overlay"><div class="spinner-sm"></div> Carregando...</div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- SUBSCRIPTIONS TAB -->
+    <div id="tab-subscriptions" class="tab-content">
+      <div class="card">
+        <div class="card-header">
+          <h3>Assinaturas</h3>
+          <div class="filters">
+            <select class="filter-select" id="sub-status" onchange="loadSubscriptions()">
+              <option value="all">Todos status</option>
+              <option value="active">Ativa</option>
+              <option value="canceled">Cancelada</option>
+              <option value="expired">Expirada</option>
+            </select>
+          </div>
+        </div>
+        <div class="card-body" id="sub-table">
+          <div class="loading-overlay"><div class="spinner-sm"></div> Carregando...</div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- SPLITS TAB -->
+    <div id="tab-splits" class="tab-content">
+      <div class="card">
+        <div class="card-header">
+          <h3>Split de Pagamento</h3>
+          <button class="btn btn-primary" onclick="openModal('split-modal')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Novo Split
+          </button>
+        </div>
+        <div class="card-body" id="split-table">
+          <div class="loading-overlay"><div class="spinner-sm"></div> Carregando...</div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- INVOICES TAB -->
+    <div id="tab-invoices" class="tab-content">
+      <div class="card">
+        <div class="card-header">
+          <h3>Notas Fiscais</h3>
+          <button class="btn btn-primary" onclick="openModal('invoice-modal')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Nova Nota Fiscal
+          </button>
+        </div>
+        <div class="card-body" id="invoice-table">
+          <div class="loading-overlay"><div class="spinner-sm"></div> Carregando...</div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- INTEGRATIONS TAB -->
+    <div id="tab-integrations" class="tab-content">
+      <div id="integrations-content">
+        <div class="loading-overlay"><div class="spinner-sm"></div> Carregando...</div>
+      </div>
+    </div>
+    
+    <!-- SETTINGS TAB -->
+    <div id="tab-settings" class="tab-content">
+      <div id="settings-content">
+        <div class="loading-overlay"><div class="spinner-sm"></div> Carregando...</div>
+      </div>
+    </div>
   </div>
   
+  <!-- SPLIT MODAL -->
+  <div class="modal-overlay" id="split-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Novo Split de Pagamento</h3>
+        <button class="modal-close" onclick="closeModal('split-modal')">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Nome</label>
+          <input type="text" id="split-name" placeholder="Ex: Comissão Parceiro">
+        </div>
+        <div class="form-group">
+          <label>Wallet ID</label>
+          <input type="text" id="split-wallet" placeholder="ID da carteira Asaas">
+        </div>
+        <div class="form-group">
+          <label>Nome da Wallet (opcional)</label>
+          <input type="text" id="split-wallet-name" placeholder="Nome para identificação">
+        </div>
+        <div class="form-group">
+          <label>Tipo</label>
+          <select id="split-type">
+            <option value="percentage">Porcentagem</option>
+            <option value="fixed">Valor Fixo</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Valor</label>
+          <input type="number" id="split-value" step="0.01" placeholder="0.00">
+          <small>Porcentagem (0-100) ou valor fixo em R$</small>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('split-modal')">Cancelar</button>
+        <button class="btn btn-primary" onclick="createSplit()">Criar Split</button>
+      </div>
+    </div>
+  </div>
+  
+  <!-- INVOICE MODAL -->
+  <div class="modal-overlay" id="invoice-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Nova Nota Fiscal</h3>
+        <button class="modal-close" onclick="closeModal('invoice-modal')">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Valor (R$)</label>
+          <input type="number" id="inv-value" step="0.01" placeholder="0.00">
+        </div>
+        <div class="form-group">
+          <label>Descrição do Serviço</label>
+          <textarea id="inv-description" rows="3" placeholder="Descreva o serviço prestado"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Observações (opcional)</label>
+          <textarea id="inv-observations" rows="2" placeholder="Observações adicionais"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('invoice-modal')">Cancelar</button>
+        <button class="btn btn-primary" onclick="createInvoice()">Emitir Nota</button>
+      </div>
+    </div>
+  </div>
+  
+  <!-- TOAST -->
+  <div class="toast" id="toast"></div>
+  
   <script>
-    function openSettings() {
-      // Use BX24.openApplication to maintain Bitrix24 context and pass settings parameter
-      if (typeof BX24 !== 'undefined') {
-        BX24.openApplication({
-          'settings': 'true'
-        });
+    const API_URL = '${SUPABASE_URL}/functions/v1/bitrix-payment-iframe';
+    const MEMBER_ID = '${memberId}';
+    
+    const STATUS_LABELS = ${JSON.stringify(statusLabels)};
+    const STATUS_COLORS = ${JSON.stringify(statusColors)};
+    
+    const CYCLE_LABELS = {
+      WEEKLY: 'Semanal', BIWEEKLY: 'Quinzenal', MONTHLY: 'Mensal',
+      BIMONTHLY: 'Bimestral', QUARTERLY: 'Trimestral',
+      SEMIANNUALLY: 'Semestral', YEARLY: 'Anual'
+    };
+    const SUB_STATUS = {
+      active: { label: 'Ativa', color: '#10b981' },
+      canceled: { label: 'Cancelada', color: '#ef4444' },
+      expired: { label: 'Expirada', color: '#6b7280' },
+      pending: { label: 'Pendente', color: '#f59e0b' },
+    };
+    const INV_STATUS = {
+      scheduled: { label: 'Agendada', color: '#f59e0b' },
+      synchronized: { label: 'Sincronizada', color: '#3b82f6' },
+      authorized: { label: 'Autorizada', color: '#10b981' },
+      canceled: { label: 'Cancelada', color: '#6b7280' },
+      error: { label: 'Erro', color: '#ef4444' },
+    };
+    
+    // Tab loaded flags
+    const tabLoaded = {};
+    
+    function switchTab(tab) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
+      document.getElementById('tab-' + tab).classList.add('active');
+      document.querySelector('[data-tab="' + tab + '"]').classList.add('active');
+      
+      // Load data on first visit
+      if (!tabLoaded[tab]) {
+        tabLoaded[tab] = true;
+        switch(tab) {
+          case 'transactions': loadTransactions(); break;
+          case 'subscriptions': loadSubscriptions(); break;
+          case 'splits': loadSplits(); break;
+          case 'invoices': loadInvoices(); break;
+          case 'integrations': loadIntegrations(); break;
+          case 'settings': loadSettings(); break;
+        }
+      }
+      
+      if (typeof BX24 !== 'undefined') { try { BX24.fitWindow(); } catch(e){} }
+    }
+    
+    async function apiCall(action, extra = {}) {
+      const resp = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, memberId: MEMBER_ID, ...extra }),
+      });
+      return resp.json();
+    }
+    
+    function showToast(msg, type = 'success') {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = 'toast ' + type + ' show';
+      setTimeout(() => t.classList.remove('show'), 3000);
+    }
+    
+    function openModal(id) { document.getElementById(id).classList.add('show'); }
+    function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+    
+    function formatCurrency(v) {
+      return 'R$ ' + parseFloat(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+    }
+    function formatDate(d) {
+      if (!d) return '-';
+      return new Date(d).toLocaleDateString('pt-BR');
+    }
+    function methodLabel(m) {
+      return m === 'pix' ? 'PIX' : m === 'boleto' ? 'Boleto' : m === 'credit_card' ? 'Cartão' : m;
+    }
+    
+    // ===== TRANSACTIONS =====
+    async function loadTransactions() {
+      const search = document.getElementById('txn-search')?.value || '';
+      const status = document.getElementById('txn-status')?.value || 'all';
+      const method = document.getElementById('txn-method')?.value || 'all';
+      
+      document.getElementById('txn-table').innerHTML = '<div class="loading-overlay"><div class="spinner-sm"></div> Carregando...</div>';
+      
+      const result = await apiCall('get_transactions', { filters: { search, status, method } });
+      const txns = result.transactions || [];
+      
+      if (txns.length === 0) {
+        document.getElementById('txn-table').innerHTML = '<div class="empty-state"><p>Nenhuma transação encontrada</p></div>';
+        return;
+      }
+      
+      let html = '<table><thead><tr><th>Cliente</th><th>Valor</th><th>Método</th><th>Status</th><th>Vencimento</th><th>Data</th></tr></thead><tbody>';
+      txns.forEach(t => {
+        const sc = STATUS_COLORS[t.status] || '#6b7280';
+        html += '<tr>';
+        html += '<td>' + (t.customer_name || 'N/A') + '</td>';
+        html += '<td>' + formatCurrency(t.amount) + '</td>';
+        html += '<td>' + methodLabel(t.payment_method) + '</td>';
+        html += '<td><span class="status-badge" style="background:' + sc + '20;color:' + sc + '">' + (STATUS_LABELS[t.status] || t.status) + '</span></td>';
+        html += '<td>' + formatDate(t.due_date) + '</td>';
+        html += '<td>' + formatDate(t.created_at) + '</td>';
+        html += '</tr>';
+      });
+      html += '</tbody></table>';
+      document.getElementById('txn-table').innerHTML = html;
+    }
+    
+    // ===== SUBSCRIPTIONS =====
+    async function loadSubscriptions() {
+      const status = document.getElementById('sub-status')?.value || 'all';
+      document.getElementById('sub-table').innerHTML = '<div class="loading-overlay"><div class="spinner-sm"></div> Carregando...</div>';
+      
+      const result = await apiCall('get_subscriptions', { filters: { status } });
+      const subs = result.subscriptions || [];
+      
+      if (subs.length === 0) {
+        document.getElementById('sub-table').innerHTML = '<div class="empty-state"><p>Nenhuma assinatura encontrada</p></div>';
+        return;
+      }
+      
+      let html = '<table><thead><tr><th>Cliente</th><th>Valor</th><th>Ciclo</th><th>Próx. Vencimento</th><th>Status</th><th>Ações</th></tr></thead><tbody>';
+      subs.forEach(s => {
+        const st = SUB_STATUS[s.status] || { label: s.status, color: '#6b7280' };
+        html += '<tr>';
+        html += '<td>' + (s.customer_name || 'N/A') + '</td>';
+        html += '<td>' + formatCurrency(s.value) + '</td>';
+        html += '<td>' + (CYCLE_LABELS[s.cycle] || s.cycle) + '</td>';
+        html += '<td>' + formatDate(s.next_due_date) + '</td>';
+        html += '<td><span class="status-badge" style="background:' + st.color + '20;color:' + st.color + '">' + st.label + '</span></td>';
+        html += '<td>';
+        if (s.status === 'active') {
+          html += '<button class="btn btn-danger btn-sm" onclick="cancelSubscription(\\'' + s.id + '\\')">Cancelar</button>';
+        }
+        html += '</td>';
+        html += '</tr>';
+      });
+      html += '</tbody></table>';
+      document.getElementById('sub-table').innerHTML = html;
+    }
+    
+    async function cancelSubscription(id) {
+      if (!confirm('Deseja realmente cancelar esta assinatura?')) return;
+      const result = await apiCall('cancel_subscription', { subscriptionId: id });
+      if (result.success) {
+        showToast(result.message);
+        tabLoaded['subscriptions'] = false;
+        loadSubscriptions();
       } else {
-        // Fallback: reload current page with settings=true and required params
-        const params = new URLSearchParams(window.location.search);
-        params.set('settings', 'true');
-        window.location.href = window.location.pathname + '?' + params.toString();
+        showToast(result.error || 'Erro', 'error');
       }
     }
     
-    if (typeof BX24 !== 'undefined') {
-      BX24.init(function() { 
-        BX24.fitWindow(); 
+    // ===== SPLITS =====
+    async function loadSplits() {
+      document.getElementById('split-table').innerHTML = '<div class="loading-overlay"><div class="spinner-sm"></div> Carregando...</div>';
+      
+      const result = await apiCall('get_splits');
+      const splits = result.splits || [];
+      
+      if (splits.length === 0) {
+        document.getElementById('split-table').innerHTML = '<div class="empty-state"><p>Nenhuma regra de split configurada</p><p style="font-size:12px;margin-top:4px;">Clique em "Novo Split" para criar uma regra</p></div>';
+        return;
+      }
+      
+      let html = '<table><thead><tr><th>Nome</th><th>Wallet</th><th>Tipo</th><th>Valor</th><th>Ativo</th><th>Ações</th></tr></thead><tbody>';
+      splits.forEach(s => {
+        const val = s.split_type === 'percentage' ? s.split_value + '%' : formatCurrency(s.split_value);
+        html += '<tr>';
+        html += '<td>' + s.name + '</td>';
+        html += '<td>' + (s.wallet_name || s.wallet_id) + '</td>';
+        html += '<td>' + (s.split_type === 'percentage' ? 'Porcentagem' : 'Fixo') + '</td>';
+        html += '<td>' + val + '</td>';
+        html += '<td><button class="toggle ' + (s.is_active ? 'on' : '') + '" onclick="toggleSplit(\\'' + s.id + '\\')"></button></td>';
+        html += '<td><button class="btn btn-danger btn-sm" onclick="deleteSplit(\\'' + s.id + '\\')">Excluir</button></td>';
+        html += '</tr>';
       });
+      html += '</tbody></table>';
+      document.getElementById('split-table').innerHTML = html;
+    }
+    
+    async function createSplit() {
+      const data = {
+        name: document.getElementById('split-name').value,
+        wallet_id: document.getElementById('split-wallet').value,
+        wallet_name: document.getElementById('split-wallet-name').value,
+        split_type: document.getElementById('split-type').value,
+        split_value: parseFloat(document.getElementById('split-value').value),
+      };
+      
+      if (!data.name || !data.wallet_id || !data.split_value) {
+        showToast('Preencha todos os campos obrigatórios', 'error');
+        return;
+      }
+      
+      const result = await apiCall('create_split', { data });
+      if (result.success) {
+        showToast(result.message);
+        closeModal('split-modal');
+        document.getElementById('split-name').value = '';
+        document.getElementById('split-wallet').value = '';
+        document.getElementById('split-wallet-name').value = '';
+        document.getElementById('split-value').value = '';
+        loadSplits();
+      } else {
+        showToast(result.error || 'Erro', 'error');
+      }
+    }
+    
+    async function toggleSplit(id) {
+      const result = await apiCall('toggle_split', { splitId: id });
+      if (result.success) { showToast(result.message); loadSplits(); }
+      else { showToast(result.error || 'Erro', 'error'); }
+    }
+    
+    async function deleteSplit(id) {
+      if (!confirm('Excluir esta regra de split?')) return;
+      const result = await apiCall('delete_split', { splitId: id });
+      if (result.success) { showToast(result.message); loadSplits(); }
+      else { showToast(result.error || 'Erro', 'error'); }
+    }
+    
+    // ===== INVOICES =====
+    async function loadInvoices() {
+      document.getElementById('invoice-table').innerHTML = '<div class="loading-overlay"><div class="spinner-sm"></div> Carregando...</div>';
+      
+      const result = await apiCall('get_invoices');
+      const invoices = result.invoices || [];
+      
+      if (invoices.length === 0) {
+        document.getElementById('invoice-table').innerHTML = '<div class="empty-state"><p>Nenhuma nota fiscal encontrada</p></div>';
+        return;
+      }
+      
+      let html = '<table><thead><tr><th>Data</th><th>Nº</th><th>Descrição</th><th>Valor</th><th>Status</th><th>Ações</th></tr></thead><tbody>';
+      invoices.forEach(inv => {
+        const st = INV_STATUS[inv.status] || { label: inv.status, color: '#6b7280' };
+        html += '<tr>';
+        html += '<td>' + formatDate(inv.created_at) + '</td>';
+        html += '<td>' + (inv.invoice_number || '-') + '</td>';
+        html += '<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;">' + inv.service_description + '</td>';
+        html += '<td>' + formatCurrency(inv.value) + '</td>';
+        html += '<td><span class="status-badge" style="background:' + st.color + '20;color:' + st.color + '">' + st.label + '</span></td>';
+        html += '<td style="display:flex;gap:4px;">';
+        if (inv.invoice_url) {
+          html += '<a href="' + inv.invoice_url + '" target="_blank" class="btn btn-outline btn-sm">Ver</a>';
+        }
+        if (inv.status === 'scheduled' && inv.asaas_invoice_id) {
+          html += '<button class="btn btn-success btn-sm" onclick="authorizeInvoice(\\'' + inv.id + '\\')">Autorizar</button>';
+        }
+        if (['scheduled', 'synchronized'].includes(inv.status) && inv.asaas_invoice_id) {
+          html += '<button class="btn btn-danger btn-sm" onclick="cancelInvoice(\\'' + inv.id + '\\')">Cancelar</button>';
+        }
+        html += '</td>';
+        html += '</tr>';
+      });
+      html += '</tbody></table>';
+      document.getElementById('invoice-table').innerHTML = html;
+    }
+    
+    async function createInvoice() {
+      const data = {
+        value: parseFloat(document.getElementById('inv-value').value),
+        service_description: document.getElementById('inv-description').value,
+        observations: document.getElementById('inv-observations').value,
+      };
+      
+      if (!data.value || !data.service_description) {
+        showToast('Preencha valor e descrição', 'error');
+        return;
+      }
+      
+      const result = await apiCall('create_invoice', { data });
+      if (result.success) {
+        showToast(result.message);
+        closeModal('invoice-modal');
+        document.getElementById('inv-value').value = '';
+        document.getElementById('inv-description').value = '';
+        document.getElementById('inv-observations').value = '';
+        loadInvoices();
+      } else {
+        showToast(result.error || 'Erro', 'error');
+      }
+    }
+    
+    async function authorizeInvoice(id) {
+      if (!confirm('Autorizar esta nota fiscal?')) return;
+      const result = await apiCall('authorize_invoice', { invoiceId: id });
+      if (result.success) { showToast(result.message); loadInvoices(); }
+      else { showToast(result.error || 'Erro', 'error'); }
+    }
+    
+    async function cancelInvoice(id) {
+      if (!confirm('Cancelar esta nota fiscal?')) return;
+      const result = await apiCall('cancel_invoice', { invoiceId: id });
+      if (result.success) { showToast(result.message); loadInvoices(); }
+      else { showToast(result.error || 'Erro', 'error'); }
+    }
+    
+    // ===== INTEGRATIONS =====
+    async function loadIntegrations() {
+      const result = await apiCall('get_integrations_status');
+      
+      let html = '<h2 class="section-title">Status das Integrações</h2>';
+      html += '<div class="connection-grid">';
+      
+      // Bitrix
+      html += '<div class="card" style="padding:20px;">';
+      html += '<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">';
+      html += '<div class="connection-icon bitrix"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></div>';
+      html += '<div><div style="font-weight:600;">Bitrix24</div><span class="connection-status">Conectado</span></div>';
+      html += '</div>';
+      if (result.bitrix?.domain) {
+        html += '<p style="font-size:13px;color:#6b7280;">Domínio: ' + result.bitrix.domain + '</p>';
+      }
+      html += '</div>';
+      
+      // Asaas
+      html += '<div class="card" style="padding:20px;">';
+      html += '<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">';
+      html += '<div class="connection-icon asaas"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg></div>';
+      html += '<div><div style="font-weight:600;">Asaas</div>';
+      if (result.asaas?.connected) {
+        html += '<span class="connection-status">Ativo <span class="env-badge ' + result.asaas.environment + '" style="margin-left:6px;">' + (result.asaas.environment === 'production' ? 'Produção' : 'Sandbox') + '</span></span>';
+      } else {
+        html += '<span style="font-size:12px;color:#ef4444;">Não configurado</span>';
+      }
+      html += '</div></div>';
+      if (result.asaas?.webhook_configured) {
+        html += '<p style="font-size:13px;color:#10b981;">✓ Webhook configurado</p>';
+      } else if (result.asaas?.connected) {
+        html += '<p style="font-size:13px;color:#f59e0b;">⚠ Webhook não configurado</p>';
+        html += '<button class="btn btn-warning btn-sm" style="margin-top:8px;" onclick="repairWebhook()">Reparar Webhook</button>';
+      }
+      html += '</div>';
+      
+      html += '</div>';
+      document.getElementById('integrations-content').innerHTML = html;
+    }
+    
+    async function repairWebhook() {
+      showToast('Reparando webhook...');
+      const result = await apiCall('repair_webhook');
+      if (result.success) {
+        showToast(result.message);
+        tabLoaded['integrations'] = false;
+        loadIntegrations();
+      } else {
+        showToast(result.error || 'Erro', 'error');
+      }
+    }
+    
+    // ===== SETTINGS =====
+    async function loadSettings() {
+      const result = await apiCall('get_config');
+      
+      let html = '';
+      
+      // Asaas Config
+      html += '<div class="card" style="margin-bottom:24px;">';
+      html += '<div class="card-header"><h3>Configuração Asaas</h3></div>';
+      html += '<div style="padding:20px;">';
+      
+      html += '<div class="form-group">';
+      html += '<label>Ambiente</label>';
+      html += '<select class="filter-select" id="cfg-environment" style="width:100%;">';
+      html += '<option value="sandbox"' + (result.asaas?.environment === 'sandbox' ? ' selected' : '') + '>Sandbox (Testes)</option>';
+      html += '<option value="production"' + (result.asaas?.environment === 'production' ? ' selected' : '') + '>Produção</option>';
+      html += '</select></div>';
+      
+      html += '<div class="form-group">';
+      html += '<label>Chave API</label>';
+      html += '<input type="password" id="cfg-apikey" placeholder="' + (result.asaas?.api_key_masked || 'Insira a chave API') + '">';
+      html += '<small>Deixe em branco para manter a atual</small></div>';
+      
+      html += '<button class="btn btn-primary" onclick="saveAsaasConfig()">Salvar Configuração</button>';
+      
+      html += '<div style="margin-top:16px;padding-top:16px;border-top:1px solid #e5e7eb;">';
+      html += '<button class="btn btn-warning" onclick="repairWebhookFromSettings()">Reparar Webhook</button>';
+      html += '<p style="font-size:11px;color:#888;margin-top:4px;">Use se os status de pagamento não estão atualizando</p>';
+      html += '</div>';
+      
+      html += '</div></div>';
+      
+      // Fiscal Config
+      html += '<div class="card">';
+      html += '<div class="card-header"><h3>Configuração Fiscal</h3></div>';
+      html += '<div style="padding:20px;">';
+      
+      html += '<div class="form-group">';
+      html += '<label>Código do Serviço Municipal</label>';
+      html += '<input type="text" id="cfg-service-code" value="' + (result.fiscal?.municipal_service_code || '') + '" placeholder="Código do serviço"></div>';
+      
+      html += '<div class="form-group">';
+      html += '<label>Nome do Serviço Municipal</label>';
+      html += '<input type="text" id="cfg-service-name" value="' + (result.fiscal?.municipal_service_name || '') + '" placeholder="Nome do serviço"></div>';
+      
+      html += '<div class="form-group">';
+      html += '<label>ISS (%)</label>';
+      html += '<input type="number" id="cfg-iss" step="0.01" value="' + (result.fiscal?.default_iss || 0) + '"></div>';
+      
+      html += '<div class="form-group">';
+      html += '<label>Template de Observações</label>';
+      html += '<textarea id="cfg-observations" rows="3" placeholder="Template para observações das notas">' + (result.fiscal?.observations_template || '') + '</textarea></div>';
+      
+      html += '<div class="form-group" style="display:flex;align-items:center;gap:12px;">';
+      html += '<button class="toggle ' + (result.fiscal?.auto_emit_on_payment ? 'on' : '') + '" id="cfg-auto-emit" onclick="this.classList.toggle(\\'on\\')"></button>';
+      html += '<label style="margin:0;">Emitir NF automaticamente ao receber pagamento</label></div>';
+      
+      html += '<button class="btn btn-primary" style="margin-top:16px;" onclick="saveFiscalConfig()">Salvar Config Fiscal</button>';
+      
+      html += '</div></div>';
+      
+      document.getElementById('settings-content').innerHTML = html;
+    }
+    
+    async function saveAsaasConfig() {
+      const apiKey = document.getElementById('cfg-apikey').value;
+      const environment = document.getElementById('cfg-environment').value;
+      
+      if (!apiKey) {
+        showToast('Insira a chave API', 'error');
+        return;
+      }
+      
+      const result = await apiCall('save_config', { data: { apiKey, environment } });
+      if (result.success) { showToast(result.message); }
+      else { showToast(result.error || 'Erro', 'error'); }
+    }
+    
+    async function repairWebhookFromSettings() {
+      showToast('Reparando webhook...');
+      const result = await apiCall('repair_webhook');
+      if (result.success) { showToast(result.message); }
+      else { showToast(result.error || 'Erro', 'error'); }
+    }
+    
+    async function saveFiscalConfig() {
+      const data = {
+        municipal_service_code: document.getElementById('cfg-service-code').value,
+        municipal_service_name: document.getElementById('cfg-service-name').value,
+        default_iss: parseFloat(document.getElementById('cfg-iss').value) || 0,
+        observations_template: document.getElementById('cfg-observations').value,
+        auto_emit_on_payment: document.getElementById('cfg-auto-emit').classList.contains('on'),
+      };
+      
+      const result = await apiCall('save_fiscal_config', { data });
+      if (result.success) { showToast(result.message); }
+      else { showToast(result.error || 'Erro', 'error'); }
+    }
+    
+    // BX24 init
+    if (typeof BX24 !== 'undefined') {
+      BX24.init(function() { BX24.fitWindow(); });
     }
   </script>
 </body>
@@ -2344,7 +3394,16 @@ serve(async (req) => {
           serverEndpoint: serverEndpoint,
         };
       } else {
-        paymentData = JSON.parse(bodyText);
+        // JSON body - check if it's a dashboard action
+        const jsonBody = JSON.parse(bodyText);
+        
+        if (jsonBody.action && jsonBody.memberId) {
+          console.log('Dashboard action request:', jsonBody.action);
+          const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+          return await handleDashboardAction(jsonBody, supabase);
+        }
+        
+        paymentData = jsonBody;
       }
     }
     
