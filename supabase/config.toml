@@ -35,3 +35,6 @@ verify_jwt = false
 
 [functions.asaas-invoice-process]
 verify_jwt = false
+
+[functions.bitrix-crm-detail-tab]
+verify_jwt = false

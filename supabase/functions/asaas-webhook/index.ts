@@ -108,6 +108,60 @@ async function updateBitrixPaymentStatus(
   }
 }
 
+// Update a configurable activity badge in Bitrix24
+async function updateActivityBadge(
+  clientEndpoint: string,
+  accessToken: string,
+  activityId: string,
+  badgeCode: string,
+  completed: boolean,
+  amount: number,
+  statusLabel: string
+): Promise<void> {
+  try {
+    const statusColors: Record<string, string> = {
+      'asaas_charge_paid': 'success',
+      'asaas_charge_overdue': 'failure',
+      'asaas_charge_cancelled': 'secondary',
+    };
+
+    const response = await fetch(`${clientEndpoint}crm.activity.configurable.update`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        auth: accessToken,
+        id: parseInt(activityId),
+        fields: {
+          completed,
+          badgeCode,
+        },
+        layout: {
+          icon: { code: 'dollar' },
+          header: { title: 'Cobrança Asaas' },
+          body: {
+            blocks: {
+              info: {
+                type: 'lineOfBlocks',
+                properties: {
+                  blocks: {
+                    value: { type: 'text', properties: { value: `R$ ${amount.toFixed(2).replace('.', ',')}` } },
+                    status: { type: 'text', properties: { value: statusLabel, color: statusColors[badgeCode] || 'primary' } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      }),
+    });
+
+    const result = await response.json();
+    console.log(`[Badge Update] Activity ${activityId} -> ${badgeCode}:`, result.result || result.error);
+  } catch (error) {
+    console.error(`[Badge Update] Error updating activity ${activityId}:`, error);
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -423,17 +477,20 @@ serve(async (req) => {
       response_data: { newStatus, transactionId: transaction.id },
     });
     
-    // If payment confirmed/received, update Bitrix24 and auto-emit invoice
+    // If payment confirmed/received, update Bitrix24, update activity badge, and auto-emit invoice
     if (newStatus === 'confirmed' || newStatus === 'received') {
       // Get Bitrix installation for this tenant
       const { data: installation } = await supabase
         .from('bitrix_installations')
-        .select('client_endpoint, access_token')
+        .select('client_endpoint, access_token, domain')
         .eq('tenant_id', tenantId)
         .eq('status', 'active')
         .single();
       
       if (installation && transaction.bitrix_entity_id) {
+        const clientEndpoint = installation.client_endpoint || (installation.domain ? `https://${installation.domain}/rest/` : null);
+        const token = installation.access_token;
+        
         // Parse external reference to get original payment ID
         const parts = payment.externalReference?.split('_') || [];
         const bitrixPaymentId = parts[2] || '';
@@ -444,7 +501,50 @@ serve(async (req) => {
           bitrixPaymentId,
           newStatus
         );
+        
+        // Update configurable activity badge to "paid"
+        if (transaction.bitrix_activity_id && clientEndpoint && token) {
+          await updateActivityBadge(clientEndpoint, token, transaction.bitrix_activity_id, 'asaas_charge_paid', true, payment.value, 'Pago');
+        }
       }
+    }
+    
+    // If overdue, update badge
+    if (newStatus === 'overdue' && transaction.bitrix_activity_id) {
+      const { data: installation } = await supabase
+        .from('bitrix_installations')
+        .select('client_endpoint, access_token, domain')
+        .eq('tenant_id', tenantId)
+        .eq('status', 'active')
+        .single();
+      
+      if (installation) {
+        const clientEndpoint = installation.client_endpoint || (installation.domain ? `https://${installation.domain}/rest/` : null);
+        if (clientEndpoint && installation.access_token) {
+          await updateActivityBadge(clientEndpoint, installation.access_token, transaction.bitrix_activity_id, 'asaas_charge_overdue', false, payment.value, 'Vencido');
+        }
+      }
+    }
+    
+    // If refunded/cancelled, update badge
+    if ((newStatus === 'refunded' || newStatus === 'cancelled') && transaction.bitrix_activity_id) {
+      const { data: installation } = await supabase
+        .from('bitrix_installations')
+        .select('client_endpoint, access_token, domain')
+        .eq('tenant_id', tenantId)
+        .eq('status', 'active')
+        .single();
+      
+      if (installation) {
+        const clientEndpoint = installation.client_endpoint || (installation.domain ? `https://${installation.domain}/rest/` : null);
+        if (clientEndpoint && installation.access_token) {
+          await updateActivityBadge(clientEndpoint, installation.access_token, transaction.bitrix_activity_id, 'asaas_charge_cancelled', true, payment.value, newStatus === 'refunded' ? 'Reembolsado' : 'Cancelado');
+        }
+      }
+    }
+    
+    // If payment confirmed/received, auto-emit invoice
+    if (newStatus === 'confirmed' || newStatus === 'received') {
       
       // Check fiscal configuration for auto-emit
       const { data: fiscalConfig } = await supabase

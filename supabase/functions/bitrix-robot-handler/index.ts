@@ -353,7 +353,7 @@ serve(async (req) => {
         
         // Save transaction to database
         if (installation.tenant_id) {
-          await supabase.from('transactions').insert({
+          const { data: insertedTx } = await supabase.from('transactions').insert({
             tenant_id: installation.tenant_id,
             asaas_id: payment.id,
             amount: parsedAmount,
@@ -365,7 +365,57 @@ serve(async (req) => {
             payment_url: payment.invoiceUrl,
             bitrix_entity_id: docId,
             bitrix_entity_type: 'deal',
-          });
+          }).select('id').single();
+          
+          // Create configurable activity with badge in Bitrix24 timeline
+          if (apiEndpoint && robotData.auth.access_token) {
+            try {
+              const methodLabel: Record<string, string> = { pix: 'PIX', boleto: 'Boleto', credit_card: 'Cartão' };
+              const actResult = await callBitrixApi(apiEndpoint, 'crm.activity.configurable.add', {
+                ownerTypeId: 2, // Deal
+                ownerId: parseInt(docId),
+                fields: {
+                  completed: false,
+                  badgeCode: 'asaas_charge_created',
+                },
+                layout: {
+                  icon: { code: 'dollar' },
+                  header: { title: `Cobrança Asaas - ${methodLabel[payment_method] || payment_method}` },
+                  body: {
+                    blocks: {
+                      info: {
+                        type: 'lineOfBlocks',
+                        properties: {
+                          blocks: {
+                            value: { type: 'text', properties: { value: `R$ ${parsedAmount.toFixed(2).replace('.', ',')}` } },
+                            status: { type: 'text', properties: { value: 'Pendente', color: 'warning' } },
+                          },
+                        },
+                      },
+                    },
+                  },
+                  footer: {
+                    buttons: {
+                      copy: {
+                        title: 'Copiar Link',
+                        action: { type: 'copyToClipboard', value: payment.invoiceUrl || '' },
+                        type: 'secondary',
+                      },
+                    },
+                  },
+                },
+              }, robotData.auth.access_token);
+              
+              if (actResult.result?.id && insertedTx?.id) {
+                await supabase.from('transactions')
+                  .update({ bitrix_activity_id: String(actResult.result.id) })
+                  .eq('id', insertedTx.id);
+                console.log('[Robot] Created activity:', actResult.result.id);
+              }
+            } catch (actError) {
+              console.error('[Robot] Error creating activity:', actError);
+            }
+          }
         }
         
         returnValues = {

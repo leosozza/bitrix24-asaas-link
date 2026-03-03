@@ -347,6 +347,60 @@ serve(async (req) => {
       
       console.log('Transaction stored in database');
       
+      // Create configurable activity with badge in Bitrix24
+      if (insertedTransaction?.id) {
+        try {
+          const { data: inst } = await supabase
+            .from('bitrix_installations')
+            .select('client_endpoint, access_token, domain')
+            .eq('member_id', paymentRequest.memberId)
+            .order('updated_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          
+          const clientEndpoint = inst?.client_endpoint || (inst?.domain ? `https://${inst.domain}/rest/` : null);
+          if (clientEndpoint && inst?.access_token) {
+            const methodLabel: Record<string, string> = { pix: 'PIX', boleto: 'Boleto', credit_card: 'Cartão' };
+            const actResult = await fetch(`${clientEndpoint}crm.activity.configurable.add`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                auth: inst.access_token,
+                ownerTypeId: 2,
+                ownerId: parseInt(paymentRequest.orderId) || 0,
+                fields: { completed: false, badgeCode: 'asaas_charge_created' },
+                layout: {
+                  icon: { code: 'dollar' },
+                  header: { title: `Cobrança Asaas - ${methodLabel[paymentRequest.paymentMethod] || 'PIX'}` },
+                  body: {
+                    blocks: {
+                      info: {
+                        type: 'lineOfBlocks',
+                        properties: {
+                          blocks: {
+                            value: { type: 'text', properties: { value: `R$ ${amount.toFixed(2).replace('.', ',')}` } },
+                            status: { type: 'text', properties: { value: 'Pendente', color: 'warning' } },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              }),
+            });
+            const actData = await actResult.json();
+            if (actData.result?.id) {
+              await supabase.from('transactions')
+                .update({ bitrix_activity_id: String(actData.result.id) })
+                .eq('id', insertedTransaction.id);
+              console.log('Created activity:', actData.result.id);
+            }
+          }
+        } catch (actErr) {
+          console.error('Error creating activity:', actErr);
+        }
+      }
+      
       // Store applied splits
       if (insertedTransaction && appliedSplits.length > 0) {
         await supabase.from('transaction_splits').insert(
