@@ -1,150 +1,128 @@
 
 
-## Plano: Usar Icones Compativeis com Bitrix24 (b24icons) em Toda Aplicacao
+## Plano: Dashboard Completo Dentro do Iframe do Bitrix24
 
 ### Contexto
 
-A biblioteca oficial de icones do Bitrix24 e `@bitrix24/b24icons` (v2.0.8). Atualmente a aplicacao usa:
-- **Emojis** (💳, 📄, 📋, ✅, 🔧) nas paginas HTML renderizadas dentro do Bitrix24
-- **SVGs inline customizados** (icones de PIX, boleto, cartao) nas edge functions
-- **`icon: { code: 'dollar' }`** nas configurable activities -- "dollar" NAO e um codigo valido do Bitrix24
-- **Lucide React** no frontend dashboard (este permanece, pois o dashboard nao roda dentro do Bitrix24)
+Atualmente, o dashboard administrativo do Bitrix24 (`generateDashboardPage`) mostra apenas metricas basicas e ultimas transacoes. As paginas completas (Transacoes, Assinaturas, Split, Notas Fiscais, Integracoes, Configuracoes) existem apenas no frontend React externo, que nao e acessivel dentro do Bitrix24 devido ao contexto de autenticacao.
 
-### Escopo das Alteracoes
+O objetivo e mover toda a gestao para dentro do iframe do Bitrix24, usando uma **barra de navegacao superior** (sem sidebar) para alternar entre as secoes.
 
-Somente as **Edge Functions que renderizam HTML dentro do Bitrix24** (iframes e timeline) serao alteradas. O frontend React (dashboard/landing) continuara usando lucide-react pois nao e exibido dentro do Bitrix24.
+### Arquitetura
 
----
+A abordagem sera construir um **sistema de navegacao por abas dentro do HTML do iframe**, usando JavaScript vanilla para mostrar/esconder secoes sem recarregar a pagina. Todos os dados serao carregados via chamadas `fetch` ao backend (edge functions).
 
-### 1. Configurable Activity Icons (Timeline)
-
-O campo `icon.code` nas configurable activities aceita codigos obtidos via `crm.timeline.icon.list`. O codigo `dollar` nao existe. 
-
-**Solucao:** Registrar um icone customizado via `crm.timeline.icon.add` durante o lazy registration, e usar o codigo registrado. Alternativa: usar o icone de sistema `info` como fallback.
-
-**Arquivos afetados:**
-- `supabase/functions/bitrix-crm-detail-tab/index.ts` (linha 45)
-- `supabase/functions/asaas-webhook/index.ts` (linha 139)
-- `supabase/functions/bitrix-robot-handler/index.ts` (linha 382)
-- `supabase/functions/bitrix-payment-process/index.ts` (linha 373)
-
-**Mudanca:** Substituir `icon: { code: 'dollar' }` por `icon: { code: 'payment' }` -- registrado via lazy registration com `crm.timeline.icon.add` usando o SVG do b24icons `crm/crm-payment`.
-
-**Adicionar no lazy registration** (`bitrix-payment-iframe/index.ts`):
-- Chamar `crm.timeline.icon.add` com `code: 'payment'` e o `fileData` do SVG do icone `crm-payment` do b24icons
-- Adicionar flag `icons_registered` na tabela `bitrix_installations`
-- Migracao de banco: `ALTER TABLE bitrix_installations ADD COLUMN icons_registered boolean DEFAULT false;`
-
----
-
-### 2. HTML Pages - Substituir Emojis por SVGs do b24icons
-
-Nas paginas HTML renderizadas dentro de iframes do Bitrix24, substituir todos os emojis por SVGs inline da biblioteca b24icons.
-
-**Mapeamento de substituicoes:**
-
-| Local | Emoji/SVG atual | Icone b24icons (categoria/nome) |
-|-------|-----------------|-------------------------------|
-| Botao "Ativar Pagamentos" | ✅ | outline/circle-check |
-| Botao "Reparar Webhook" | 🔧 | outline/spanner |
-| Card Asaas | 💳 | outline/credit-debit-card |
-| PIX gerado | ✅ | outline/circle-check |
-| Copiar codigo PIX | 📋 | outline/copy |
-| Visualizar boleto | 📄 | outline/document |
-| Copiar linha digitavel | 📋 | outline/copy |
-| Pagamento processado | ✅ | outline/circle-check |
-
-**Arquivo afetado:** `supabase/functions/bitrix-payment-iframe/index.ts`
-
----
-
-### 3. HTML Pages - Substituir SVGs Inline Customizados
-
-Os SVGs customizados de metodos de pagamento (PIX, boleto, cartao) no `methodIcons` do dashboard serao substituidos por icones b24icons equivalentes.
-
-| SVG atual | Icone b24icons |
-|-----------|---------------|
-| PIX (icone customizado) | outline/money |
-| Boleto (barcode customizado) | outline/barcode |
-| Cartao (card customizado) | outline/credit-debit-card |
-
-**Arquivos afetados:**
-- `supabase/functions/bitrix-payment-iframe/index.ts` (methodIcons, linhas 1898-1902)
-
----
-
-### 4. SVGs do Dashboard Header e Empty State
-
-Os SVGs inline no dashboard (`bitrix-payment-iframe`) para o header (layers icon) e empty state (grid icon) e settings (gear icon) serao trocados por icones b24icons.
-
-| SVG atual | Icone b24icons |
-|-----------|---------------|
-| Header (layers) | outline/crm |
-| Settings (gear) | outline/settings |
-| Empty state (grid) | outline/list |
-
-**Arquivo afetado:** `supabase/functions/bitrix-payment-iframe/index.ts`
-
----
-
-### 5. Pagina de Instalacao
-
-O SVG de checkmark na pagina de sucesso sera substituido por `outline/circle-check`.
-
-**Arquivo afetado:** `supabase/functions/bitrix-install/index.ts`
-
----
-
-### 6. Detail Tab (CRM)
-
-O painel de pagamentos ja nao usa emojis, mas os botoes e labels de acao podem receber icones b24icons para consistencia visual.
-
-- Botao "Gerar Cobranca" -> adicionar icone `outline/circle-plus` inline
-- Link "Ver" na tabela -> adicionar icone `outline/go-to-m` inline
-
-**Arquivo afetado:** `supabase/functions/bitrix-crm-detail-tab/index.ts`
-
----
-
-### Implementacao Tecnica
-
-Para cada SVG do b24icons, usaremos o conteudo SVG inline diretamente no HTML (copiado do repositorio `bitrix24/b24icons/src/icons/`). Como as edge functions geram HTML puro, nao ha necessidade de instalar pacotes npm -- basta embutir o SVG inline com tamanho controlado via `width`/`height` e `style`.
-
-Exemplo:
-```html
-<!-- Antes -->
-<button>✅ Ativar Pagamentos</button>
-
-<!-- Depois -->
-<button>
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-    <!-- SVG path do b24icons outline/circle-check -->
-  </svg>
-  Ativar Pagamentos
-</button>
+```text
++----------------------------------------------------------+
+| [Visao Geral] [Transacoes] [Assinaturas] [Splits]       |
+| [Notas Fiscais] [Integracoes] [Configuracoes]            |
++----------------------------------------------------------+
+|                                                          |
+|   Conteudo da aba ativa                                  |
+|                                                          |
++----------------------------------------------------------+
 ```
 
----
+A navegacao sera renderizada como uma barra horizontal fixa no topo com botoes estilizados. Ao clicar, o JavaScript mostra o `<div>` correspondente e esconde os demais.
 
-### Resumo de Alteracoes
+### Componente React (expandable-tabs)
 
-#### Banco de Dados
-- Adicionar `icons_registered` (boolean, default false) em `bitrix_installations`
+O componente `expandable-tabs` sera instalado no projeto React (frontend) para uso futuro ou em telas que nao sejam do iframe. Dependencias: `framer-motion`, `usehooks-ts`.
 
-#### Edge Functions modificadas
-- `bitrix-payment-iframe/index.ts` -- substituir emojis e SVGs customizados + registrar timeline icon
-- `bitrix-install/index.ts` -- substituir SVG de checkmark
-- `bitrix-crm-detail-tab/index.ts` -- adicionar icones b24icons nos botoes + mudar icon.code
-- `asaas-webhook/index.ts` -- mudar icon.code de 'dollar' para 'payment'
-- `bitrix-robot-handler/index.ts` -- mudar icon.code de 'dollar' para 'payment'
-- `bitrix-payment-process/index.ts` -- mudar icon.code de 'dollar' para 'payment'
+Porem, dentro do iframe do Bitrix24, a navegacao sera implementada em **HTML/CSS/JS puro** (sem React), pois o iframe renderiza HTML gerado pela edge function.
 
-#### Ordem de Implementacao
-1. Migracao de banco (1 coluna)
-2. Buscar os SVGs corretos do repositorio b24icons
-3. Atualizar `bitrix-payment-iframe` com lazy registration do timeline icon + substituir emojis/SVGs
-4. Atualizar `bitrix-crm-detail-tab` com icones e icon.code correto
-5. Atualizar `asaas-webhook`, `bitrix-robot-handler`, `bitrix-payment-process` com icon.code correto
-6. Atualizar `bitrix-install` com SVG correto
-7. Deploy de todas as edge functions
+### Alteracoes Detalhadas
+
+#### 1. Instalar dependencias no projeto React
+- `framer-motion`
+- `usehooks-ts`
+
+#### 2. Criar componente `src/components/ui/expandable-tabs.tsx`
+- Copiar o componente fornecido pelo usuario
+
+#### 3. Reescrever `generateDashboardPage` em `bitrix-payment-iframe`
+
+Transformar o dashboard atual em um sistema multi-abas com 7 secoes:
+
+| Aba | Conteudo | Dados |
+|-----|----------|-------|
+| Visao Geral | Metricas + ultimas transacoes (atual) | `transactions` table |
+| Transacoes | Tabela completa com filtros (busca, status, metodo) + exportar | `transactions` table |
+| Assinaturas | Lista com filtros + cancelar | Supabase function `asaas-webhook` / `subscriptions` |
+| Split de Pagamento | CRUD de regras de split | `split_configurations` table |
+| Notas Fiscais | Lista + criar + autorizar + cancelar | `invoices` table + `asaas-invoice-process` |
+| Integracoes | Status Bitrix24/Asaas + conectar/desconectar | `bitrix_installations` + `asaas_configurations` |
+| Configuracoes | API Key, ambiente, webhook, fiscal | `asaas_configurations` + `fiscal_configurations` |
+
+**Estrutura HTML:**
+- Barra de navegacao superior fixa com 7 botoes
+- 7 divs de conteudo (apenas 1 visivel por vez)
+- JavaScript para trocar abas e carregar dados via fetch
+- CSS responsivo (barra empilha em mobile)
+
+**Carregamento de dados:**
+- Visao Geral: dados ja carregados no server-side (como hoje)
+- Demais abas: carregados sob demanda via `fetch` ao endpoint da edge function com parametro `?tab=transactions`, `?tab=subscriptions`, etc.
+
+#### 4. Criar endpoints de dados na edge function
+
+Adicionar no handler principal do `bitrix-payment-iframe` suporte para requests JSON com `action`:
+
+```text
+POST /bitrix-payment-iframe
+Content-Type: application/json
+{ "action": "get_transactions", "memberId": "xxx", "filters": {...} }
+{ "action": "get_subscriptions", "memberId": "xxx" }
+{ "action": "get_splits", "memberId": "xxx" }
+{ "action": "create_split", "memberId": "xxx", "data": {...} }
+{ "action": "delete_split", "memberId": "xxx", "splitId": "xxx" }
+{ "action": "get_invoices", "memberId": "xxx" }
+{ "action": "create_invoice", "memberId": "xxx", "data": {...} }
+{ "action": "authorize_invoice", "memberId": "xxx", "invoiceId": "xxx" }
+{ "action": "cancel_invoice", "memberId": "xxx", "invoiceId": "xxx" }
+{ "action": "get_integrations_status", "memberId": "xxx" }
+{ "action": "save_config", "memberId": "xxx", "data": {...} }
+{ "action": "repair_webhook", "memberId": "xxx" }
+{ "action": "cancel_subscription", "memberId": "xxx", "subscriptionId": "xxx" }
+```
+
+Cada action retorna JSON com os dados para popular a aba correspondente.
+
+#### 5. Navegacao superior (CSS/HTML)
+
+```text
+Estilo visual:
+- Background branco com sombra sutil
+- Botoes com icones SVG inline + texto
+- Aba ativa: cor primaria (#0066cc), borda inferior
+- Responsivo: scroll horizontal em telas pequenas
+- Sem sidebar - tudo horizontal
+```
+
+### Ordem de Implementacao
+
+1. Instalar `framer-motion` e `usehooks-ts` no projeto React
+2. Criar `src/components/ui/expandable-tabs.tsx`
+3. Criar os endpoints de dados (actions) no `bitrix-payment-iframe`
+4. Reescrever `generateDashboardPage` com o sistema de abas completo
+5. Implementar JS de cada aba (carregar dados, filtros, acoes CRUD)
+6. Deploy da edge function
+7. Testar abrindo o app no Bitrix24
+
+### Arquivos Afetados
+
+**Novos:**
+- `src/components/ui/expandable-tabs.tsx`
+
+**Modificados:**
+- `supabase/functions/bitrix-payment-iframe/index.ts` (reescrita significativa do dashboard)
+- `package.json` (novas dependencias)
+
+### Consideracoes
+
+- O HTML gerado sera grande (~2000+ linhas) mas sera uma unica resposta HTTP, sem necessidade de navegacao extra
+- Dados carregados sob demanda via fetch para manter o carregamento inicial rapido
+- A autenticacao e feita via `memberId` -- nao precisa de login Supabase dentro do iframe
+- O `BX24.fitWindow()` sera chamado em cada troca de aba para ajustar a altura do iframe
+- Todas as acoes CRUD (criar split, cancelar assinatura, etc.) usarao fetch para os endpoints existentes ou novos
 
