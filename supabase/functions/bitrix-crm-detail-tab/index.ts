@@ -492,8 +492,40 @@ serve(async (req) => {
   }
 
   try {
-    // Handle GET for marketplace validation
+    // Handle GET - preview mode or marketplace validation
     if (req.method === 'GET') {
+      const url = new URL(req.url);
+      const memberId = url.searchParams.get('member_id') || '';
+      
+      if (memberId === 'preview_mode') {
+        const domain = url.searchParams.get('DOMAIN') || 'preview.bitrix24.com';
+        const placement = url.searchParams.get('PLACEMENT') || 'CRM_DEAL_DETAIL_TAB';
+        const entityId = url.searchParams.get('entity_id') || '123';
+        const entityInfo = getEntityInfo(placement);
+        
+        // Mock transactions for preview
+        const mockTransactions = [
+          { customer_name: 'João Silva', amount: 1500.00, payment_method: 'pix', status: 'received', due_date: '2025-01-15', payment_url: 'https://sandbox.asaas.com/i/123' },
+          { customer_name: 'Maria Santos', amount: 850.50, payment_method: 'boleto', status: 'pending', due_date: '2025-02-01', payment_url: 'https://sandbox.asaas.com/i/456' },
+          { customer_name: 'Carlos Oliveira', amount: 2300.00, payment_method: 'credit_card', status: 'confirmed', due_date: '2025-01-20', payment_url: 'https://sandbox.asaas.com/i/789' },
+          { customer_name: 'Ana Costa', amount: 430.00, payment_method: 'pix', status: 'overdue', due_date: '2024-12-28', payment_url: 'https://sandbox.asaas.com/i/321' },
+        ];
+
+        const html = generateDetailTabHTML(
+          entityInfo?.type || 'deal',
+          entityId,
+          entityInfo?.ownerTypeId || 2,
+          mockTransactions,
+          memberId,
+          domain,
+          'preview_token'
+        );
+
+        return new Response(html, {
+          headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' },
+        });
+      }
+
       return new Response('<html><body>OK</body></html>', {
         headers: { ...corsHeaders, 'Content-Type': 'text/html' },
       });
