@@ -1900,6 +1900,23 @@ async function generateDashboardPage(
   
   const memberId = instData?.member_id || '';
 
+  // Pre-build recent transactions HTML to avoid nested template literals
+  let recentTransactionsHtml = '';
+  if (recentTransactions.length > 0) {
+    const rows = recentTransactions.map((t: any) => {
+      const name = t.customer_name || 'N/A';
+      const amount = (parseFloat(t.amount) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+      const method = t.payment_method === 'pix' ? 'PIX' : t.payment_method === 'boleto' ? 'Boleto' : 'Cartão';
+      const color = statusColors[t.status] || '#6b7280';
+      const label = statusLabels[t.status] || t.status;
+      const date = new Date(t.created_at).toLocaleDateString('pt-BR');
+      return `<tr><td>${name}</td><td>R$ ${amount}</td><td>${method}</td><td><span class="status-badge" style="background:${color}20;color:${color}">${label}</span></td><td>${date}</td></tr>`;
+    }).join('');
+    recentTransactionsHtml = `<table><thead><tr><th>Cliente</th><th>Valor</th><th>Método</th><th>Status</th><th>Data</th></tr></thead><tbody>${rows}</tbody></table>`;
+  } else {
+    recentTransactionsHtml = `<div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:48px;height:48px;margin-bottom:12px;opacity:0.5;"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg><p>Nenhuma transação este mês</p></div>`;
+  }
+
   return `
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -2289,27 +2306,7 @@ async function generateDashboardPage(
       <h2 class="section-title">Últimas Transações</h2>
       <div class="card">
         <div class="card-body">
-          ${recentTransactions.length > 0 ? \`
-          <table>
-            <thead><tr><th>Cliente</th><th>Valor</th><th>Método</th><th>Status</th><th>Data</th></tr></thead>
-            <tbody>
-              ${recentTransactions.map((t: any) => \`
-                <tr>
-                  <td>\${t.customer_name || 'N/A'}</td>
-                  <td>R$ \${(parseFloat(t.amount) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                  <td>\${t.payment_method === 'pix' ? 'PIX' : t.payment_method === 'boleto' ? 'Boleto' : 'Cartão'}</td>
-                  <td><span class="status-badge" style="background:\${statusColors[t.status] || '#6b7280'}20;color:\${statusColors[t.status] || '#6b7280'}">\${statusLabels[t.status] || t.status}</span></td>
-                  <td>\${new Date(t.created_at).toLocaleDateString('pt-BR')}</td>
-                </tr>
-              \`).join('')}
-            </tbody>
-          </table>
-          \` : \`
-          <div class="empty-state">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:48px;height:48px;margin-bottom:12px;opacity:0.5;"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-            <p>Nenhuma transação este mês</p>
-          </div>
-          \`}
+          ${recentTransactionsHtml}
         </div>
       </div>
     </div>
@@ -3236,37 +3233,29 @@ function generatePaymentPage(data: PaymentData, asaasConfig: { apiKey: string; e
         }
         
         if (paymentData.paymentMethod === 'pix') {
-          showResult(\`
-            <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>PIX Gerado com Sucesso!</h3>
-            <div class="qr-code">
-              <img src="\${result.qrCodeImage}" alt="QR Code PIX">
-            </div>
-            <p>Escaneie o QR Code ou copie o código abaixo:</p>
-            <div class="pix-code" id="pixCode">\${result.pixCode}</div>
-            <button class="btn btn-primary copy-btn" onclick="copyPixCode()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copiar Código PIX</button>
-            <p style="margin-top: 16px; font-size: 14px; color: #666;">
-              O pagamento será confirmado automaticamente após a transação.
-            </p>
-          \`);
+          showResult(
+            '<h3><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>PIX Gerado com Sucesso!</h3>' +
+            '<div class="qr-code"><img src="' + result.qrCodeImage + '" alt="QR Code PIX"></div>' +
+            '<p>Escaneie o QR Code ou copie o código abaixo:</p>' +
+            '<div class="pix-code" id="pixCode">' + result.pixCode + '</div>' +
+            '<button class="btn btn-primary copy-btn" onclick="copyPixCode()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copiar Código PIX</button>' +
+            '<p style="margin-top:16px;font-size:14px;color:#666;">O pagamento será confirmado automaticamente após a transação.</p>'
+          );
         } else if (paymentData.paymentMethod === 'boleto') {
-          showResult(\`
-            <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>Boleto Gerado com Sucesso!</h3>
-            <div class="boleto-info">
-              <p><strong>Linha Digitável:</strong></p>
-              <div class="boleto-line" id="boletoLine">\${result.boletoDigitableLine}</div>
-              <p><strong>Vencimento:</strong> \${result.dueDate}</p>
-            </div>
-            <button class="btn btn-primary" onclick="window.open('\${result.boletoUrl}', '_blank')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Visualizar Boleto</button>
-            <button class="btn btn-primary copy-btn" onclick="copyBoletoLine()" style="background: #28a745;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copiar Linha Digitável</button>
-          \`);
+          showResult(
+            '<h3><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>Boleto Gerado com Sucesso!</h3>' +
+            '<div class="boleto-info"><p><strong>Linha Digitável:</strong></p>' +
+            '<div class="boleto-line" id="boletoLine">' + result.boletoDigitableLine + '</div>' +
+            '<p><strong>Vencimento:</strong> ' + result.dueDate + '</p></div>' +
+            '<button class="btn btn-primary" onclick="window.open(\'' + result.boletoUrl + '\', \'_blank\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Visualizar Boleto</button>' +
+            '<button class="btn btn-primary copy-btn" onclick="copyBoletoLine()" style="background:#28a745;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copiar Linha Digitável</button>'
+          );
         } else {
-          showResult(\`
-            <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>Pagamento Processado!</h3>
-            <p>Seu pagamento com cartão foi processado com sucesso.</p>
-            <p style="margin-top: 16px; font-size: 14px; color: #666;">
-              ID da Transação: \${result.transactionId}
-            </p>
-          \`);
+          showResult(
+            '<h3><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>Pagamento Processado!</h3>' +
+            '<p>Seu pagamento com cartão foi processado com sucesso.</p>' +
+            '<p style="margin-top:16px;font-size:14px;color:#666;">ID da Transação: ' + result.transactionId + '</p>'
+          );
         }
         
         if (typeof BX24 !== 'undefined') { BX24.fitWindow(); }
