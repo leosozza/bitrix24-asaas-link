@@ -23,21 +23,20 @@ const BitrixPreview = () => {
     fetchDashboard();
   }, []);
 
-  return (
-    <div style={{ padding: "16px", fontFamily: "sans-serif", background: "#f5f5f5", minHeight: "100vh" }}>
-      <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-        <h2 style={{ marginBottom: 16 }}>Preview do Iframe Bitrix24</h2>
-        {loading ? (
-          <p>Carregando...</p>
-        ) : (
-          <iframe
-            srcDoc={html}
-            style={{ width: "100%", minHeight: "85vh", border: "1px solid #ddd", borderRadius: 8, background: "#fff" }}
-            sandbox="allow-scripts allow-same-origin allow-forms"
-          />
-        )}
+  if (loading) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", fontFamily: "sans-serif" }}>
+        Carregando...
       </div>
-    </div>
+    );
+  }
+
+  return (
+    <iframe
+      srcDoc={html}
+      style={{ position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", border: "none" }}
+      sandbox="allow-scripts allow-same-origin allow-forms"
+    />
   );
 };
 
