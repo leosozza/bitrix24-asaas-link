@@ -1,23 +1,45 @@
 
-# Corrigir Layout: Conteudo em Tela Cheia no Bitrix24
 
-## Problema
-O conteudo das paginas (Visao Geral, Transacoes, Configuracoes, etc.) esta limitado a `max-width: 960px` com `margin: 0 auto`, fazendo com que tudo apareca como um "modal pequeno" centralizado em vez de ocupar a tela cheia dentro do iframe do Bitrix24.
+# Atualizar Preview do Placement (CRM Detail Tab)
 
-## Solucao
-Alterar o CSS da classe `.content` no arquivo `supabase/functions/bitrix-payment-iframe/index.ts` para remover a restricao de largura maxima e permitir que o conteudo ocupe toda a largura disponivel.
+## Contexto
+A Edge Function `bitrix-crm-detail-tab` gera o HTML da aba que aparece dentro dos detalhes de Lead/Deal no Bitrix24. Atualmente, o design dessa aba esta desatualizado e nao segue o mesmo estilo visual do dashboard principal (`bitrix-payment-iframe`).
 
-## Alteracoes Tecnicas
+Alem disso, nao existe uma forma facil de visualizar esse placement no `/bitrix-preview`.
 
-**Arquivo:** `supabase/functions/bitrix-payment-iframe/index.ts`
+## Alteracoes
 
-1. **Linha 2000** - Alterar o estilo da classe `.content`:
-   - De: `.content { padding: 24px; max-width: 960px; margin: 0 auto; }`
-   - Para: `.content { padding: 24px; width: 100%; box-sizing: border-box; }`
+### 1. Adicionar preview do Placement na rota `/bitrix-preview`
 
-2. Verificar se ha outras restricoes de `max-width` em containers de conteudo das abas que possam estar limitando a largura (cards de metricas, tabelas, formularios).
+Atualizar `src/pages/BitrixPreview.tsx` para incluir um seletor que permita alternar entre:
+- **Dashboard principal** (bitrix-payment-iframe) - ja existente
+- **Aba CRM** (bitrix-crm-detail-tab) - novo
 
-3. Redesplegar a edge function `bitrix-payment-iframe`.
+O seletor sera um botao ou toggle simples no topo da pagina, fora do iframe.
 
-## Resultado Esperado
-Todo o conteudo do dashboard (metricas, tabelas, formularios) ocupara 100% da largura disponivel dentro do iframe, sem parecer um modal flutuante.
+### 2. Atualizar o design do `bitrix-crm-detail-tab`
+
+Refinar o CSS do HTML gerado pela Edge Function `bitrix-crm-detail-tab/index.ts` para alinhar com o design do dashboard:
+- Mesma paleta de cores e tipografia
+- Cards de metricas com o mesmo estilo (border-radius 12px, sombras suaves)
+- Tabela com o mesmo visual
+- Botao "Gerar Cobranca" com gradiente consistente
+- Formulario overlay com visual atualizado
+- Remover referencias a "ConnectPay" e manter apenas "Asaas"
+
+### 3. Ajustar o endpoint GET do `bitrix-crm-detail-tab`
+
+Atualmente o GET retorna apenas `<html><body>OK</body></html>`. Para o preview funcionar, precisamos que ele aceite query params (`DOMAIN`, `member_id`, `PLACEMENT`) e retorne o HTML completo com dados mockados, similar ao que ja e feito no `bitrix-payment-iframe`.
+
+## Detalhes Tecnicos
+
+**Arquivos modificados:**
+- `src/pages/BitrixPreview.tsx` - Adicionar seletor de modo (Dashboard vs Placement)
+- `supabase/functions/bitrix-crm-detail-tab/index.ts` - Atualizar CSS, suportar GET com preview mode
+
+**Fluxo do preview:**
+1. Usuario acessa `/bitrix-preview`
+2. Ve dois botoes: "Dashboard" e "Aba CRM"
+3. Ao clicar em "Aba CRM", o iframe carrega o HTML do `bitrix-crm-detail-tab` com dados mockados
+4. O GET do `bitrix-crm-detail-tab` detecta `member_id=preview_mode` e retorna HTML com transacoes de exemplo
+
