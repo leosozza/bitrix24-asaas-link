@@ -3300,7 +3300,9 @@ serve(async (req) => {
       const hasPaymentParams = url.searchParams.has('paymentId') || 
                                url.searchParams.has('settings') ||
                                url.searchParams.has('amount') ||
-                               url.searchParams.has('memberId');
+                               url.searchParams.has('memberId') ||
+                               url.searchParams.has('member_id') ||
+                               url.searchParams.has('DOMAIN');
       
       if (!hasPaymentParams) {
         console.log('GET validation request - returning OK');
@@ -3318,8 +3320,8 @@ serve(async (req) => {
         customerEmail: url.searchParams.get('customerEmail') || '',
         customerDocument: url.searchParams.get('customerDocument') || '',
         paymentMethod: url.searchParams.get('paymentMethod') || 'pix',
-        domain: url.searchParams.get('domain') || '',
-        memberId: url.searchParams.get('memberId') || '',
+        domain: url.searchParams.get('domain') || url.searchParams.get('DOMAIN') || '',
+        memberId: url.searchParams.get('memberId') || url.searchParams.get('member_id') || '',
       };
     } else {
       const bodyText = await req.text();
@@ -3565,6 +3567,17 @@ serve(async (req) => {
     // Check URL params for settings=true
     const url = new URL(req.url);
     const showSettings = url.searchParams.get('settings') === 'true';
+
+    // Preview mode - show dashboard with mock data
+    if (paymentData.memberId === 'preview_mode') {
+      console.log('Showing preview mode dashboard');
+      const mockInstallation = { id: 'preview', tenant_id: 'preview', domain: 'preview.bitrix24.com' };
+      const mockAsaasConfig = { apiKey: 'preview', environment: 'sandbox' };
+      const html = await generateDashboardPage(mockInstallation, mockAsaasConfig, supabase);
+      return new Response(html, {
+        headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' },
+      });
+    }
 
     // Scenario 1: No tenant linked - show auth page
     if (!installation?.tenant_id) {
