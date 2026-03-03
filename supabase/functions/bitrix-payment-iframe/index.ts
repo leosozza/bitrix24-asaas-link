@@ -1945,18 +1945,17 @@ async function generateDashboardPage(
     }
     .dock-nav {
       display: inline-flex;
+      flex-wrap: wrap;
       align-items: center;
-      gap: 4px;
-      background: rgba(255,255,255,0.85);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border: 1px solid rgba(0,0,0,0.08);
+      gap: 8px;
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
       border-radius: 16px;
-      padding: 6px 8px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06);
+      padding: 4px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
     }
     .dock-separator {
-      width: 1px;
+      width: 1.2px;
       height: 24px;
       background: #e5e7eb;
       margin: 0 4px;
@@ -1964,26 +1963,39 @@ async function generateDashboardPage(
     .dock-tab {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
-      padding: 8px 12px;
+      gap: 0;
+      padding: 8px;
       border: none;
       background: none;
-      font-size: 13px;
+      font-size: 14px;
       font-weight: 500;
       color: #6b7280;
       cursor: pointer;
       white-space: nowrap;
       border-radius: 12px;
-      transition: all 0.2s ease;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      overflow: hidden;
     }
-    .dock-tab:hover { color: #374151; background: rgba(0,0,0,0.04); }
+    .dock-tab:hover { color: #374151; background: #f3f4f6; }
     .dock-tab.active {
-      color: #fff;
-      background: #0066cc;
-      box-shadow: 0 2px 8px rgba(0,102,204,0.3);
+      color: #0066cc;
+      background: #f3f4f6;
+      gap: 8px;
+      padding: 8px 16px;
     }
-    .dock-tab svg { width: 16px; height: 16px; }
-    .dock-label { display: inline; }
+    .dock-tab svg { width: 20px; height: 20px; flex-shrink: 0; }
+    .dock-label { 
+      display: none;
+      overflow: hidden;
+      max-width: 0;
+      opacity: 0;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .dock-tab.active .dock-label { 
+      display: inline; 
+      max-width: 200px;
+      opacity: 1;
+    }
     @media (max-width: 768px) {
       .dock-nav { 
         overflow-x: auto; 
@@ -1991,9 +2003,6 @@ async function generateDashboardPage(
         max-width: 100%;
       }
       .dock-nav::-webkit-scrollbar { display: none; }
-      .dock-label { display: none; }
-      .dock-tab { padding: 10px; }
-      .dock-tab.active .dock-label { display: inline; }
     }
     
     /* CONTENT */
