@@ -1923,7 +1923,7 @@ async function generateDashboardPage(
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dashboard - ConnectPay Asaas</title>
+  <title>Dashboard - Asaas</title>
   <script src="//api.bitrix24.com/api/v1/"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1934,44 +1934,38 @@ async function generateDashboardPage(
       line-height: 1.5;
     }
     
-    /* TOP NAV */
-    .top-nav {
-      background: white;
-      border-bottom: 1px solid #e5e7eb;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    /* FLOATING DOCK NAV */
+    .dock-wrapper {
+      display: flex;
+      justify-content: center;
+      padding: 16px 16px 0;
       position: sticky;
       top: 0;
       z-index: 100;
     }
-    .nav-header {
-      display: flex;
+    .dock-nav {
+      display: inline-flex;
       align-items: center;
-      justify-content: space-between;
-      padding: 12px 24px;
-      border-bottom: 1px solid #f3f4f6;
+      gap: 4px;
+      background: rgba(255,255,255,0.85);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(0,0,0,0.08);
+      border-radius: 16px;
+      padding: 6px 8px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06);
     }
-    .nav-header h1 {
-      font-size: 18px;
-      font-weight: 700;
-      color: #111827;
-      display: flex;
-      align-items: center;
-      gap: 8px;
+    .dock-separator {
+      width: 1px;
+      height: 24px;
+      background: #e5e7eb;
+      margin: 0 4px;
     }
-    .nav-header h1 svg { color: #0066cc; }
-    .nav-tabs {
-      display: flex;
-      overflow-x: auto;
-      scrollbar-width: none;
-      -ms-overflow-style: none;
-      padding: 0 16px;
-    }
-    .nav-tabs::-webkit-scrollbar { display: none; }
-    .nav-tab {
+    .dock-tab {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      padding: 12px 16px;
+      padding: 8px 12px;
       border: none;
       background: none;
       font-size: 13px;
@@ -1979,15 +1973,28 @@ async function generateDashboardPage(
       color: #6b7280;
       cursor: pointer;
       white-space: nowrap;
-      border-bottom: 2px solid transparent;
-      transition: all 0.2s;
+      border-radius: 12px;
+      transition: all 0.2s ease;
     }
-    .nav-tab:hover { color: #374151; background: #f9fafb; }
-    .nav-tab.active {
-      color: #0066cc;
-      border-bottom-color: #0066cc;
+    .dock-tab:hover { color: #374151; background: rgba(0,0,0,0.04); }
+    .dock-tab.active {
+      color: #fff;
+      background: #0066cc;
+      box-shadow: 0 2px 8px rgba(0,102,204,0.3);
     }
-    .nav-tab svg { width: 16px; height: 16px; }
+    .dock-tab svg { width: 16px; height: 16px; }
+    .dock-label { display: inline; }
+    @media (max-width: 768px) {
+      .dock-nav { 
+        overflow-x: auto; 
+        scrollbar-width: none;
+        max-width: 100%;
+      }
+      .dock-nav::-webkit-scrollbar { display: none; }
+      .dock-label { display: none; }
+      .dock-tab { padding: 10px; }
+      .dock-tab.active .dock-label { display: inline; }
+    }
     
     /* CONTENT */
     .content { padding: 24px; max-width: 960px; margin: 0 auto; }
@@ -2213,48 +2220,40 @@ async function generateDashboardPage(
   </style>
 </head>
 <body>
-  <nav class="top-nav">
-    <div class="nav-header">
-      <h1>
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-          <path d="M22 6l-10 7L2 6"/>
-        </svg>
-        ConnectPay
-      </h1>
-      <span class="env-badge ${asaasConfig.environment}">${asaasConfig.environment === 'production' ? 'Produção' : 'Sandbox'}</span>
-    </div>
-    <div class="nav-tabs">
-      <button class="nav-tab active" onclick="switchTab('overview')" data-tab="overview">
+  <div class="dock-wrapper">
+    <nav class="dock-nav">
+      <button class="dock-tab active" onclick="switchTab('overview')" data-tab="overview">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-        Visão Geral
+        <span class="dock-label">Visão Geral</span>
       </button>
-      <button class="nav-tab" onclick="switchTab('transactions')" data-tab="transactions">
+      <button class="dock-tab" onclick="switchTab('transactions')" data-tab="transactions">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-        Transações
+        <span class="dock-label">Transações</span>
       </button>
-      <button class="nav-tab" onclick="switchTab('subscriptions')" data-tab="subscriptions">
+      <button class="dock-tab" onclick="switchTab('subscriptions')" data-tab="subscriptions">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg>
-        Assinaturas
+        <span class="dock-label">Assinaturas</span>
       </button>
-      <button class="nav-tab" onclick="switchTab('splits')" data-tab="splits">
+      <div class="dock-separator"></div>
+      <button class="dock-tab" onclick="switchTab('splits')" data-tab="splits">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M11 18H8a2 2 0 0 1-2-2V9"/></svg>
-        Splits
+        <span class="dock-label">Splits</span>
       </button>
-      <button class="nav-tab" onclick="switchTab('invoices')" data-tab="invoices">
+      <button class="dock-tab" onclick="switchTab('invoices')" data-tab="invoices">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-        Notas Fiscais
+        <span class="dock-label">Notas Fiscais</span>
       </button>
-      <button class="nav-tab" onclick="switchTab('integrations')" data-tab="integrations">
+      <div class="dock-separator"></div>
+      <button class="dock-tab" onclick="switchTab('integrations')" data-tab="integrations">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-        Integrações
+        <span class="dock-label">Integrações</span>
       </button>
-      <button class="nav-tab" onclick="switchTab('settings')" data-tab="settings">
+      <button class="dock-tab" onclick="switchTab('settings')" data-tab="settings">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-        Configurações
+        <span class="dock-label">Configurações</span>
       </button>
-    </div>
-  </nav>
+    </nav>
+  </div>
   
   <div class="content">
     <!-- OVERVIEW TAB -->
@@ -2510,7 +2509,7 @@ async function generateDashboardPage(
     
     function switchTab(tab) {
       document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-      document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.dock-tab').forEach(el => el.classList.remove('active'));
       document.getElementById('tab-' + tab).classList.add('active');
       document.querySelector('[data-tab="' + tab + '"]').classList.add('active');
       
