@@ -16,6 +16,7 @@ import DashboardInvoices from "./pages/DashboardInvoices";
 import DashboardIntegrations from "./pages/DashboardIntegrations";
 import DashboardMcp from "./pages/DashboardMcp";
 import DashboardSettings from "./pages/DashboardSettings";
+import BitrixPreview from "./pages/BitrixPreview";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -95,6 +96,7 @@ const App = () => (
                   </ProtectedRoute>
                 }
               />
+              <Route path="/bitrix-preview" element={<BitrixPreview />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>
