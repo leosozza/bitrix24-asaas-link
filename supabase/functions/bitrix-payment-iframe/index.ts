@@ -3182,6 +3182,22 @@ async function generateDashboardPage(
         showToast(result.error || 'Erro', 'error');
       }
     }
+
+    async function saveManualWebhookSecret() {
+      const el = document.getElementById('wh-manual-secret');
+      const secret = (el && el.value || '').trim();
+      if (!secret) { showToast('Cole o token primeiro', 'error'); return; }
+      showToast('Salvando token...');
+      const r = await apiCall('save_webhook_secret', { data: { secret } });
+      if (r && r.success) {
+        showToast('Token salvo!');
+        tabLoaded['settings'] = false;
+        loadSettings();
+      } else {
+        showToast((r && r.error) || 'Erro ao salvar', 'error');
+      }
+    }
+    
     
     async function runTestCharge() {
       const billing_type = document.getElementById('test-billing-type').value;
