@@ -298,6 +298,33 @@ serve(async (req) => {
     
     let returnValues: Record<string, unknown> = {};
     let logMessage = '';
+
+    // Resolve Bitrix entity from document_id (e.g. ["crm","CCrmDocumentDeal","DEAL_123"])
+    const docTypeRaw = String(robotData.document_id?.[1] || '');
+    const docIdRaw = String(robotData.document_id?.[2] || robotData.document_id?.[0] || '');
+    const entityIdNum = parseInt(docIdRaw.replace(/[^0-9]/g, '')) || 0;
+    let entityType: 'deal' | 'lead' | 'contact' | 'company' = 'deal';
+    if (/Lead/i.test(docTypeRaw)) entityType = 'lead';
+    else if (/Contact/i.test(docTypeRaw)) entityType = 'contact';
+    else if (/Company/i.test(docTypeRaw)) entityType = 'company';
+
+    const postTimelineComment = async (text: string) => {
+      if (!apiEndpoint || !robotData.auth.access_token || !entityIdNum) return;
+      try {
+        await callBitrixApi(apiEndpoint, 'crm.timeline.comment.add', {
+          fields: {
+            ENTITY_ID: entityIdNum,
+            ENTITY_TYPE: entityType,
+            COMMENT: text,
+          },
+        }, robotData.auth.access_token);
+        console.log('[Robot] Timeline comment posted to', entityType, entityIdNum);
+      } catch (e) {
+        console.error('[Robot] Timeline comment error:', e);
+      }
+    };
+
+    
     
     // Process based on robot code
     switch (robotData.code) {
@@ -325,8 +352,10 @@ serve(async (req) => {
         });
         
         if (customer.errors) {
-          returnValues = { error: customer.errors[0]?.description || 'Erro ao criar cliente' };
-          logMessage = `Erro: ${customer.errors[0]?.description}`;
+          const msg = customer.errors[0]?.description || 'Erro ao criar cliente';
+          returnValues = { error: msg };
+          logMessage = `Erro: ${msg}`;
+          await postTimelineComment(`[B]❌ Asaas — falha ao criar cliente[/B]\n${msg}`);
           break;
         }
         
@@ -346,8 +375,10 @@ serve(async (req) => {
         );
         
         if (payment.errors) {
-          returnValues = { error: payment.errors[0]?.description || 'Erro ao criar cobrança' };
-          logMessage = `Erro: ${payment.errors[0]?.description}`;
+          const msg = payment.errors[0]?.description || 'Erro ao criar cobrança';
+          returnValues = { error: msg };
+          logMessage = `Erro: ${msg}`;
+          await postTimelineComment(`[B]❌ Asaas — falha ao criar cobrança[/B]\nValor: R$ ${parsedAmount.toFixed(2).replace('.', ',')}\nMotivo: ${msg}`);
           break;
         }
         
@@ -425,8 +456,20 @@ serve(async (req) => {
           boleto_url: payment.bankSlipUrl || '',
         };
         logMessage = `Cobrança criada: ${payment.id} - R$ ${parsedAmount}`;
+
+        // Post a plain timeline comment with success info + link
+        {
+          const methodLabel: Record<string, string> = { pix: 'PIX', boleto: 'Boleto', credit_card: 'Cartão de Crédito' };
+          const m = methodLabel[payment_method] || (payment_method || 'PIX');
+          const amountFmt = `R$ ${parsedAmount.toFixed(2).replace('.', ',')}`;
+          const link = payment.invoiceUrl ? `\nLink: ${payment.invoiceUrl}` : '';
+          await postTimelineComment(
+            `[B]✅ Asaas — cobrança criada com sucesso[/B]\nID: ${payment.id}\nMétodo: ${m}\nValor: ${amountFmt}\nStatus: ${payment.status}${link}`
+          );
+        }
         break;
       }
+      
       
       case 'asaas_check_payment': {
         const { charge_id } = robotData.properties;
