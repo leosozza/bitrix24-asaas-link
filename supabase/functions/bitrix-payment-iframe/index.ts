@@ -1934,6 +1934,19 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+
+    case 'save_webhook_secret': {
+      const secret = (data?.secret || '').toString().trim();
+      if (!secret) return jsonError('Token vazio');
+      const { error } = await supabase
+        .from('asaas_configurations')
+        .update({ webhook_secret: secret, webhook_configured: true, updated_at: new Date().toISOString() })
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true);
+      if (error) return jsonError(`Erro ao salvar: ${error.message}`);
+      return jsonSuccess({ message: 'Token do webhook salvo' });
+    }
+    
     
     default:
       return jsonError(`Unknown action: ${action}`);
