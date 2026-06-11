@@ -345,10 +345,13 @@ serve(async (req) => {
       if (splits && splits.length > 0) {
         splitConfigs = splits as SplitConfig[];
         console.log('Found active splits:', splitConfigs.length);
+        const splitErr = validateSplits(splitConfigs, amount);
+        if (splitErr) throw new Error(splitErr);
       }
     }
     
     // Create payment in Asaas with splits
+    const cleanDoc = paymentRequest.customerDocument.replace(/\D/g, '');
     const { payment, appliedSplits } = await createAsaasPayment(
       paymentRequest.asaasApiKey,
       baseUrl,
@@ -356,6 +359,11 @@ serve(async (req) => {
       paymentRequest.paymentMethod,
       amount,
       externalReference,
+      {
+        name: paymentRequest.customerName || 'Cliente',
+        email: paymentRequest.customerEmail || '',
+        cpfCnpj: cleanDoc,
+      },
       cardData,
       splitConfigs
     );
