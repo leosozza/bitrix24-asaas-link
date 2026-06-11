@@ -727,7 +727,7 @@ serve(async (req) => {
           .eq('is_active', true)
           .single();
         
-        const docId = robotData.document_id[2] || robotData.document_id[0] || 'unknown';
+        const docId = entityIdNum ? String(entityIdNum) : (robotData.document_id[2] || robotData.document_id[0] || 'unknown');
         
         // Build invoice payload
         const invoicePayload: Record<string, unknown> = {
