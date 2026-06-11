@@ -69,6 +69,8 @@ const asaasStatusMap: Record<string, string> = {
   DUNNING_REQUESTED: 'overdue',
   DUNNING_RECEIVED: 'received',
   AWAITING_RISK_ANALYSIS: 'pending',
+  CANCELED: 'cancelled',
+  DELETED: 'cancelled',
 };
 
 const subscriptionStatusMap: Record<string, string> = {
