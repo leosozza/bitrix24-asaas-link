@@ -1867,6 +1867,31 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
       return jsonSuccess({ message: 'Dados da empresa atualizados' });
     }
     
+    case 'search_municipal_services': {
+      const query = (data?.query || '').toString().trim();
+      if (query.length < 3) return jsonSuccess({ services: [] });
+      
+      const resp = await fetch(`${SUPABASE_URL}/functions/v1/asaas-invoice-process`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+        body: JSON.stringify({
+          action: 'list_municipal_services',
+          tenantId,
+          description: query,
+        }),
+      });
+      
+      const result = await resp.json();
+      if (!resp.ok) return jsonError(result.error || 'Erro ao buscar serviços');
+      
+      const list = (result.data || result || []).map((s: any) => ({
+        id: s.id,
+        code: s.code || s.serviceCode,
+        description: s.description,
+      }));
+      return jsonSuccess({ services: list });
+    }
+    
     case 'save_fiscal_config': {
       if (!data) return jsonError('data required');
       
@@ -3023,13 +3048,19 @@ async function generateDashboardPage(
       html += '<div class="card-header"><h3>Configuração Fiscal</h3></div>';
       html += '<div style="padding:20px;">';
       
-      html += '<div class="form-group">';
-      html += '<label>Código do Serviço Municipal</label>';
-      html += '<input type="text" id="cfg-service-code" value="' + (result.fiscal?.municipal_service_code || '') + '" placeholder="Código do serviço"></div>';
+      const fsid = (result.fiscal?.municipal_service_id || '').replace(/"/g, '&quot;');
+      const fscode = (result.fiscal?.municipal_service_code || '').replace(/"/g, '&quot;');
+      const fsname = (result.fiscal?.municipal_service_name || '').replace(/"/g, '&quot;');
+      html += '<input type="hidden" id="cfg-service-id" value="' + fsid + '">';
+      html += '<input type="hidden" id="cfg-service-code" value="' + fscode + '">';
+      html += '<input type="hidden" id="cfg-service-name" value="' + fsname + '">';
       
-      html += '<div class="form-group">';
-      html += '<label>Nome do Serviço Municipal</label>';
-      html += '<input type="text" id="cfg-service-name" value="' + (result.fiscal?.municipal_service_name || '') + '" placeholder="Nome do serviço"></div>';
+      html += '<div class="form-group" style="position:relative;">';
+      html += '<label>Serviço Municipal</label>';
+      html += '<input type="text" id="cfg-service-search" placeholder="Buscar serviço (mín. 3 caracteres)" oninput="onServiceSearch()" autocomplete="off">';
+      html += '<div id="cfg-service-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #e2e8f0;border-radius:8px;max-height:240px;overflow-y:auto;z-index:50;box-shadow:0 4px 12px rgba(0,0,0,.08);margin-top:4px;"></div>';
+      html += '<div id="cfg-service-selected" style="margin-top:8px;padding:10px;background:#f1f5f9;border-radius:6px;font-size:13px;' + (fscode ? '' : 'display:none;') + '"><strong>Selecionado:</strong> <span id="cfg-service-label">' + (fscode ? fscode + ' - ' + fsname : '') + '</span></div>';
+      html += '</div>';
       
       html += '<div class="form-group">';
       html += '<label>ISS (%)</label>';
@@ -3099,8 +3130,40 @@ async function generateDashboardPage(
       }
     }
     
+    let serviceSearchTimer = null;
+    async function onServiceSearch() {
+      const q = document.getElementById('cfg-service-search').value.trim();
+      const dd = document.getElementById('cfg-service-dropdown');
+      if (q.length < 3) { dd.style.display = 'none'; dd.innerHTML = ''; return; }
+      clearTimeout(serviceSearchTimer);
+      serviceSearchTimer = setTimeout(async () => {
+        const r = await apiCall('search_municipal_services', { data: { query: q } });
+        if (!r.success) { dd.style.display = 'none'; return; }
+        const items = r.services || [];
+        if (items.length === 0) {
+          dd.innerHTML = '<div style="padding:10px;color:#64748b;font-size:13px;">Nenhum serviço encontrado</div>';
+        } else {
+          dd.innerHTML = items.map(s =>
+            '<div style="padding:10px;cursor:pointer;border-bottom:1px solid #f1f5f9;font-size:13px;" onmouseover="this.style.background=\\'#f8fafc\\'" onmouseout="this.style.background=\\'\\'" onclick="selectService(\\'' + (s.id || '') + '\\',\\'' + (s.code || '').replace(/'/g,"\\\\'") + '\\',\\'' + (s.description || '').replace(/'/g,"\\\\'") + '\\')"><strong>' + (s.code || '') + '</strong> ' + (s.description || '') + '</div>'
+          ).join('');
+        }
+        dd.style.display = 'block';
+      }, 350);
+    }
+    
+    function selectService(id, code, name) {
+      document.getElementById('cfg-service-id').value = id;
+      document.getElementById('cfg-service-code').value = code;
+      document.getElementById('cfg-service-name').value = name;
+      document.getElementById('cfg-service-label').textContent = code + ' - ' + name;
+      document.getElementById('cfg-service-selected').style.display = 'block';
+      document.getElementById('cfg-service-search').value = '';
+      document.getElementById('cfg-service-dropdown').style.display = 'none';
+    }
+    
     async function saveFiscalConfig() {
       const data = {
+        municipal_service_id: document.getElementById('cfg-service-id').value,
         municipal_service_code: document.getElementById('cfg-service-code').value,
         municipal_service_name: document.getElementById('cfg-service-name').value,
         default_iss: parseFloat(document.getElementById('cfg-iss').value) || 0,
@@ -3112,6 +3175,7 @@ async function generateDashboardPage(
       if (result.success) { showToast(result.message); }
       else { showToast(result.error || 'Erro', 'error'); }
     }
+    
     
     // BX24 init
     if (typeof BX24 !== 'undefined') {
