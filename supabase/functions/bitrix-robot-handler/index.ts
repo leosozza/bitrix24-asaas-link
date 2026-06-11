@@ -617,8 +617,8 @@ serve(async (req) => {
           credit_card: 'CREDIT_CARD',
         };
         
-        // Create subscription in Asaas
-        const docId = robotData.document_id[2] || robotData.document_id[0] || 'unknown';
+        // Create subscription in Asaas — use resolved target entity (override or workflow)
+        const docId = entityIdNum ? String(entityIdNum) : (robotData.document_id[2] || robotData.document_id[0] || 'unknown');
         
         const subscriptionResponse = await fetch(`${baseUrl}/subscriptions`, {
           method: 'POST',
