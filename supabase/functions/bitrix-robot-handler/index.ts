@@ -523,17 +523,21 @@ serve(async (req) => {
       
       case 'asaas_create_subscription': {
         const { payment_method, amount, customer_name, customer_email, customer_document, cycle, first_due_days } = robotData.properties;
-        
-        if (!amount || !customer_document || !cycle) {
+        console.log('[Robot] create_subscription raw inputs:', { amount, customer_document, cycle });
+
+        const docDigits = stripDocument(customer_document);
+        if (!amount || !docDigits || !cycle) {
           returnValues = { error: 'Valor, CPF/CNPJ e ciclo são obrigatórios' };
           logMessage = 'Erro: Dados incompletos';
+          await postTimelineComment('[B]❌ Asaas — assinatura: dados incompletos[/B]\nInforme valor, CPF/CNPJ e ciclo.');
           break;
         }
         
-        const parsedAmount = parseFloat(amount);
+        const parsedAmount = parseBRLAmount(amount);
         if (isNaN(parsedAmount) || parsedAmount <= 0) {
           returnValues = { error: 'Valor inválido' };
           logMessage = 'Erro: Valor inválido';
+          await postTimelineComment(`[B]❌ Asaas — assinatura: valor inválido[/B]\nValor recebido: \`${String(amount)}\``);
           break;
         }
         
@@ -541,8 +545,9 @@ serve(async (req) => {
         const customer = await findOrCreateCustomer(asaasConfig.api_key, baseUrl, {
           name: customer_name || 'Cliente',
           email: customer_email || '',
-          cpfCnpj: customer_document,
+          cpfCnpj: docDigits,
         });
+
         
         if (customer.errors) {
           returnValues = { error: customer.errors[0]?.description || 'Erro ao criar cliente' };
