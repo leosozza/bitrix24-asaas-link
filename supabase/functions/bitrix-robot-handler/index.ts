@@ -751,7 +751,7 @@ serve(async (req) => {
           };
         }
         
-        invoicePayload.externalReference = `bitrix_${robotData.auth.member_id}_${docId}`;
+        invoicePayload.externalReference = `bitrix_${robotData.auth.member_id}_${entityType}_${docId}`;
         
         console.log('[Asaas] Creating invoice:', JSON.stringify(invoicePayload));
         
