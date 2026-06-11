@@ -1810,6 +1810,12 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
         .eq('tenant_id', tenantId)
         .maybeSingle();
       
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('company_name, email, phone, bitrix_domain')
+        .eq('id', tenantId)
+        .maybeSingle();
+      
       const webhookUrl = `${SUPABASE_URL}/functions/v1/asaas-webhook`;
       const webhookEvents = [
         'PAYMENT_CREATED', 'PAYMENT_RECEIVED', 'PAYMENT_CONFIRMED',
@@ -1819,6 +1825,7 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
       ];
       
       return jsonSuccess({
+        profile: profile || null,
         asaas: asaasConf ? {
           environment: asaasConf.environment,
           webhook_configured: asaasConf.webhook_configured,
@@ -1834,6 +1841,30 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
         },
         fiscal: fiscalConf,
       });
+    }
+    
+    case 'save_profile': {
+      if (!data) return jsonError('data required');
+      const company_name = (data.company_name || '').toString().trim();
+      const email = (data.email || '').toString().trim();
+      const phone = (data.phone || '').toString().trim();
+      
+      if (!company_name) return jsonError('Nome da empresa é obrigatório');
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return jsonError('E-mail válido é obrigatório');
+      
+      const { error: upErr } = await supabase
+        .from('profiles')
+        .update({
+          company_name,
+          email,
+          phone: phone || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', tenantId);
+      
+      if (upErr) return jsonError('Erro ao salvar empresa: ' + upErr.message);
+      
+      return jsonSuccess({ message: 'Dados da empresa atualizados' });
     }
     
     case 'save_fiscal_config': {
@@ -2952,6 +2983,18 @@ async function generateDashboardPage(
       
       let html = '';
       
+      // Empresa (usado para registro do webhook e cobranças)
+      const p = result.profile || {};
+      html += '<div class="card" style="margin-bottom:24px;">';
+      html += '<div class="card-header"><h3>Dados da Empresa</h3></div>';
+      html += '<div style="padding:20px;">';
+      html += '<p style="margin:0 0 16px;color:#64748b;font-size:13px;">Esses dados são usados no registro do webhook no Asaas e nas notificações de cobrança. Um e-mail real é obrigatório.</p>';
+      html += '<div class="form-group"><label>Nome da Empresa *</label><input type="text" id="cfg-company" value="' + (p.company_name || '').replace(/"/g, '&quot;') + '" placeholder="Minha Empresa LTDA"></div>';
+      html += '<div class="form-group"><label>E-mail *</label><input type="email" id="cfg-email" value="' + (p.email || '').replace(/"/g, '&quot;') + '" placeholder="contato@minhaempresa.com"></div>';
+      html += '<div class="form-group"><label>Telefone</label><input type="text" id="cfg-phone" value="' + (p.phone || '').replace(/"/g, '&quot;') + '" placeholder="(11) 99999-9999"></div>';
+      html += '<button class="btn btn-primary" onclick="saveProfile()">Salvar Empresa</button>';
+      html += '</div></div>';
+      
       // Asaas Config
       html += '<div class="card" style="margin-bottom:24px;">';
       html += '<div class="card-header"><h3>Configuração Asaas</h3></div>';
@@ -3005,6 +3048,24 @@ async function generateDashboardPage(
       html += '</div></div>';
       
       document.getElementById('settings-content').innerHTML = html;
+    }
+    
+    async function saveProfile() {
+      const company_name = document.getElementById('cfg-company').value.trim();
+      const email = document.getElementById('cfg-email').value.trim();
+      const phone = document.getElementById('cfg-phone').value.trim();
+      
+      if (!company_name) { showToast('Informe o nome da empresa', 'error'); return; }
+      if (!email) { showToast('Informe um e-mail válido', 'error'); return; }
+      
+      const result = await apiCall('save_profile', { data: { company_name, email, phone } });
+      if (result.success) {
+        showToast(result.message);
+        tabLoaded['settings'] = false;
+        loadSettings();
+      } else {
+        showToast(result.error || 'Erro', 'error');
+      }
     }
     
     async function saveAsaasConfig() {
