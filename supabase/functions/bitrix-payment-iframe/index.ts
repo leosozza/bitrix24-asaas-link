@@ -1863,7 +1863,31 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
         .eq('id', tenantId);
       
       if (upErr) return jsonError('Erro ao salvar empresa: ' + upErr.message);
+    
+    case 'search_municipal_services': {
+      const query = (data?.query || '').toString().trim();
+      if (query.length < 3) return jsonSuccess({ services: [] });
       
+      const resp = await fetch(`${SUPABASE_URL}/functions/v1/asaas-invoice-process`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+        body: JSON.stringify({
+          action: 'list_municipal_services',
+          tenantId,
+          description: query,
+        }),
+      });
+      
+      const result = await resp.json();
+      if (!resp.ok) return jsonError(result.error || 'Erro ao buscar serviços');
+      
+      const list = (result.data || result || []).map((s: any) => ({
+        id: s.id,
+        code: s.code || s.serviceCode,
+        description: s.description,
+      }));
+      return jsonSuccess({ services: list });
+    }
       return jsonSuccess({ message: 'Dados da empresa atualizados' });
     }
     
