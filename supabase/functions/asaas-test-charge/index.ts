@@ -77,7 +77,7 @@ serve(async (req) => {
     }
     push(`   ✓ Cliente: ${customer.id}`);
 
-    push(`4/4 Criando cobrança de teste (${billing_type}, R$ 1,00)...`);
+    push(`4/4 Criando cobrança de teste (${billing_type}, R$ 5,00)...`);
     const due = new Date();
     due.setDate(due.getDate() + 3);
     const payRes = await fetch(`${url}/payments`, {
@@ -86,7 +86,7 @@ serve(async (req) => {
       body: JSON.stringify({
         customer: customer.id,
         billingType: billing_type,
-        value: 1.00,
+        value: 5.00,
         dueDate: due.toISOString().slice(0, 10),
         description: 'Cobrança de teste - ConnectPay (Lovable)',
         externalReference: `test-${Date.now()}`,

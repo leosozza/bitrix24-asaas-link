@@ -1934,6 +1934,19 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+
+    case 'save_webhook_secret': {
+      const secret = (data?.secret || '').toString().trim();
+      if (!secret) return jsonError('Token vazio');
+      const { error } = await supabase
+        .from('asaas_configurations')
+        .update({ webhook_secret: secret, webhook_configured: true, updated_at: new Date().toISOString() })
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true);
+      if (error) return jsonError(`Erro ao salvar: ${error.message}`);
+      return jsonSuccess({ message: 'Token do webhook salvo' });
+    }
+    
     
     default:
       return jsonError(`Unknown action: ${action}`);
@@ -2973,13 +2986,20 @@ async function generateDashboardPage(
       html += '<button class="btn btn-secondary btn-sm" onclick="copyToClipboard(\\'wh-url\\', this)">Copiar</button>';
       html += '</div></div>';
       
-      if (secret) {
-        html += '<div class="form-group"><label>Token de Autenticação (header <code>asaas-access-token</code>)</label>';
-        html += '<div style="display:flex;gap:8px;">';
-        html += '<input type="text" id="wh-secret" readonly value="' + escapeHtml(secret) + '" style="flex:1;font-family:monospace;font-size:12px;">';
-        html += '<button class="btn btn-secondary btn-sm" onclick="copyToClipboard(\\'wh-secret\\', this)">Copiar</button>';
-        html += '</div></div>';
-      }
+      html += '<div class="form-group"><label>Token salvo (header <code>asaas-access-token</code>)</label>';
+      html += '<div style="display:flex;gap:8px;">';
+      html += '<input type="text" id="wh-secret" readonly value="' + escapeHtml(secret || '— não configurado —') + '" style="flex:1;font-family:monospace;font-size:12px;">';
+      if (secret) html += '<button class="btn btn-secondary btn-sm" onclick="copyToClipboard(\\'wh-secret\\', this)">Copiar</button>';
+      html += '</div></div>';
+
+      // Manual override — caso o usuário tenha cadastrado o webhook no Asaas e queira usar o token gerado lá
+      html += '<div class="form-group" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px;">';
+      html += '<label style="font-weight:600;">Colar token gerado pelo Asaas</label>';
+      html += '<p style="margin:4px 0 8px;font-size:12px;color:#64748b;">Se você cadastrou o webhook manualmente no painel do Asaas e definiu um token próprio, cole-o aqui para que possamos validar as chamadas.</p>';
+      html += '<div style="display:flex;gap:8px;">';
+      html += '<input type="text" id="wh-manual-secret" placeholder="Cole o token do Asaas aqui" style="flex:1;font-family:monospace;font-size:12px;">';
+      html += '<button class="btn btn-primary btn-sm" onclick="saveManualWebhookSecret()">Salvar token</button>';
+      html += '</div></div>';
       
       html += '<div class="form-group"><label>Eventos a habilitar</label>';
       html += '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
@@ -3080,7 +3100,7 @@ async function generateDashboardPage(
       html += '<div class="card" style="margin-bottom:24px;">';
       html += '<div class="card-header"><h3>⚡ Teste de Integração Asaas</h3></div>';
       html += '<div style="padding:20px;">';
-      html += '<p style="margin:0 0 16px;color:#64748b;font-size:13px;">Valida sua API key e cria uma cobrança real de R$ 1,00 no Asaas. Use o ambiente Sandbox para testes.</p>';
+      html += '<p style="margin:0 0 16px;color:#64748b;font-size:13px;">Valida sua API key e cria uma cobrança real de R$ 5,00 no Asaas. Use o ambiente Sandbox para testes.</p>';
       html += '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">';
       html += '<label style="margin:0;font-size:13px;color:#334155;">Tipo:</label>';
       html += '<select id="test-billing-type" class="filter-select" style="width:auto;"><option value="PIX">PIX</option><option value="BOLETO">Boleto</option><option value="CREDIT_CARD">Cartão</option></select>';
@@ -3175,6 +3195,22 @@ async function generateDashboardPage(
         showToast(result.error || 'Erro', 'error');
       }
     }
+
+    async function saveManualWebhookSecret() {
+      const el = document.getElementById('wh-manual-secret');
+      const secret = (el && el.value || '').trim();
+      if (!secret) { showToast('Cole o token primeiro', 'error'); return; }
+      showToast('Salvando token...');
+      const r = await apiCall('save_webhook_secret', { data: { secret } });
+      if (r && r.success) {
+        showToast('Token salvo!');
+        tabLoaded['settings'] = false;
+        loadSettings();
+      } else {
+        showToast((r && r.error) || 'Erro ao salvar', 'error');
+      }
+    }
+    
     
     async function runTestCharge() {
       const billing_type = document.getElementById('test-billing-type').value;

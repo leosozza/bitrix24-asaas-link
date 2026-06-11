@@ -11,7 +11,7 @@ import { Progress } from '@/components/ui/progress';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Loader2, Save, Building2, Bell, CreditCard, Shield, FileText, Search, Zap, CheckCircle2, XCircle, ExternalLink } from 'lucide-react';
+import { Loader2, Save, Building2, Bell, CreditCard, Shield, FileText, Search, Zap, CheckCircle2, XCircle, ExternalLink, Webhook, Copy, RefreshCw } from 'lucide-react';
 
 interface MunicipalService {
   id: string;
@@ -52,6 +52,87 @@ export default function DashboardSettings() {
   const [isTestingCharge, setIsTestingCharge] = useState(false);
   const [testBillingType, setTestBillingType] = useState<'PIX' | 'BOLETO' | 'CREDIT_CARD'>('PIX');
   const [testResult, setTestResult] = useState<any>(null);
+
+  // Webhook state
+  const [webhookUrl, setWebhookUrl] = useState('');
+  const [webhookSecret, setWebhookSecret] = useState('');
+  const [webhookConfigured, setWebhookConfigured] = useState(false);
+  const [manualSecret, setManualSecret] = useState('');
+  const [isRepairingWebhook, setIsRepairingWebhook] = useState(false);
+  const [isSavingSecret, setIsSavingSecret] = useState(false);
+
+  const loadWebhookInfo = async () => {
+    if (!user) return;
+    const supaUrl = (import.meta as any).env.VITE_SUPABASE_URL || '';
+    setWebhookUrl(`${supaUrl}/functions/v1/asaas-webhook`);
+    const { data } = await supabase
+      .from('asaas_configurations')
+      .select('webhook_secret, webhook_configured')
+      .eq('tenant_id', user.id)
+      .eq('is_active', true)
+      .maybeSingle();
+    if (data) {
+      setWebhookSecret(data.webhook_secret || '');
+      setWebhookConfigured(!!data.webhook_configured);
+    }
+  };
+
+  useEffect(() => { loadWebhookInfo(); }, [user]);
+
+  const copyToClipboard = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(`${label} copiado!`);
+    } catch {
+      toast.error('Não foi possível copiar');
+    }
+  };
+
+  const handleRepairWebhook = async () => {
+    if (!user) return;
+    setIsRepairingWebhook(true);
+    try {
+      const { data: install } = await supabase
+        .from('bitrix_installations')
+        .select('member_id')
+        .eq('tenant_id', user.id)
+        .maybeSingle();
+      if (!install?.member_id) {
+        toast.error('Instalação Bitrix não encontrada');
+        return;
+      }
+      const { data, error } = await supabase.functions.invoke('bitrix-config', {
+        body: { memberId: install.member_id, action: 'repair_webhook' },
+      });
+      if (error) throw error;
+      toast.success(data?.message || 'Webhook atualizado');
+      await loadWebhookInfo();
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro ao reparar webhook');
+    } finally {
+      setIsRepairingWebhook(false);
+    }
+  };
+
+  const handleSaveManualSecret = async () => {
+    if (!user || !manualSecret.trim()) return;
+    setIsSavingSecret(true);
+    try {
+      const { error } = await supabase
+        .from('asaas_configurations')
+        .update({ webhook_secret: manualSecret.trim(), webhook_configured: true })
+        .eq('tenant_id', user.id)
+        .eq('is_active', true);
+      if (error) throw error;
+      toast.success('Token do webhook salvo!');
+      setManualSecret('');
+      await loadWebhookInfo();
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro ao salvar token');
+    } finally {
+      setIsSavingSecret(false);
+    }
+  };
 
   const handleTestCharge = async () => {
     if (!user) return;
@@ -406,6 +487,82 @@ export default function DashboardSettings() {
             </CardContent>
           </Card>
 
+          {/* Webhook Asaas */}
+          <Card className="border-border/50">
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <Webhook className="h-5 w-5 text-primary" />
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <CardTitle>Webhook Asaas</CardTitle>
+                    <StatusBadge status={webhookConfigured ? 'active' : 'expired'} />
+                  </div>
+                  <CardDescription>
+                    URL e token de autenticação do webhook (cabeçalho <code>asaas-access-token</code>)
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>URL do Webhook</Label>
+                <div className="flex gap-2">
+                  <Input value={webhookUrl} readOnly className="font-mono text-xs" />
+                  <Button type="button" variant="outline" size="icon" onClick={() => copyToClipboard(webhookUrl, 'URL')}>
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Token (authToken) salvo</Label>
+                <div className="flex gap-2">
+                  <Input value={webhookSecret || '— não configurado —'} readOnly className="font-mono text-xs" />
+                  {webhookSecret && (
+                    <Button type="button" variant="outline" size="icon" onClick={() => copyToClipboard(webhookSecret, 'Token')}>
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Este é o token usado para validar as notificações recebidas do Asaas.
+                </p>
+              </div>
+
+              <Separator />
+
+              <div className="space-y-2">
+                <Label>Colar token gerado pelo Asaas</Label>
+                <p className="text-xs text-muted-foreground">
+                  Se você cadastrou o webhook manualmente no painel do Asaas e definiu um token próprio, cole-o aqui para que possamos validar as chamadas.
+                </p>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Cole o token do Asaas aqui"
+                    value={manualSecret}
+                    onChange={(e) => setManualSecret(e.target.value)}
+                    className="font-mono text-xs"
+                  />
+                  <Button onClick={handleSaveManualSecret} disabled={isSavingSecret || !manualSecret.trim()}>
+                    {isSavingSecret ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="flex justify-end">
+                <Button variant="outline" onClick={handleRepairWebhook} disabled={isRepairingWebhook}>
+                  {isRepairingWebhook ? (
+                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Reparando...</>
+                  ) : (
+                    <><RefreshCw className="mr-2 h-4 w-4" />Registrar/Reparar webhook no Asaas</>
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Asaas Test Charge */}
           <Card className="border-border/50">
             <CardHeader>
@@ -416,7 +573,7 @@ export default function DashboardSettings() {
                 <div>
                   <CardTitle>Teste de Integração Asaas</CardTitle>
                   <CardDescription>
-                    Valida sua API key e cria uma cobrança de R$ 1,00 de teste no Asaas
+                    Valida sua API key e cria uma cobrança de R$ 5,00 de teste no Asaas
                   </CardDescription>
                 </div>
               </div>
