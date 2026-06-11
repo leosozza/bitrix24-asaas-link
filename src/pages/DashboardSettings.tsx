@@ -11,7 +11,7 @@ import { Progress } from '@/components/ui/progress';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Loader2, Save, Building2, Bell, CreditCard, Shield, FileText, Search } from 'lucide-react';
+import { Loader2, Save, Building2, Bell, CreditCard, Shield, FileText, Search, Zap, CheckCircle2, XCircle, ExternalLink } from 'lucide-react';
 
 interface MunicipalService {
   id: string;
