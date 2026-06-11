@@ -3224,6 +3224,9 @@ async function generateDashboardPage(
         btn.disabled = false;
         btn.textContent = orig;
       }
+    }
+    
+    let serviceSearchTimer = null;
     async function onServiceSearch() {
       const q = document.getElementById('cfg-service-search').value.trim();
       const dd = document.getElementById('cfg-service-dropdown');
