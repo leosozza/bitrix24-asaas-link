@@ -429,17 +429,43 @@ serve(async (req) => {
       );
     }
     
-    // Validate webhook secret if configured
-    if (accessToken) {
+    // Validate webhook secret if configured (reject with 401 when mismatch)
+    {
       const { data: asaasConfig } = await supabase
         .from('asaas_configurations')
         .select('webhook_secret')
         .eq('tenant_id', tenantId)
         .maybeSingle();
       
-      if (asaasConfig?.webhook_secret && asaasConfig.webhook_secret !== accessToken) {
-        console.warn('Invalid webhook access token for tenant:', tenantId);
-        // Log the attempt but don't reject - some older webhooks may not have the secret
+      if (asaasConfig?.webhook_secret) {
+        if (!accessToken || asaasConfig.webhook_secret !== accessToken) {
+          console.warn('Rejecting webhook: invalid asaas-access-token for tenant', tenantId);
+          return new Response(
+            JSON.stringify({ success: false, error: 'Invalid webhook token' }),
+            { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+      }
+    }
+    
+    // Idempotency: skip if this exact (payment_id + event) was already processed successfully
+    {
+      const { data: prevLog } = await supabase
+        .from('integration_logs')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .eq('action', `asaas_webhook_${event.toLowerCase()}`)
+        .eq('entity_id', payment.id)
+        .eq('status', 'success')
+        .limit(1)
+        .maybeSingle();
+      
+      if (prevLog) {
+        console.log('Event already processed, skipping (idempotency):', event, payment.id);
+        return new Response(
+          JSON.stringify({ success: true, message: 'Already processed', transactionId: transaction.id }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       }
     }
     
@@ -454,6 +480,9 @@ serve(async (req) => {
     
     if (payment.paymentDate) {
       updateData.payment_date = payment.paymentDate;
+    }
+    if (payment.invoiceUrl && !transaction.payment_url) {
+      updateData.payment_url = payment.invoiceUrl;
     }
     
     const { error: updateError } = await supabase
@@ -493,16 +522,21 @@ serve(async (req) => {
         const clientEndpoint = installation.client_endpoint || (installation.domain ? `https://${installation.domain}/rest/` : null);
         const token = installation.access_token;
         
-        // Parse external reference to get original payment ID
+        // Parse external reference to get original Bitrix payment ID
         const parts = payment.externalReference?.split('_') || [];
         const bitrixPaymentId = parts[2] || '';
         
-        await updateBitrixPaymentStatus(
-          installation,
-          transaction.bitrix_entity_id,
-          bitrixPaymentId,
-          newStatus
-        );
+        // Only call sale.paysystem.pay.payment when we have a valid Bitrix payment id
+        if (bitrixPaymentId) {
+          await updateBitrixPaymentStatus(
+            installation,
+            transaction.bitrix_entity_id,
+            bitrixPaymentId,
+            newStatus
+          );
+        } else {
+          console.log('Skipping sale.paysystem.pay.payment: no bitrix payment id (external charge or subscription)');
+        }
         
         // Update configurable activity badge to "paid"
         if (transaction.bitrix_activity_id && clientEndpoint && token) {
