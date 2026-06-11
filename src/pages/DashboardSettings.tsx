@@ -53,6 +53,87 @@ export default function DashboardSettings() {
   const [testBillingType, setTestBillingType] = useState<'PIX' | 'BOLETO' | 'CREDIT_CARD'>('PIX');
   const [testResult, setTestResult] = useState<any>(null);
 
+  // Webhook state
+  const [webhookUrl, setWebhookUrl] = useState('');
+  const [webhookSecret, setWebhookSecret] = useState('');
+  const [webhookConfigured, setWebhookConfigured] = useState(false);
+  const [manualSecret, setManualSecret] = useState('');
+  const [isRepairingWebhook, setIsRepairingWebhook] = useState(false);
+  const [isSavingSecret, setIsSavingSecret] = useState(false);
+
+  const loadWebhookInfo = async () => {
+    if (!user) return;
+    const supaUrl = (import.meta as any).env.VITE_SUPABASE_URL || '';
+    setWebhookUrl(`${supaUrl}/functions/v1/asaas-webhook`);
+    const { data } = await supabase
+      .from('asaas_configurations')
+      .select('webhook_secret, webhook_configured')
+      .eq('tenant_id', user.id)
+      .eq('is_active', true)
+      .maybeSingle();
+    if (data) {
+      setWebhookSecret(data.webhook_secret || '');
+      setWebhookConfigured(!!data.webhook_configured);
+    }
+  };
+
+  useEffect(() => { loadWebhookInfo(); }, [user]);
+
+  const copyToClipboard = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(`${label} copiado!`);
+    } catch {
+      toast.error('Não foi possível copiar');
+    }
+  };
+
+  const handleRepairWebhook = async () => {
+    if (!user) return;
+    setIsRepairingWebhook(true);
+    try {
+      const { data: install } = await supabase
+        .from('bitrix_installations')
+        .select('member_id')
+        .eq('tenant_id', user.id)
+        .maybeSingle();
+      if (!install?.member_id) {
+        toast.error('Instalação Bitrix não encontrada');
+        return;
+      }
+      const { data, error } = await supabase.functions.invoke('bitrix-config', {
+        body: { memberId: install.member_id, action: 'repair_webhook' },
+      });
+      if (error) throw error;
+      toast.success(data?.message || 'Webhook atualizado');
+      await loadWebhookInfo();
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro ao reparar webhook');
+    } finally {
+      setIsRepairingWebhook(false);
+    }
+  };
+
+  const handleSaveManualSecret = async () => {
+    if (!user || !manualSecret.trim()) return;
+    setIsSavingSecret(true);
+    try {
+      const { error } = await supabase
+        .from('asaas_configurations')
+        .update({ webhook_secret: manualSecret.trim(), webhook_configured: true })
+        .eq('tenant_id', user.id)
+        .eq('is_active', true);
+      if (error) throw error;
+      toast.success('Token do webhook salvo!');
+      setManualSecret('');
+      await loadWebhookInfo();
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro ao salvar token');
+    } finally {
+      setIsSavingSecret(false);
+    }
+  };
+
   const handleTestCharge = async () => {
     if (!user) return;
     setIsTestingCharge(true);
