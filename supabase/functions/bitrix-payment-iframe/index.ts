@@ -1921,6 +1921,20 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
       return jsonSuccess({ message: 'Configuração fiscal salva' });
     }
     
+    case 'test_charge': {
+      const billing_type = (data?.billing_type || 'PIX').toString();
+      const resp = await fetch(`${SUPABASE_URL}/functions/v1/asaas-test-charge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+        body: JSON.stringify({ tenant_id: tenantId, billing_type }),
+      });
+      const result = await resp.json();
+      return new Response(JSON.stringify(result), {
+        status: resp.ok ? 200 : 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    
     default:
       return jsonError(`Unknown action: ${action}`);
   }
