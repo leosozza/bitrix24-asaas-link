@@ -24,25 +24,56 @@ interface RobotRequest {
   ts: string;
 }
 
+// Flattens nested params into Bitrix bracket notation: { fields: { ID: 1 } } -> fields[ID]=1
+function flattenParams(obj: unknown, prefix = ''): Array<[string, string]> {
+  const out: Array<[string, string]> = [];
+  if (obj === null || obj === undefined) return out;
+  if (Array.isArray(obj)) {
+    obj.forEach((v, i) => out.push(...flattenParams(v, prefix ? `${prefix}[${i}]` : String(i))));
+    return out;
+  }
+  if (typeof obj === 'object') {
+    for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+      const key = prefix ? `${prefix}[${k}]` : k;
+      if (v !== null && typeof v === 'object') {
+        out.push(...flattenParams(v, key));
+      } else if (v !== undefined && v !== null) {
+        out.push([key, String(v)]);
+      }
+    }
+    return out;
+  }
+  out.push([prefix, String(obj)]);
+  return out;
+}
+
 async function callBitrixApi(endpoint: string, method: string, params: Record<string, unknown>, accessToken: string) {
   const url = `${endpoint}${method}`;
   console.log(`[Bitrix API] Calling: ${method}`);
-  
+
   try {
+    // Bitrix REST is most reliable with application/x-www-form-urlencoded + bracket notation.
+    // Auth goes as a top-level form field, not nested.
+    const form = new URLSearchParams();
+    for (const [k, v] of flattenParams(params)) form.append(k, v);
+    form.append('auth', accessToken);
+
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...params, auth: accessToken }),
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: form.toString(),
     });
-    
-    const data = await response.json();
-    
+
+    const text = await response.text();
+    let data: any;
+    try { data = JSON.parse(text); } catch { data = { error: 'INVALID_JSON', error_description: text.slice(0, 300) }; }
+
     if (data.error) {
       console.error(`[Bitrix API] Error in ${method}:`, data.error, data.error_description);
     } else {
       console.log(`[Bitrix API] Success in ${method}`);
     }
-    
+
     return data;
   } catch (error) {
     console.error(`[Bitrix API] Fetch error in ${method}:`, error);
