@@ -371,7 +371,8 @@ serve(async (req) => {
           name: customer_name || 'Cliente',
 
           email: customer_email || '',
-          cpfCnpj: customer_document,
+          cpfCnpj: docDigits,
+
         });
         
         if (customer.errors) {
