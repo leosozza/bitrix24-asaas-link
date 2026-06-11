@@ -93,7 +93,7 @@ async function registerAsaasWebhook(
 
     const authToken = crypto.randomUUID();
     const payload = {
-      name: 'Asaas → Bitrix24 (Lovable)',
+      name: 'Bitrix24 Asaas Connector',
       url: webhookUrl,
       email,
       enabled: true,
