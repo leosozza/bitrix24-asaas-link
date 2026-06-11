@@ -787,7 +787,7 @@ serve(async (req) => {
             invoice_url: invoice.invoiceUrl,
             external_reference: invoicePayload.externalReference,
             bitrix_entity_id: docId,
-            bitrix_entity_type: 'deal',
+            bitrix_entity_type: entityType,
           });
         }
         
