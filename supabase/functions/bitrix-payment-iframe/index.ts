@@ -3048,13 +3048,19 @@ async function generateDashboardPage(
       html += '<div class="card-header"><h3>Configuração Fiscal</h3></div>';
       html += '<div style="padding:20px;">';
       
-      html += '<div class="form-group">';
-      html += '<label>Código do Serviço Municipal</label>';
-      html += '<input type="text" id="cfg-service-code" value="' + (result.fiscal?.municipal_service_code || '') + '" placeholder="Código do serviço"></div>';
+      const fsid = (result.fiscal?.municipal_service_id || '').replace(/"/g, '&quot;');
+      const fscode = (result.fiscal?.municipal_service_code || '').replace(/"/g, '&quot;');
+      const fsname = (result.fiscal?.municipal_service_name || '').replace(/"/g, '&quot;');
+      html += '<input type="hidden" id="cfg-service-id" value="' + fsid + '">';
+      html += '<input type="hidden" id="cfg-service-code" value="' + fscode + '">';
+      html += '<input type="hidden" id="cfg-service-name" value="' + fsname + '">';
       
-      html += '<div class="form-group">';
-      html += '<label>Nome do Serviço Municipal</label>';
-      html += '<input type="text" id="cfg-service-name" value="' + (result.fiscal?.municipal_service_name || '') + '" placeholder="Nome do serviço"></div>';
+      html += '<div class="form-group" style="position:relative;">';
+      html += '<label>Serviço Municipal</label>';
+      html += '<input type="text" id="cfg-service-search" placeholder="Buscar serviço (mín. 3 caracteres)" oninput="onServiceSearch()" autocomplete="off">';
+      html += '<div id="cfg-service-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #e2e8f0;border-radius:8px;max-height:240px;overflow-y:auto;z-index:50;box-shadow:0 4px 12px rgba(0,0,0,.08);margin-top:4px;"></div>';
+      html += '<div id="cfg-service-selected" style="margin-top:8px;padding:10px;background:#f1f5f9;border-radius:6px;font-size:13px;' + (fscode ? '' : 'display:none;') + '"><strong>Selecionado:</strong> <span id="cfg-service-label">' + (fscode ? fscode + ' - ' + fsname : '') + '</span></div>';
+      html += '</div>';
       
       html += '<div class="form-group">';
       html += '<label>ISS (%)</label>';
