@@ -3060,7 +3060,7 @@ async function generateDashboardPage(
       html += '</div></div>';
       
       // Webhook block (always rendered)
-      html += renderWebhookBlock(result.webhook);
+      html += renderWebhookBlock(result.webhook, result.asaas?.environment);
       
       // Fiscal Config
       html += '<div class="card">';
