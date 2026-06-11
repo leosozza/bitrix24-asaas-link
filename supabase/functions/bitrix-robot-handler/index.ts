@@ -90,6 +90,27 @@ async function findOrCreateCustomer(apiKey: string, baseUrl: string, data: { nam
   return customer;
 }
 
+// Parses BR-style currency: "R$ 1.500,00", "1.500,50", "1500.00", numbers, etc.
+function parseBRLAmount(raw: unknown): number {
+  if (typeof raw === 'number') return raw;
+  if (raw === null || raw === undefined) return NaN;
+  let s = String(raw).trim();
+  if (!s) return NaN;
+  s = s.replace(/[Rr]\$\s*/g, '').replace(/\s/g, '');
+  if (s.includes(',')) {
+    // BR format: dot is thousands separator, comma is decimal
+    s = s.replace(/\./g, '').replace(',', '.');
+  }
+  const n = parseFloat(s);
+  return n;
+}
+
+// Strip mask from CPF/CNPJ — keep digits only
+function stripDocument(raw: unknown): string {
+  return String(raw ?? '').replace(/\D/g, '');
+}
+
+
 async function createAsaasCharge(
   apiKey: string, 
   baseUrl: string, 
