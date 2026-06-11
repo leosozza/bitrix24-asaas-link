@@ -2973,13 +2973,20 @@ async function generateDashboardPage(
       html += '<button class="btn btn-secondary btn-sm" onclick="copyToClipboard(\\'wh-url\\', this)">Copiar</button>';
       html += '</div></div>';
       
-      if (secret) {
-        html += '<div class="form-group"><label>Token de Autenticação (header <code>asaas-access-token</code>)</label>';
-        html += '<div style="display:flex;gap:8px;">';
-        html += '<input type="text" id="wh-secret" readonly value="' + escapeHtml(secret) + '" style="flex:1;font-family:monospace;font-size:12px;">';
-        html += '<button class="btn btn-secondary btn-sm" onclick="copyToClipboard(\\'wh-secret\\', this)">Copiar</button>';
-        html += '</div></div>';
-      }
+      html += '<div class="form-group"><label>Token salvo (header <code>asaas-access-token</code>)</label>';
+      html += '<div style="display:flex;gap:8px;">';
+      html += '<input type="text" id="wh-secret" readonly value="' + escapeHtml(secret || '— não configurado —') + '" style="flex:1;font-family:monospace;font-size:12px;">';
+      if (secret) html += '<button class="btn btn-secondary btn-sm" onclick="copyToClipboard(\\'wh-secret\\', this)">Copiar</button>';
+      html += '</div></div>';
+
+      // Manual override — caso o usuário tenha cadastrado o webhook no Asaas e queira usar o token gerado lá
+      html += '<div class="form-group" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px;">';
+      html += '<label style="font-weight:600;">Colar token gerado pelo Asaas</label>';
+      html += '<p style="margin:4px 0 8px;font-size:12px;color:#64748b;">Se você cadastrou o webhook manualmente no painel do Asaas e definiu um token próprio, cole-o aqui para que possamos validar as chamadas.</p>';
+      html += '<div style="display:flex;gap:8px;">';
+      html += '<input type="text" id="wh-manual-secret" placeholder="Cole o token do Asaas aqui" style="flex:1;font-family:monospace;font-size:12px;">';
+      html += '<button class="btn btn-primary btn-sm" onclick="saveManualWebhookSecret()">Salvar token</button>';
+      html += '</div></div>';
       
       html += '<div class="form-group"><label>Eventos a habilitar</label>';
       html += '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
