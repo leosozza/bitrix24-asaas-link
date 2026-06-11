@@ -456,8 +456,20 @@ serve(async (req) => {
           boleto_url: payment.bankSlipUrl || '',
         };
         logMessage = `Cobrança criada: ${payment.id} - R$ ${parsedAmount}`;
+
+        // Post a plain timeline comment with success info + link
+        {
+          const methodLabel: Record<string, string> = { pix: 'PIX', boleto: 'Boleto', credit_card: 'Cartão de Crédito' };
+          const m = methodLabel[payment_method] || (payment_method || 'PIX');
+          const amountFmt = `R$ ${parsedAmount.toFixed(2).replace('.', ',')}`;
+          const link = payment.invoiceUrl ? `\nLink: ${payment.invoiceUrl}` : '';
+          await postTimelineComment(
+            `[B]✅ Asaas — cobrança criada com sucesso[/B]\nID: ${payment.id}\nMétodo: ${m}\nValor: ${amountFmt}\nStatus: ${payment.status}${link}`
+          );
+        }
         break;
       }
+      
       
       case 'asaas_check_payment': {
         const { charge_id } = robotData.properties;
