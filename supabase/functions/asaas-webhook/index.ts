@@ -200,7 +200,7 @@ serve(async (req) => {
         .from('subscriptions')
         .select('*')
         .eq('asaas_id', subscription.id)
-        .single();
+        .maybeSingle();
       
       if (event === 'SUBSCRIPTION_CREATED' && !existingSubscription) {
         // Subscription created externally - we need to find the tenant
@@ -263,7 +263,7 @@ serve(async (req) => {
         .from('invoices')
         .select('*')
         .eq('asaas_invoice_id', invoice.id)
-        .single();
+        .maybeSingle();
       
       if (existingInvoice) {
         const statusMap: Record<string, string> = {
@@ -307,7 +307,7 @@ serve(async (req) => {
             .select('client_endpoint, access_token')
             .eq('tenant_id', existingInvoice.tenant_id)
             .eq('status', 'active')
-            .single();
+            .maybeSingle();
           
           if (installation?.client_endpoint && installation?.access_token) {
             try {
@@ -355,7 +355,7 @@ serve(async (req) => {
       .from('transactions')
       .select('*, bitrix_entity_id, bitrix_entity_type, tenant_id')
       .eq('asaas_id', payment.id)
-      .single();
+      .maybeSingle();
     
     if (txByAsaasId) {
       transaction = txByAsaasId;
@@ -368,7 +368,7 @@ serve(async (req) => {
         .from('subscriptions')
         .select('*')
         .eq('asaas_id', payment.subscription)
-        .single();
+        .maybeSingle();
       
       if (subscription) {
         tenantId = subscription.tenant_id;
@@ -391,7 +391,7 @@ serve(async (req) => {
             bitrix_entity_id: subscription.bitrix_entity_id,
           })
           .select()
-          .single();
+          .maybeSingle();
         
         transaction = newTransaction;
         console.log('Created transaction for subscription payment:', newTransaction?.id);
@@ -435,7 +435,7 @@ serve(async (req) => {
         .from('asaas_configurations')
         .select('webhook_secret')
         .eq('tenant_id', tenantId)
-        .single();
+        .maybeSingle();
       
       if (asaasConfig?.webhook_secret && asaasConfig.webhook_secret !== accessToken) {
         console.warn('Invalid webhook access token for tenant:', tenantId);
@@ -487,7 +487,7 @@ serve(async (req) => {
         .select('client_endpoint, access_token, domain')
         .eq('tenant_id', tenantId)
         .eq('status', 'active')
-        .single();
+        .maybeSingle();
       
       if (installation && transaction.bitrix_entity_id) {
         const clientEndpoint = installation.client_endpoint || (installation.domain ? `https://${installation.domain}/rest/` : null);
@@ -518,7 +518,7 @@ serve(async (req) => {
         .select('client_endpoint, access_token, domain')
         .eq('tenant_id', tenantId)
         .eq('status', 'active')
-        .single();
+        .maybeSingle();
       
       if (installation) {
         const clientEndpoint = installation.client_endpoint || (installation.domain ? `https://${installation.domain}/rest/` : null);
@@ -535,7 +535,7 @@ serve(async (req) => {
         .select('client_endpoint, access_token, domain')
         .eq('tenant_id', tenantId)
         .eq('status', 'active')
-        .single();
+        .maybeSingle();
       
       if (installation) {
         const clientEndpoint = installation.client_endpoint || (installation.domain ? `https://${installation.domain}/rest/` : null);
@@ -554,7 +554,7 @@ serve(async (req) => {
         .select('*')
         .eq('tenant_id', tenantId)
         .eq('is_active', true)
-        .single();
+        .maybeSingle();
       
       if (fiscalConfig?.auto_emit_on_payment && fiscalConfig.municipal_service_id) {
         console.log('Auto-emit invoice enabled for tenant:', tenantId);
@@ -573,7 +573,7 @@ serve(async (req) => {
             .select('api_key, environment')
             .eq('tenant_id', tenantId)
             .eq('is_active', true)
-            .single();
+            .maybeSingle();
           
           if (asaasConfig?.api_key) {
             const baseUrl = asaasConfig.environment === 'production'
