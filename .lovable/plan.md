@@ -1,47 +1,80 @@
 ## Problema
 
-Teste no Deal 964 falhou silenciosamente (nenhum comentário no timeline) por dois motivos encontrados nos logs do `bitrix-robot-handler`:
+Hoje os robôs Asaas usam o `document_id` automático do workflow para identificar o Deal/Lead onde gravar timeline e atividade. Isso falha quando:
 
-1. **Parse de valor BR quebrado** — Bitrix enviou `amount = "R$ 1.500,00"`. O código atual faz `parseFloat(amount)` direto, que retorna `NaN` para esse formato → retorna "Valor inválido" sem chamar o Asaas.
-2. **Timeline não é avisada em erros precoces** — as saídas por "Dados incompletos", "Valor inválido" e "Asaas não configurado" usam `break`/`return` antes do `postTimelineComment`, então o usuário não vê nada no timeline do Deal.
+- O workflow roda em outra entidade (ex.: começa num Lead mas precisa criar cobrança ligada a um Deal já existente).
+- O usuário quer disparar o robô de um automation que não está no contexto da entidade alvo.
+- O usuário não tem como apontar manualmente "use o Deal X".
 
-## Correções em `supabase/functions/bitrix-robot-handler/index.ts`
+## Solução
 
-### 1. Normalizar valores no formato brasileiro
-Adicionar helper:
+Adicionar uma **propriedade de entrada opcional** chamada `bitrix_entity_id` (e tipo de entidade) em cada robô Asaas. Quando preenchida, o handler ignora o `document_id` do workflow e usa o ID escolhido pelo usuário para:
+
+- Postar o comentário no timeline da entidade certa.
+- Criar a activity configurável (badge de cobrança) no Deal/Lead certo.
+- Gravar `bitrix_entity_id` correto na tabela `transactions`.
+
+## Mudanças
+
+### 1. `supabase/functions/bitrix-install/index.ts` (registro dos robôs)
+
+Adicionar nas `PROPERTIES` dos 5 robôs (`asaas_create_charge`, `asaas_check_payment`, `asaas_create_subscription`, `asaas_cancel_subscription`, `asaas_create_invoice`):
 
 ```text
-parseBRLAmount("R$ 1.500,00")  → 1500.00
-parseBRLAmount("1500.00")      → 1500.00
-parseBRLAmount("1.500,5")      → 1500.50
+bitrix_entity_type:
+  Name: 'Tipo de Entidade Bitrix'
+  Type: 'select'
+  Options: { deal: 'Negócio', lead: 'Lead', contact: 'Contato' }
+  Default: 'deal'
+  Required: 'N'
+
+bitrix_entity_id:
+  Name: 'ID do Deal/Lead/Contato (opcional)'
+  Type: 'string'
+  Required: 'N'
+  Description: 'Se vazio, usa a entidade atual do workflow'
 ```
 
-Regras: remover `R$`/espaços; se tiver vírgula, tratar `.` como separador de milhar e `,` como decimal; senão usar `parseFloat`.
+### 2. `supabase/functions/bitrix-payment-iframe/index.ts` (re-registro/repair)
 
-Aplicar em `asaas_create_charge` (campo `amount`) e em `asaas_create_subscription` se também receber valor.
+Replicar as mesmas adições nas definições dos robôs (a função de repair re-registra os robôs com `bizproc.robot.update` ou delete+add).
 
-### 2. Postar comentário no timeline em TODOS os erros do robô
-Mover a definição de `entityType` / `entityIdNum` / `postTimelineComment` para **antes** do bloco que valida `asaas_configurations`, e chamar `postTimelineComment` nestes pontos do `asaas_create_charge`:
+### 3. `supabase/functions/bitrix-robot-handler/index.ts` (execução)
 
-- Asaas não configurado → "❌ Asaas — configuração ausente. Configure a API Key no app."
-- Dados incompletos (`amount` ou `customer_document` vazios) → "❌ Asaas — dados incompletos: informe valor e CPF/CNPJ."
-- Valor inválido (após parseBRLAmount) → "❌ Asaas — valor inválido: `<valor recebido>`."
-- Falha ao criar cliente → já existe.
-- Falha ao criar cobrança → já existe.
-- Sucesso → já existe.
+No início do `switch`, resolver o alvo:
 
-### 3. Pequeno ajuste de robustez
-- Tornar `customer_document` tolerante a máscara (`12.345.678/0001-99`) — strip de tudo que não for dígito antes de mandar para o Asaas.
-- Log do amount cru recebido do Bitrix para facilitar diagnóstico futuro.
+```text
+const propEntityId   = robotData.properties.bitrix_entity_id?.toString().trim();
+const propEntityType = (robotData.properties.bitrix_entity_type || 'deal').toLowerCase();
 
-## O que NÃO está nesse plano (separar se quiser)
+const fallbackDocId  = robotData.document_id[2] || robotData.document_id[0] || '';
+const fallbackType   = inferTypeFromDocId(robotData.document_id[1]); // CRM_DEAL → deal, CRM_LEAD → lead, etc.
 
-- O erro `ERROR_METHOD_NOT_FOUND` em `bizproc.event.send` que apareceu no log — está relacionado ao retorno do robô para o workflow, não ao timeline. Posso investigar em seguida se você confirmar.
-- Mesmo tratamento de timeline nos outros robôs (`asaas_check_payment`, `asaas_create_subscription`, etc.). Faço junto se quiser.
+const targetEntityId   = propEntityId || stripNonDigits(fallbackDocId);
+const targetEntityType = propEntityId ? propEntityType : fallbackType;
+```
 
-## Resultado esperado
+Usar `targetEntityId` / `targetEntityType` em:
 
-Repetindo o teste do Deal 964 com `R$ 1.500,00` e CNPJ mascarado:
-- A cobrança é criada de verdade no Asaas (valor 1500.00).
-- Aparece comentário no timeline do Deal 964 com ID, método, valor e link de pagamento.
-- Se ainda assim falhar, o motivo do erro aparece no timeline em vez de sumir.
+- `postTimelineComment` (mapear `deal→2`, `lead→1`, `contact→3` para `ownerTypeId`).
+- `crm.activity.configurable.add` (mesmo mapeamento de `ownerTypeId`).
+- `transactions.insert` (`bitrix_entity_id`, `bitrix_entity_type`).
+- `externalReference` (`bitrix_${member_id}_${targetType}_${targetEntityId}`).
+
+### 4. Auto-repair / re-registro
+
+Após o deploy, o usuário precisa rodar o **Repair Tool** existente (ou reinstalar o app) para que os robôs sejam re-registrados com a nova propriedade. Adicionar nota no toast/log de repair: "Robôs atualizados com campo ID do Bitrix".
+
+## Resultado
+
+No designer do Bizproc o usuário verá no robô Asaas dois campos novos:
+
+- "Tipo de Entidade Bitrix" (Negócio / Lead / Contato)
+- "ID do Deal/Lead/Contato"
+
+Pode deixar vazio (comportamento atual) ou apontar qualquer ID — o resultado/cobrança vai parar no lugar certo, com timeline e activity na entidade escolhida.
+
+## Não incluído
+
+- UI no dashboard para configurar isso (é configurado no próprio designer do Bitrix).
+- Suporte a SPA dinâmicos (`DYNAMIC_xxx`) — pode ser adicionado depois se precisar.
