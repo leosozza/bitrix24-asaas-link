@@ -431,9 +431,11 @@ serve(async (req) => {
           break;
         }
         
-        // Create external reference
-        const docId = robotData.document_id[2] || robotData.document_id[0] || 'unknown';
-        const externalReference = `bitrix_${robotData.auth.member_id}_${docId}`;
+        // Create external reference — prefer the resolved target entity (override or workflow)
+        const ownerTypeIdMap: Record<string, number> = { lead: 1, deal: 2, contact: 3, company: 4 };
+        const targetOwnerTypeId = ownerTypeIdMap[entityType] || 2;
+        const targetId = entityIdNum || (robotData.document_id[2] || robotData.document_id[0] || 'unknown');
+        const externalReference = `bitrix_${robotData.auth.member_id}_${entityType}_${targetId}`;
         
         // Create charge
         const payment = await createAsaasCharge(
@@ -466,17 +468,17 @@ serve(async (req) => {
             customer_email: customer_email,
             customer_document: customer_document,
             payment_url: payment.invoiceUrl,
-            bitrix_entity_id: docId,
-            bitrix_entity_type: 'deal',
+            bitrix_entity_id: String(targetId),
+            bitrix_entity_type: entityType,
           }).select('id').single();
           
-          // Create configurable activity with badge in Bitrix24 timeline
-          if (apiEndpoint && robotData.auth.access_token) {
+          // Create configurable activity with badge in Bitrix24 timeline (on resolved entity)
+          if (apiEndpoint && robotData.auth.access_token && entityIdNum) {
             try {
               const methodLabel: Record<string, string> = { pix: 'PIX', boleto: 'Boleto', credit_card: 'Cartão' };
               const actResult = await callBitrixApi(apiEndpoint, 'crm.activity.configurable.add', {
-                ownerTypeId: 2, // Deal
-                ownerId: parseInt(docId),
+                ownerTypeId: targetOwnerTypeId,
+                ownerId: entityIdNum,
                 fields: {
                   completed: false,
                   badgeCode: 'asaas_charge_created',
