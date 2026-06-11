@@ -644,6 +644,28 @@ serve(async (req) => {
               console.log('Auto invoice result:', invoiceResult);
               
               if (invoiceResult.id) {
+                // Authorize immediately so the NFSe is actually emitted at the municipality
+                let finalStatus = 'scheduled';
+                let invoiceNumber: string | null = invoiceResult.number || null;
+                let invoiceUrl: string | null = invoiceResult.invoiceUrl || null;
+                try {
+                  const authRes = await fetch(`${baseUrl}/invoices/${invoiceResult.id}/authorize`, {
+                    method: 'POST',
+                    headers: { 'access_token': asaasConfig.api_key },
+                  });
+                  const authData = await authRes.json();
+                  console.log('Auto invoice authorize result:', authData);
+                  if (authRes.ok && !authData.errors) {
+                    finalStatus = authData.status === 'AUTHORIZED' ? 'authorized'
+                      : authData.status === 'SYNCHRONIZED' ? 'synchronized'
+                      : 'scheduled';
+                    invoiceNumber = authData.number || invoiceNumber;
+                    invoiceUrl = authData.invoiceUrl || invoiceUrl;
+                  }
+                } catch (authErr) {
+                  console.error('Error authorizing auto invoice:', authErr);
+                }
+                
                 // Save invoice to database
                 await supabase.from('invoices').insert({
                   tenant_id: tenantId,
@@ -656,13 +678,15 @@ serve(async (req) => {
                   value: payment.value,
                   service_description: fiscalConfig.observations_template || `Serviço referente ao pagamento ${payment.id}`,
                   observations: fiscalConfig.observations_template,
-                  status: 'scheduled',
+                  status: finalStatus,
+                  invoice_number: invoiceNumber,
+                  invoice_url: invoiceUrl,
                   effective_date: payment.paymentDate || new Date().toISOString().split('T')[0],
                   bitrix_entity_type: transaction.bitrix_entity_type,
                   bitrix_entity_id: transaction.bitrix_entity_id,
                 });
                 
-                console.log('Auto invoice created and saved:', invoiceResult.id);
+                console.log('Auto invoice created and saved:', invoiceResult.id, 'status:', finalStatus);
                 
                 // Log the auto-emit
                 await supabase.from('integration_logs').insert({
@@ -672,7 +696,7 @@ serve(async (req) => {
                   entity_id: invoiceResult.id,
                   status: 'success',
                   request_data: invoicePayload,
-                  response_data: invoiceResult,
+                  response_data: { ...invoiceResult, finalStatus },
                 });
               } else {
                 console.error('Failed to create auto invoice:', invoiceResult);
