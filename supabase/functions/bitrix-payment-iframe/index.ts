@@ -1921,6 +1921,20 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
       return jsonSuccess({ message: 'Configuração fiscal salva' });
     }
     
+    case 'test_charge': {
+      const billing_type = (data?.billing_type || 'PIX').toString();
+      const resp = await fetch(`${SUPABASE_URL}/functions/v1/asaas-test-charge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+        body: JSON.stringify({ tenant_id: tenantId, billing_type }),
+      });
+      const result = await resp.json();
+      return new Response(JSON.stringify(result), {
+        status: resp.ok ? 200 : 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    
     default:
       return jsonError(`Unknown action: ${action}`);
   }
@@ -3062,6 +3076,19 @@ async function generateDashboardPage(
       // Webhook block (always rendered)
       html += renderWebhookBlock(result.webhook, result.asaas?.environment);
       
+      // Teste de Integração Asaas
+      html += '<div class="card" style="margin-bottom:24px;">';
+      html += '<div class="card-header"><h3>⚡ Teste de Integração Asaas</h3></div>';
+      html += '<div style="padding:20px;">';
+      html += '<p style="margin:0 0 16px;color:#64748b;font-size:13px;">Valida sua API key e cria uma cobrança real de R$ 1,00 no Asaas. Use o ambiente Sandbox para testes.</p>';
+      html += '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">';
+      html += '<label style="margin:0;font-size:13px;color:#334155;">Tipo:</label>';
+      html += '<select id="test-billing-type" class="filter-select" style="width:auto;"><option value="PIX">PIX</option><option value="BOLETO">Boleto</option><option value="CREDIT_CARD">Cartão</option></select>';
+      html += '<button class="btn btn-primary" id="test-charge-btn" onclick="runTestCharge()">Executar teste</button>';
+      html += '</div>';
+      html += '<div id="test-charge-result"></div>';
+      html += '</div></div>';
+      
       // Fiscal Config
       html += '<div class="card">';
       html += '<div class="card-header"><h3>Configuração Fiscal</h3></div>';
@@ -3146,6 +3173,56 @@ async function generateDashboardPage(
         loadSettings();
       } else {
         showToast(result.error || 'Erro', 'error');
+      }
+    }
+    
+    async function runTestCharge() {
+      const billing_type = document.getElementById('test-billing-type').value;
+      const btn = document.getElementById('test-charge-btn');
+      const out = document.getElementById('test-charge-result');
+      btn.disabled = true;
+      const orig = btn.textContent;
+      btn.textContent = 'Testando...';
+      out.innerHTML = '';
+      try {
+        const r = await apiCall('test_charge', { data: { billing_type } });
+        if (r.success) {
+          showToast('Cobrança de teste criada!');
+          const p = r.payment || {};
+          let html = '<div style="border:1px solid #bbf7d0;background:#f0fdf4;border-radius:10px;padding:14px;margin-top:8px;">';
+          html += '<div style="font-weight:600;color:#166534;margin-bottom:8px;">✓ Teste concluído com sucesso</div>';
+          if (Array.isArray(r.log)) {
+            html += '<pre style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:10px;font-size:11px;white-space:pre-wrap;margin:0 0 10px;">' + escapeHtml(r.log.join('\\n')) + '</pre>';
+          }
+          html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:13px;color:#334155;">';
+          html += '<div><span style="color:#64748b;">Ambiente:</span> <code>' + escapeHtml(r.environment || '') + '</code></div>';
+          html += '<div><span style="color:#64748b;">Conta:</span> ' + escapeHtml((r.account && (r.account.name || r.account.email)) || '') + '</div>';
+          html += '<div><span style="color:#64748b;">Cobrança:</span> <code>' + escapeHtml(p.id || '') + '</code></div>';
+          html += '<div><span style="color:#64748b;">Status:</span> ' + escapeHtml(p.status || '') + '</div>';
+          html += '<div><span style="color:#64748b;">Valor:</span> R$ ' + Number(p.value || 0).toFixed(2) + '</div>';
+          html += '<div><span style="color:#64748b;">Vencimento:</span> ' + escapeHtml(p.dueDate || '') + '</div>';
+          if (p.invoiceUrl) {
+            html += '<div style="grid-column:1/-1;"><a href="' + escapeHtml(p.invoiceUrl) + '" target="_blank" rel="noopener" style="color:#0369a1;">Abrir cobrança no Asaas ↗</a></div>';
+          }
+          html += '</div></div>';
+          out.innerHTML = html;
+        } else {
+          showToast(r.error || 'Falha no teste', 'error');
+          let html = '<div style="border:1px solid #fecaca;background:#fef2f2;border-radius:10px;padding:14px;margin-top:8px;">';
+          html += '<div style="font-weight:600;color:#991b1b;margin-bottom:8px;">✗ Falha no teste</div>';
+          html += '<div style="font-size:13px;color:#991b1b;">' + escapeHtml(r.error || 'Erro desconhecido') + '</div>';
+          if (Array.isArray(r.log) && r.log.length) {
+            html += '<pre style="background:#fff;border:1px solid #fecaca;border-radius:6px;padding:10px;font-size:11px;white-space:pre-wrap;margin:10px 0 0;">' + escapeHtml(r.log.join('\\n')) + '</pre>';
+          }
+          html += '</div>';
+          out.innerHTML = html;
+        }
+      } catch (e) {
+        showToast('Erro ao executar teste', 'error');
+        out.innerHTML = '<div style="color:#991b1b;font-size:13px;margin-top:8px;">' + escapeHtml(String(e && e.message || e)) + '</div>';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = orig;
       }
     }
     
