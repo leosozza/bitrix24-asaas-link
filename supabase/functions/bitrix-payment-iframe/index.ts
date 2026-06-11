@@ -1863,6 +1863,9 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
         .eq('id', tenantId);
       
       if (upErr) return jsonError('Erro ao salvar empresa: ' + upErr.message);
+      
+      return jsonSuccess({ message: 'Dados da empresa atualizados' });
+    }
     
     case 'search_municipal_services': {
       const query = (data?.query || '').toString().trim();
@@ -1887,8 +1890,6 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
         description: s.description,
       }));
       return jsonSuccess({ services: list });
-    }
-      return jsonSuccess({ message: 'Dados da empresa atualizados' });
     }
     
     case 'save_fiscal_config': {
