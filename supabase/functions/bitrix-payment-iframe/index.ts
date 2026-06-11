@@ -3050,6 +3050,24 @@ async function generateDashboardPage(
       document.getElementById('settings-content').innerHTML = html;
     }
     
+    async function saveProfile() {
+      const company_name = document.getElementById('cfg-company').value.trim();
+      const email = document.getElementById('cfg-email').value.trim();
+      const phone = document.getElementById('cfg-phone').value.trim();
+      
+      if (!company_name) { showToast('Informe o nome da empresa', 'error'); return; }
+      if (!email) { showToast('Informe um e-mail válido', 'error'); return; }
+      
+      const result = await apiCall('save_profile', { data: { company_name, email, phone } });
+      if (result.success) {
+        showToast(result.message);
+        tabLoaded['settings'] = false;
+        loadSettings();
+      } else {
+        showToast(result.error || 'Erro', 'error');
+      }
+    }
+    
     async function saveAsaasConfig() {
       const apiKey = document.getElementById('cfg-apikey').value;
       const environment = document.getElementById('cfg-environment').value;
