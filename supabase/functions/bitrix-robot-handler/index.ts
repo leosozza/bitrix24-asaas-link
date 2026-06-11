@@ -298,6 +298,33 @@ serve(async (req) => {
     
     let returnValues: Record<string, unknown> = {};
     let logMessage = '';
+
+    // Resolve Bitrix entity from document_id (e.g. ["crm","CCrmDocumentDeal","DEAL_123"])
+    const docTypeRaw = String(robotData.document_id?.[1] || '');
+    const docIdRaw = String(robotData.document_id?.[2] || robotData.document_id?.[0] || '');
+    const entityIdNum = parseInt(docIdRaw.replace(/[^0-9]/g, '')) || 0;
+    let entityType: 'deal' | 'lead' | 'contact' | 'company' = 'deal';
+    if (/Lead/i.test(docTypeRaw)) entityType = 'lead';
+    else if (/Contact/i.test(docTypeRaw)) entityType = 'contact';
+    else if (/Company/i.test(docTypeRaw)) entityType = 'company';
+
+    const postTimelineComment = async (text: string) => {
+      if (!apiEndpoint || !robotData.auth.access_token || !entityIdNum) return;
+      try {
+        await callBitrixApi(apiEndpoint, 'crm.timeline.comment.add', {
+          fields: {
+            ENTITY_ID: entityIdNum,
+            ENTITY_TYPE: entityType,
+            COMMENT: text,
+          },
+        }, robotData.auth.access_token);
+        console.log('[Robot] Timeline comment posted to', entityType, entityIdNum);
+      } catch (e) {
+        console.error('[Robot] Timeline comment error:', e);
+      }
+    };
+
+    
     
     // Process based on robot code
     switch (robotData.code) {
