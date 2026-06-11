@@ -1810,6 +1810,12 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
         .eq('tenant_id', tenantId)
         .maybeSingle();
       
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('company_name, email, phone, bitrix_domain')
+        .eq('id', tenantId)
+        .maybeSingle();
+      
       const webhookUrl = `${SUPABASE_URL}/functions/v1/asaas-webhook`;
       const webhookEvents = [
         'PAYMENT_CREATED', 'PAYMENT_RECEIVED', 'PAYMENT_CONFIRMED',
@@ -1819,6 +1825,7 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
       ];
       
       return jsonSuccess({
+        profile: profile || null,
         asaas: asaasConf ? {
           environment: asaasConf.environment,
           webhook_configured: asaasConf.webhook_configured,
@@ -1834,6 +1841,30 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
         },
         fiscal: fiscalConf,
       });
+    }
+    
+    case 'save_profile': {
+      if (!data) return jsonError('data required');
+      const company_name = (data.company_name || '').toString().trim();
+      const email = (data.email || '').toString().trim();
+      const phone = (data.phone || '').toString().trim();
+      
+      if (!company_name) return jsonError('Nome da empresa é obrigatório');
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return jsonError('E-mail válido é obrigatório');
+      
+      const { error: upErr } = await supabase
+        .from('profiles')
+        .update({
+          company_name,
+          email,
+          phone: phone || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', tenantId);
+      
+      if (upErr) return jsonError('Erro ao salvar empresa: ' + upErr.message);
+      
+      return jsonSuccess({ message: 'Dados da empresa atualizados' });
     }
     
     case 'save_fiscal_config': {
