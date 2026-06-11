@@ -3080,7 +3080,7 @@ async function generateDashboardPage(
       html += '<div class="card" style="margin-bottom:24px;">';
       html += '<div class="card-header"><h3>⚡ Teste de Integração Asaas</h3></div>';
       html += '<div style="padding:20px;">';
-      html += '<p style="margin:0 0 16px;color:#64748b;font-size:13px;">Valida sua API key e cria uma cobrança real de R$ 1,00 no Asaas. Use o ambiente Sandbox para testes.</p>';
+      html += '<p style="margin:0 0 16px;color:#64748b;font-size:13px;">Valida sua API key e cria uma cobrança real de R$ 5,00 no Asaas. Use o ambiente Sandbox para testes.</p>';
       html += '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">';
       html += '<label style="margin:0;font-size:13px;color:#334155;">Tipo:</label>';
       html += '<select id="test-billing-type" class="filter-select" style="width:auto;"><option value="PIX">PIX</option><option value="BOLETO">Boleto</option><option value="CREDIT_CARD">Cartão</option></select>';
