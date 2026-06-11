@@ -318,15 +318,32 @@ serve(async (req) => {
     
     console.log('Found installation:', installation.id);
     
-    // Resolve Bitrix entity early so timeline comments work on every error path
+    // Resolve Bitrix entity early so timeline comments work on every error path.
+    // Priority: explicit robot properties (bitrix_entity_id / bitrix_entity_type)
+    // override the workflow's document_id, so the user can target any Deal/Lead/Contact.
     const apiEndpoint = installation.client_endpoint || installation.server_endpoint || '';
     const docTypeRaw = String(robotData.document_id?.[1] || '');
     const docIdRaw = String(robotData.document_id?.[2] || robotData.document_id?.[0] || '');
-    const entityIdNum = parseInt(docIdRaw.replace(/[^0-9]/g, '')) || 0;
+
+    const propEntityIdRaw = String(robotData.properties?.bitrix_entity_id ?? '').trim();
+    const propEntityTypeRaw = String(robotData.properties?.bitrix_entity_type ?? '').trim().toLowerCase();
+
     let entityType: 'deal' | 'lead' | 'contact' | 'company' = 'deal';
-    if (/Lead/i.test(docTypeRaw)) entityType = 'lead';
-    else if (/Contact/i.test(docTypeRaw)) entityType = 'contact';
-    else if (/Company/i.test(docTypeRaw)) entityType = 'company';
+    if (propEntityIdRaw) {
+      if (propEntityTypeRaw === 'lead' || propEntityTypeRaw === 'contact' || propEntityTypeRaw === 'company') {
+        entityType = propEntityTypeRaw;
+      } else {
+        entityType = 'deal';
+      }
+    } else {
+      if (/Lead/i.test(docTypeRaw)) entityType = 'lead';
+      else if (/Contact/i.test(docTypeRaw)) entityType = 'contact';
+      else if (/Company/i.test(docTypeRaw)) entityType = 'company';
+    }
+
+    const entityIdSource = propEntityIdRaw || docIdRaw;
+    const entityIdNum = parseInt(entityIdSource.replace(/[^0-9]/g, '')) || 0;
+    console.log('[Robot] Target entity resolved:', { entityType, entityIdNum, fromProperty: !!propEntityIdRaw });
 
     const postTimelineComment = async (text: string) => {
       if (!apiEndpoint || !robotData.auth.access_token || !entityIdNum) return;
