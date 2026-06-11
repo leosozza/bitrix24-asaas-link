@@ -168,7 +168,7 @@ serve(async (req) => {
         .from('bitrix_installations')
         .select('tenant_id')
         .eq('member_id', requestData.member_id)
-        .single();
+        .maybeSingle();
       
       tenantId = installation?.tenant_id;
     }
@@ -186,7 +186,7 @@ serve(async (req) => {
       .select('api_key, environment')
       .eq('tenant_id', tenantId)
       .eq('is_active', true)
-      .single();
+      .maybeSingle();
     
     if (asaasError || !asaasConfig?.api_key) {
       return new Response(
@@ -243,7 +243,7 @@ serve(async (req) => {
           requestData.cycle,
           requestData.billing_type,
           nextDueDate,
-          requestData.description || 'Assinatura via ConnectPay',
+          requestData.description || 'Assinatura via Asaas',
           splitConfigs.length > 0 ? splitConfigs : undefined
         );
         
@@ -274,7 +274,7 @@ serve(async (req) => {
             bitrix_entity_id: requestData.bitrix_entity_id,
           })
           .select()
-          .single();
+          .maybeSingle();
         
         if (saveError) {
           console.error('Error saving subscription:', saveError);
@@ -318,7 +318,7 @@ serve(async (req) => {
           .select('asaas_id')
           .eq('id', requestData.subscription_id)
           .eq('tenant_id', tenantId)
-          .single();
+          .maybeSingle();
         
         const asaasId = subscription?.asaas_id || requestData.subscription_id;
         
