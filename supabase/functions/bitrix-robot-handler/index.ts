@@ -375,8 +375,10 @@ serve(async (req) => {
         );
         
         if (payment.errors) {
-          returnValues = { error: payment.errors[0]?.description || 'Erro ao criar cobrança' };
-          logMessage = `Erro: ${payment.errors[0]?.description}`;
+          const msg = payment.errors[0]?.description || 'Erro ao criar cobrança';
+          returnValues = { error: msg };
+          logMessage = `Erro: ${msg}`;
+          await postTimelineComment(`[B]❌ Asaas — falha ao criar cobrança[/B]\nValor: R$ ${parsedAmount.toFixed(2).replace('.', ',')}\nMotivo: ${msg}`);
           break;
         }
         
