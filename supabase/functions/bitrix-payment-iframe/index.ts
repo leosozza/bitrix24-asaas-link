@@ -1767,7 +1767,14 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
       
       const result = await resp.json();
       if (!resp.ok) return jsonError(result.error || 'Erro ao salvar');
-      return jsonSuccess({ message: result.message || 'Configuração salva' });
+      return jsonSuccess({
+        message: result.message || 'Configuração salva',
+        webhookConfigured: result.webhookConfigured,
+        webhookUrl: result.webhookUrl,
+        webhookSecret: result.webhookSecret,
+        webhookEvents: result.webhookEvents,
+        webhookError: result.webhookError,
+      });
     }
     
     case 'repair_webhook': {
@@ -1779,16 +1786,23 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
       
       const result = await resp.json();
       if (!resp.ok) return jsonError(result.error || 'Erro ao reparar');
-      return jsonSuccess({ message: result.message || 'Webhook reparado' });
+      return jsonSuccess({
+        message: result.message || 'Webhook reparado',
+        webhookConfigured: result.webhookConfigured,
+        webhookUrl: result.webhookUrl,
+        webhookSecret: result.webhookSecret,
+        webhookEvents: result.webhookEvents,
+        webhookError: result.webhookError,
+      });
     }
     
     case 'get_config': {
       const { data: asaasConf } = await supabase
         .from('asaas_configurations')
-        .select('environment, is_active, webhook_configured, api_key')
+        .select('environment, is_active, webhook_configured, webhook_secret, api_key')
         .eq('tenant_id', tenantId)
         .eq('is_active', true)
-        .single();
+        .maybeSingle();
       
       const { data: fiscalConf } = await supabase
         .from('fiscal_configurations')
@@ -1796,14 +1810,28 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
         .eq('tenant_id', tenantId)
         .maybeSingle();
       
+      const webhookUrl = `${SUPABASE_URL}/functions/v1/asaas-webhook`;
+      const webhookEvents = [
+        'PAYMENT_CREATED', 'PAYMENT_RECEIVED', 'PAYMENT_CONFIRMED',
+        'PAYMENT_OVERDUE', 'PAYMENT_REFUNDED', 'PAYMENT_UPDATED', 'PAYMENT_DELETED',
+        'SUBSCRIPTION_CREATED', 'SUBSCRIPTION_UPDATED', 'SUBSCRIPTION_DELETED',
+        'INVOICE_AUTHORIZED', 'INVOICE_ERROR', 'INVOICE_CANCELED',
+      ];
+      
       return jsonSuccess({
         asaas: asaasConf ? {
           environment: asaasConf.environment,
           webhook_configured: asaasConf.webhook_configured,
+          webhook_secret: asaasConf.webhook_secret,
           has_api_key: !!asaasConf.api_key,
-          // Mask the API key
           api_key_masked: asaasConf.api_key ? asaasConf.api_key.substring(0, 10) + '...' : null,
         } : null,
+        webhook: {
+          url: webhookUrl,
+          events: webhookEvents,
+          configured: !!asaasConf?.webhook_configured,
+          secret: asaasConf?.webhook_secret || null,
+        },
         fiscal: fiscalConf,
       });
     }
@@ -2847,6 +2875,73 @@ async function generateDashboardPage(
     }
     
     // ===== SETTINGS =====
+    function escapeHtml(str) {
+      return String(str || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+    
+    function renderWebhookBlock(webhook) {
+      if (!webhook) return '';
+      const configured = !!webhook.configured;
+      const url = webhook.url || '';
+      const secret = webhook.secret || '';
+      const events = webhook.events || [];
+      let html = '<div class="card" style="margin-bottom:24px;">';
+      html += '<div class="card-header"><h3>Webhook Asaas</h3></div>';
+      html += '<div style="padding:20px;">';
+      html += '<p style="font-size:13px;color:' + (configured ? '#10b981' : '#f59e0b') + ';margin:0 0 12px 0;">';
+      html += configured ? '✓ Webhook registrado automaticamente no Asaas' : '⚠ Webhook não registrado automaticamente — configure manualmente abaixo';
+      html += '</p>';
+      
+      html += '<div class="form-group"><label>URL do Webhook</label>';
+      html += '<div style="display:flex;gap:8px;">';
+      html += '<input type="text" id="wh-url" readonly value="' + escapeHtml(url) + '" style="flex:1;font-family:monospace;font-size:12px;">';
+      html += '<button class="btn btn-secondary btn-sm" onclick="copyToClipboard(\\'wh-url\\', this)">Copiar</button>';
+      html += '</div></div>';
+      
+      if (secret) {
+        html += '<div class="form-group"><label>Token de Autenticação (asaas-access-token)</label>';
+        html += '<div style="display:flex;gap:8px;">';
+        html += '<input type="text" id="wh-secret" readonly value="' + escapeHtml(secret) + '" style="flex:1;font-family:monospace;font-size:12px;">';
+        html += '<button class="btn btn-secondary btn-sm" onclick="copyToClipboard(\\'wh-secret\\', this)">Copiar</button>';
+        html += '</div></div>';
+      }
+      
+      html += '<div class="form-group"><label>Eventos a habilitar</label>';
+      html += '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
+      events.forEach((ev) => {
+        html += '<span style="background:#f3f4f6;padding:4px 8px;border-radius:6px;font-size:11px;font-family:monospace;">' + escapeHtml(ev) + '</span>';
+      });
+      html += '</div></div>';
+      
+      html += '<details style="margin-top:12px;"><summary style="cursor:pointer;font-size:13px;font-weight:600;">Como configurar manualmente no Asaas</summary>';
+      html += '<ol style="font-size:13px;color:#555;margin-top:8px;padding-left:20px;">';
+      html += '<li>No painel Asaas, acesse <strong>Integrações → Webhooks</strong> (ou <em>Configurações → Notificações via Webhook</em>).</li>';
+      html += '<li>Clique em <strong>Novo Webhook</strong>.</li>';
+      html += '<li>Cole a URL acima no campo <em>URL</em>.</li>';
+      html += '<li>Cole o Token no campo <em>Token de autenticação</em> (asaas-access-token).</li>';
+      html += '<li>Versão da API: <strong>v3</strong>. Tipo de envio: <strong>Sequencial</strong>.</li>';
+      html += '<li>Selecione os eventos listados acima e salve.</li>';
+      html += '</ol></details>';
+      
+      html += '<button class="btn btn-warning" style="margin-top:12px;" onclick="repairWebhookFromSettings()">Tentar registrar automaticamente novamente</button>';
+      html += '</div></div>';
+      return html;
+    }
+    
+    function copyToClipboard(id, btn) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.select();
+      try {
+        navigator.clipboard.writeText(el.value);
+      } catch (e) {
+        document.execCommand('copy');
+      }
+      const orig = btn.textContent;
+      btn.textContent = 'Copiado!';
+      setTimeout(() => { btn.textContent = orig; }, 1500);
+    }
+    
     async function loadSettings() {
       const result = await apiCall('get_config');
       
@@ -2875,13 +2970,10 @@ async function generateDashboardPage(
       html += '<small>Deixe em branco para manter a atual</small></div>';
       
       html += '<button class="btn btn-primary" onclick="saveAsaasConfig()">Salvar Configuração</button>';
-      
-      html += '<div style="margin-top:16px;padding-top:16px;border-top:1px solid #e5e7eb;">';
-      html += '<button class="btn btn-warning" onclick="repairWebhookFromSettings()">Reparar Webhook</button>';
-      html += '<p style="font-size:11px;color:#888;margin-top:4px;">Use se os status de pagamento não estão atualizando</p>';
-      html += '</div>';
-      
       html += '</div></div>';
+      
+      // Webhook block (always rendered)
+      html += renderWebhookBlock(result.webhook);
       
       // Fiscal Config
       html += '<div class="card">';
@@ -2925,15 +3017,25 @@ async function generateDashboardPage(
       }
       
       const result = await apiCall('save_config', { data: { apiKey, environment } });
-      if (result.success) { showToast(result.message); }
-      else { showToast(result.error || 'Erro', 'error'); }
+      if (result.success) {
+        showToast(result.message);
+        tabLoaded['settings'] = false;
+        loadSettings();
+      } else {
+        showToast(result.error || 'Erro', 'error');
+      }
     }
     
     async function repairWebhookFromSettings() {
       showToast('Reparando webhook...');
       const result = await apiCall('repair_webhook');
-      if (result.success) { showToast(result.message); }
-      else { showToast(result.error || 'Erro', 'error'); }
+      if (result.success) {
+        showToast(result.message);
+        tabLoaded['settings'] = false;
+        loadSettings();
+      } else {
+        showToast(result.error || 'Erro', 'error');
+      }
     }
     
     async function saveFiscalConfig() {

@@ -69,6 +69,8 @@ const asaasStatusMap: Record<string, string> = {
   DUNNING_REQUESTED: 'overdue',
   DUNNING_RECEIVED: 'received',
   AWAITING_RISK_ANALYSIS: 'pending',
+  CANCELED: 'cancelled',
+  DELETED: 'cancelled',
 };
 
 const subscriptionStatusMap: Record<string, string> = {
@@ -198,7 +200,7 @@ serve(async (req) => {
         .from('subscriptions')
         .select('*')
         .eq('asaas_id', subscription.id)
-        .single();
+        .maybeSingle();
       
       if (event === 'SUBSCRIPTION_CREATED' && !existingSubscription) {
         // Subscription created externally - we need to find the tenant
@@ -261,7 +263,7 @@ serve(async (req) => {
         .from('invoices')
         .select('*')
         .eq('asaas_invoice_id', invoice.id)
-        .single();
+        .maybeSingle();
       
       if (existingInvoice) {
         const statusMap: Record<string, string> = {
@@ -305,7 +307,7 @@ serve(async (req) => {
             .select('client_endpoint, access_token')
             .eq('tenant_id', existingInvoice.tenant_id)
             .eq('status', 'active')
-            .single();
+            .maybeSingle();
           
           if (installation?.client_endpoint && installation?.access_token) {
             try {
@@ -353,7 +355,7 @@ serve(async (req) => {
       .from('transactions')
       .select('*, bitrix_entity_id, bitrix_entity_type, tenant_id')
       .eq('asaas_id', payment.id)
-      .single();
+      .maybeSingle();
     
     if (txByAsaasId) {
       transaction = txByAsaasId;
@@ -366,7 +368,7 @@ serve(async (req) => {
         .from('subscriptions')
         .select('*')
         .eq('asaas_id', payment.subscription)
-        .single();
+        .maybeSingle();
       
       if (subscription) {
         tenantId = subscription.tenant_id;
@@ -389,7 +391,7 @@ serve(async (req) => {
             bitrix_entity_id: subscription.bitrix_entity_id,
           })
           .select()
-          .single();
+          .maybeSingle();
         
         transaction = newTransaction;
         console.log('Created transaction for subscription payment:', newTransaction?.id);
@@ -427,17 +429,43 @@ serve(async (req) => {
       );
     }
     
-    // Validate webhook secret if configured
-    if (accessToken) {
+    // Validate webhook secret if configured (reject with 401 when mismatch)
+    {
       const { data: asaasConfig } = await supabase
         .from('asaas_configurations')
         .select('webhook_secret')
         .eq('tenant_id', tenantId)
-        .single();
+        .maybeSingle();
       
-      if (asaasConfig?.webhook_secret && asaasConfig.webhook_secret !== accessToken) {
-        console.warn('Invalid webhook access token for tenant:', tenantId);
-        // Log the attempt but don't reject - some older webhooks may not have the secret
+      if (asaasConfig?.webhook_secret) {
+        if (!accessToken || asaasConfig.webhook_secret !== accessToken) {
+          console.warn('Rejecting webhook: invalid asaas-access-token for tenant', tenantId);
+          return new Response(
+            JSON.stringify({ success: false, error: 'Invalid webhook token' }),
+            { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+      }
+    }
+    
+    // Idempotency: skip if this exact (payment_id + event) was already processed successfully
+    {
+      const { data: prevLog } = await supabase
+        .from('integration_logs')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .eq('action', `asaas_webhook_${event.toLowerCase()}`)
+        .eq('entity_id', payment.id)
+        .eq('status', 'success')
+        .limit(1)
+        .maybeSingle();
+      
+      if (prevLog) {
+        console.log('Event already processed, skipping (idempotency):', event, payment.id);
+        return new Response(
+          JSON.stringify({ success: true, message: 'Already processed', transactionId: transaction.id }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       }
     }
     
@@ -452,6 +480,9 @@ serve(async (req) => {
     
     if (payment.paymentDate) {
       updateData.payment_date = payment.paymentDate;
+    }
+    if (payment.invoiceUrl && !transaction.payment_url) {
+      updateData.payment_url = payment.invoiceUrl;
     }
     
     const { error: updateError } = await supabase
@@ -485,22 +516,27 @@ serve(async (req) => {
         .select('client_endpoint, access_token, domain')
         .eq('tenant_id', tenantId)
         .eq('status', 'active')
-        .single();
+        .maybeSingle();
       
       if (installation && transaction.bitrix_entity_id) {
         const clientEndpoint = installation.client_endpoint || (installation.domain ? `https://${installation.domain}/rest/` : null);
         const token = installation.access_token;
         
-        // Parse external reference to get original payment ID
+        // Parse external reference to get original Bitrix payment ID
         const parts = payment.externalReference?.split('_') || [];
         const bitrixPaymentId = parts[2] || '';
         
-        await updateBitrixPaymentStatus(
-          installation,
-          transaction.bitrix_entity_id,
-          bitrixPaymentId,
-          newStatus
-        );
+        // Only call sale.paysystem.pay.payment when we have a valid Bitrix payment id
+        if (bitrixPaymentId) {
+          await updateBitrixPaymentStatus(
+            installation,
+            transaction.bitrix_entity_id,
+            bitrixPaymentId,
+            newStatus
+          );
+        } else {
+          console.log('Skipping sale.paysystem.pay.payment: no bitrix payment id (external charge or subscription)');
+        }
         
         // Update configurable activity badge to "paid"
         if (transaction.bitrix_activity_id && clientEndpoint && token) {
@@ -516,7 +552,7 @@ serve(async (req) => {
         .select('client_endpoint, access_token, domain')
         .eq('tenant_id', tenantId)
         .eq('status', 'active')
-        .single();
+        .maybeSingle();
       
       if (installation) {
         const clientEndpoint = installation.client_endpoint || (installation.domain ? `https://${installation.domain}/rest/` : null);
@@ -533,7 +569,7 @@ serve(async (req) => {
         .select('client_endpoint, access_token, domain')
         .eq('tenant_id', tenantId)
         .eq('status', 'active')
-        .single();
+        .maybeSingle();
       
       if (installation) {
         const clientEndpoint = installation.client_endpoint || (installation.domain ? `https://${installation.domain}/rest/` : null);
@@ -552,7 +588,7 @@ serve(async (req) => {
         .select('*')
         .eq('tenant_id', tenantId)
         .eq('is_active', true)
-        .single();
+        .maybeSingle();
       
       if (fiscalConfig?.auto_emit_on_payment && fiscalConfig.municipal_service_id) {
         console.log('Auto-emit invoice enabled for tenant:', tenantId);
@@ -571,7 +607,7 @@ serve(async (req) => {
             .select('api_key, environment')
             .eq('tenant_id', tenantId)
             .eq('is_active', true)
-            .single();
+            .maybeSingle();
           
           if (asaasConfig?.api_key) {
             const baseUrl = asaasConfig.environment === 'production'
@@ -608,6 +644,28 @@ serve(async (req) => {
               console.log('Auto invoice result:', invoiceResult);
               
               if (invoiceResult.id) {
+                // Authorize immediately so the NFSe is actually emitted at the municipality
+                let finalStatus = 'scheduled';
+                let invoiceNumber: string | null = invoiceResult.number || null;
+                let invoiceUrl: string | null = invoiceResult.invoiceUrl || null;
+                try {
+                  const authRes = await fetch(`${baseUrl}/invoices/${invoiceResult.id}/authorize`, {
+                    method: 'POST',
+                    headers: { 'access_token': asaasConfig.api_key },
+                  });
+                  const authData = await authRes.json();
+                  console.log('Auto invoice authorize result:', authData);
+                  if (authRes.ok && !authData.errors) {
+                    finalStatus = authData.status === 'AUTHORIZED' ? 'authorized'
+                      : authData.status === 'SYNCHRONIZED' ? 'synchronized'
+                      : 'scheduled';
+                    invoiceNumber = authData.number || invoiceNumber;
+                    invoiceUrl = authData.invoiceUrl || invoiceUrl;
+                  }
+                } catch (authErr) {
+                  console.error('Error authorizing auto invoice:', authErr);
+                }
+                
                 // Save invoice to database
                 await supabase.from('invoices').insert({
                   tenant_id: tenantId,
@@ -620,13 +678,15 @@ serve(async (req) => {
                   value: payment.value,
                   service_description: fiscalConfig.observations_template || `Serviço referente ao pagamento ${payment.id}`,
                   observations: fiscalConfig.observations_template,
-                  status: 'scheduled',
+                  status: finalStatus,
+                  invoice_number: invoiceNumber,
+                  invoice_url: invoiceUrl,
                   effective_date: payment.paymentDate || new Date().toISOString().split('T')[0],
                   bitrix_entity_type: transaction.bitrix_entity_type,
                   bitrix_entity_id: transaction.bitrix_entity_id,
                 });
                 
-                console.log('Auto invoice created and saved:', invoiceResult.id);
+                console.log('Auto invoice created and saved:', invoiceResult.id, 'status:', finalStatus);
                 
                 // Log the auto-emit
                 await supabase.from('integration_logs').insert({
@@ -636,7 +696,7 @@ serve(async (req) => {
                   entity_id: invoiceResult.id,
                   status: 'success',
                   request_data: invoicePayload,
-                  response_data: invoiceResult,
+                  response_data: { ...invoiceResult, finalStatus },
                 });
               } else {
                 console.error('Failed to create auto invoice:', invoiceResult);

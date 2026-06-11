@@ -124,6 +124,23 @@ function calculateSplitAmount(splitConfig: SplitConfig, totalAmount: number): nu
   return (splitConfig.split_value / 100) * totalAmount;
 }
 
+function validateSplits(splitConfigs: SplitConfig[], totalAmount: number): string | null {
+  if (!splitConfigs.length) return null;
+  const totalPercent = splitConfigs
+    .filter((s) => s.split_type === 'percentage')
+    .reduce((sum, s) => sum + s.split_value, 0);
+  if (totalPercent > 100) {
+    return `Soma dos splits percentuais excede 100% (${totalPercent.toFixed(2)}%)`;
+  }
+  const totalFixed = splitConfigs
+    .filter((s) => s.split_type === 'fixed')
+    .reduce((sum, s) => sum + s.split_value, 0);
+  if (totalFixed > totalAmount) {
+    return `Soma dos splits fixos (R$ ${totalFixed.toFixed(2)}) excede o valor do pagamento (R$ ${totalAmount.toFixed(2)})`;
+  }
+  return null;
+}
+
 async function createAsaasPayment(
   apiKey: string,
   baseUrl: string,
@@ -131,6 +148,7 @@ async function createAsaasPayment(
   paymentMethod: string,
   amount: number,
   externalReference: string,
+  holderInfo: { name: string; email: string; cpfCnpj: string },
   cardData?: { number: string; expiry: string; cvv: string; name: string },
   splitConfigs?: SplitConfig[]
 ): Promise<{ payment: AsaasPayment; appliedSplits: AppliedSplit[] }> {
@@ -184,14 +202,18 @@ async function createAsaasPayment(
     const [expMonth, expYear] = cardData.expiry.split('/');
     paymentPayload.creditCard = {
       holderName: cardData.name,
-      number: cardData.number,
-      expiryMonth: expMonth,
-      expiryYear: `20${expYear}`,
+      number: cardData.number.replace(/\D/g, ''),
+      expiryMonth: expMonth?.trim(),
+      expiryYear: expYear && expYear.trim().length === 2 ? `20${expYear.trim()}` : expYear?.trim(),
       ccv: cardData.cvv,
     };
     paymentPayload.creditCardHolderInfo = {
-      name: cardData.name,
-      cpfCnpj: '', // Will be filled from customer
+      name: holderInfo.name || cardData.name,
+      email: holderInfo.email,
+      cpfCnpj: holderInfo.cpfCnpj,
+      postalCode: '00000000',
+      addressNumber: 'S/N',
+      phone: '11999999999',
     };
   }
   
@@ -224,6 +246,22 @@ async function createAsaasPayment(
     const pixData = await pixResponse.json();
     payment.pixQrCodeBase64 = pixData.encodedImage;
     payment.pixCopiaECola = pixData.payload;
+  }
+  
+  // If BOLETO, get the digitable line (identificationField) and barcode
+  if (paymentMethod === 'boleto') {
+    try {
+      const idRes = await fetch(`${baseUrl}/payments/${payment.id}/identificationField`, {
+        headers: { 'access_token': apiKey },
+      });
+      if (idRes.ok) {
+        const idData = await idRes.json();
+        (payment as AsaasPayment & { identificationField?: string; barCode?: string }).identificationField = idData.identificationField;
+        (payment as AsaasPayment & { identificationField?: string; barCode?: string }).barCode = idData.barCode;
+      }
+    } catch (err) {
+      console.error('Error fetching boleto identification field:', err);
+    }
   }
   
   return { payment, appliedSplits };
@@ -307,10 +345,13 @@ serve(async (req) => {
       if (splits && splits.length > 0) {
         splitConfigs = splits as SplitConfig[];
         console.log('Found active splits:', splitConfigs.length);
+        const splitErr = validateSplits(splitConfigs, amount);
+        if (splitErr) throw new Error(splitErr);
       }
     }
     
     // Create payment in Asaas with splits
+    const cleanDoc = paymentRequest.customerDocument.replace(/\D/g, '');
     const { payment, appliedSplits } = await createAsaasPayment(
       paymentRequest.asaasApiKey,
       baseUrl,
@@ -318,6 +359,11 @@ serve(async (req) => {
       paymentRequest.paymentMethod,
       amount,
       externalReference,
+      {
+        name: paymentRequest.customerName || 'Cliente',
+        email: paymentRequest.customerEmail || '',
+        cpfCnpj: cleanDoc,
+      },
       cardData,
       splitConfigs
     );
@@ -430,10 +476,12 @@ serve(async (req) => {
         pixCode: payment.pixCopiaECola,
       };
     } else if (paymentRequest.paymentMethod === 'boleto') {
+      const pAny = payment as AsaasPayment & { identificationField?: string; barCode?: string };
       responseData = {
         ...responseData,
         boletoUrl: payment.bankSlipUrl,
-        boletoDigitableLine: payment.invoiceUrl, // This would be the digitable line
+        boletoDigitableLine: pAny.identificationField || null,
+        boletoBarCode: pAny.barCode || null,
         dueDate: new Date(payment.dueDate).toLocaleDateString('pt-BR'),
       };
     }
