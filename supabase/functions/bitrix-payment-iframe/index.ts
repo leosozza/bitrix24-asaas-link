@@ -3130,8 +3130,40 @@ async function generateDashboardPage(
       }
     }
     
+    let serviceSearchTimer = null;
+    async function onServiceSearch() {
+      const q = document.getElementById('cfg-service-search').value.trim();
+      const dd = document.getElementById('cfg-service-dropdown');
+      if (q.length < 3) { dd.style.display = 'none'; dd.innerHTML = ''; return; }
+      clearTimeout(serviceSearchTimer);
+      serviceSearchTimer = setTimeout(async () => {
+        const r = await apiCall('search_municipal_services', { data: { query: q } });
+        if (!r.success) { dd.style.display = 'none'; return; }
+        const items = r.services || [];
+        if (items.length === 0) {
+          dd.innerHTML = '<div style="padding:10px;color:#64748b;font-size:13px;">Nenhum serviço encontrado</div>';
+        } else {
+          dd.innerHTML = items.map(s =>
+            '<div style="padding:10px;cursor:pointer;border-bottom:1px solid #f1f5f9;font-size:13px;" onmouseover="this.style.background=\\'#f8fafc\\'" onmouseout="this.style.background=\\'\\'" onclick="selectService(\\'' + (s.id || '') + '\\',\\'' + (s.code || '').replace(/'/g,"\\\\'") + '\\',\\'' + (s.description || '').replace(/'/g,"\\\\'") + '\\')"><strong>' + (s.code || '') + '</strong> ' + (s.description || '') + '</div>'
+          ).join('');
+        }
+        dd.style.display = 'block';
+      }, 350);
+    }
+    
+    function selectService(id, code, name) {
+      document.getElementById('cfg-service-id').value = id;
+      document.getElementById('cfg-service-code').value = code;
+      document.getElementById('cfg-service-name').value = name;
+      document.getElementById('cfg-service-label').textContent = code + ' - ' + name;
+      document.getElementById('cfg-service-selected').style.display = 'block';
+      document.getElementById('cfg-service-search').value = '';
+      document.getElementById('cfg-service-dropdown').style.display = 'none';
+    }
+    
     async function saveFiscalConfig() {
       const data = {
+        municipal_service_id: document.getElementById('cfg-service-id').value,
         municipal_service_code: document.getElementById('cfg-service-code').value,
         municipal_service_name: document.getElementById('cfg-service-name').value,
         default_iss: parseFloat(document.getElementById('cfg-iss').value) || 0,
@@ -3143,6 +3175,7 @@ async function generateDashboardPage(
       if (result.success) { showToast(result.message); }
       else { showToast(result.error || 'Erro', 'error'); }
     }
+    
     
     // BX24 init
     if (typeof BX24 !== 'undefined') {
