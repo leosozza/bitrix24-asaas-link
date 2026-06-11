@@ -1767,7 +1767,14 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
       
       const result = await resp.json();
       if (!resp.ok) return jsonError(result.error || 'Erro ao salvar');
-      return jsonSuccess({ message: result.message || 'Configuração salva' });
+      return jsonSuccess({
+        message: result.message || 'Configuração salva',
+        webhookConfigured: result.webhookConfigured,
+        webhookUrl: result.webhookUrl,
+        webhookSecret: result.webhookSecret,
+        webhookEvents: result.webhookEvents,
+        webhookError: result.webhookError,
+      });
     }
     
     case 'repair_webhook': {
@@ -1779,16 +1786,23 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
       
       const result = await resp.json();
       if (!resp.ok) return jsonError(result.error || 'Erro ao reparar');
-      return jsonSuccess({ message: result.message || 'Webhook reparado' });
+      return jsonSuccess({
+        message: result.message || 'Webhook reparado',
+        webhookConfigured: result.webhookConfigured,
+        webhookUrl: result.webhookUrl,
+        webhookSecret: result.webhookSecret,
+        webhookEvents: result.webhookEvents,
+        webhookError: result.webhookError,
+      });
     }
     
     case 'get_config': {
       const { data: asaasConf } = await supabase
         .from('asaas_configurations')
-        .select('environment, is_active, webhook_configured, api_key')
+        .select('environment, is_active, webhook_configured, webhook_secret, api_key')
         .eq('tenant_id', tenantId)
         .eq('is_active', true)
-        .single();
+        .maybeSingle();
       
       const { data: fiscalConf } = await supabase
         .from('fiscal_configurations')
@@ -1796,14 +1810,28 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
         .eq('tenant_id', tenantId)
         .maybeSingle();
       
+      const webhookUrl = `${SUPABASE_URL}/functions/v1/asaas-webhook`;
+      const webhookEvents = [
+        'PAYMENT_CREATED', 'PAYMENT_RECEIVED', 'PAYMENT_CONFIRMED',
+        'PAYMENT_OVERDUE', 'PAYMENT_REFUNDED', 'PAYMENT_UPDATED', 'PAYMENT_DELETED',
+        'SUBSCRIPTION_CREATED', 'SUBSCRIPTION_UPDATED', 'SUBSCRIPTION_DELETED',
+        'INVOICE_AUTHORIZED', 'INVOICE_ERROR', 'INVOICE_CANCELED',
+      ];
+      
       return jsonSuccess({
         asaas: asaasConf ? {
           environment: asaasConf.environment,
           webhook_configured: asaasConf.webhook_configured,
+          webhook_secret: asaasConf.webhook_secret,
           has_api_key: !!asaasConf.api_key,
-          // Mask the API key
           api_key_masked: asaasConf.api_key ? asaasConf.api_key.substring(0, 10) + '...' : null,
         } : null,
+        webhook: {
+          url: webhookUrl,
+          events: webhookEvents,
+          configured: !!asaasConf?.webhook_configured,
+          secret: asaasConf?.webhook_secret || null,
+        },
         fiscal: fiscalConf,
       });
     }
