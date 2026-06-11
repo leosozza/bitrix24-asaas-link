@@ -352,8 +352,10 @@ serve(async (req) => {
         });
         
         if (customer.errors) {
-          returnValues = { error: customer.errors[0]?.description || 'Erro ao criar cliente' };
-          logMessage = `Erro: ${customer.errors[0]?.description}`;
+          const msg = customer.errors[0]?.description || 'Erro ao criar cliente';
+          returnValues = { error: msg };
+          logMessage = `Erro: ${msg}`;
+          await postTimelineComment(`[B]❌ Asaas — falha ao criar cliente[/B]\n${msg}`);
           break;
         }
         
