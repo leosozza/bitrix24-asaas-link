@@ -661,7 +661,7 @@ serve(async (req) => {
             status: 'active',
             description: `Assinatura - Bitrix ${docId}`,
             bitrix_entity_id: docId,
-            bitrix_entity_type: 'deal',
+            bitrix_entity_type: entityType,
           });
         }
         
