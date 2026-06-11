@@ -3176,7 +3176,54 @@ async function generateDashboardPage(
       }
     }
     
-    let serviceSearchTimer = null;
+    async function runTestCharge() {
+      const billing_type = document.getElementById('test-billing-type').value;
+      const btn = document.getElementById('test-charge-btn');
+      const out = document.getElementById('test-charge-result');
+      btn.disabled = true;
+      const orig = btn.textContent;
+      btn.textContent = 'Testando...';
+      out.innerHTML = '';
+      try {
+        const r = await apiCall('test_charge', { data: { billing_type } });
+        if (r.success) {
+          showToast('Cobrança de teste criada!');
+          const p = r.payment || {};
+          let html = '<div style="border:1px solid #bbf7d0;background:#f0fdf4;border-radius:10px;padding:14px;margin-top:8px;">';
+          html += '<div style="font-weight:600;color:#166534;margin-bottom:8px;">✓ Teste concluído com sucesso</div>';
+          if (Array.isArray(r.log)) {
+            html += '<pre style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:10px;font-size:11px;white-space:pre-wrap;margin:0 0 10px;">' + escapeHtml(r.log.join('\\n')) + '</pre>';
+          }
+          html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:13px;color:#334155;">';
+          html += '<div><span style="color:#64748b;">Ambiente:</span> <code>' + escapeHtml(r.environment || '') + '</code></div>';
+          html += '<div><span style="color:#64748b;">Conta:</span> ' + escapeHtml((r.account && (r.account.name || r.account.email)) || '') + '</div>';
+          html += '<div><span style="color:#64748b;">Cobrança:</span> <code>' + escapeHtml(p.id || '') + '</code></div>';
+          html += '<div><span style="color:#64748b;">Status:</span> ' + escapeHtml(p.status || '') + '</div>';
+          html += '<div><span style="color:#64748b;">Valor:</span> R$ ' + Number(p.value || 0).toFixed(2) + '</div>';
+          html += '<div><span style="color:#64748b;">Vencimento:</span> ' + escapeHtml(p.dueDate || '') + '</div>';
+          if (p.invoiceUrl) {
+            html += '<div style="grid-column:1/-1;"><a href="' + escapeHtml(p.invoiceUrl) + '" target="_blank" rel="noopener" style="color:#0369a1;">Abrir cobrança no Asaas ↗</a></div>';
+          }
+          html += '</div></div>';
+          out.innerHTML = html;
+        } else {
+          showToast(r.error || 'Falha no teste', 'error');
+          let html = '<div style="border:1px solid #fecaca;background:#fef2f2;border-radius:10px;padding:14px;margin-top:8px;">';
+          html += '<div style="font-weight:600;color:#991b1b;margin-bottom:8px;">✗ Falha no teste</div>';
+          html += '<div style="font-size:13px;color:#991b1b;">' + escapeHtml(r.error || 'Erro desconhecido') + '</div>';
+          if (Array.isArray(r.log) && r.log.length) {
+            html += '<pre style="background:#fff;border:1px solid #fecaca;border-radius:6px;padding:10px;font-size:11px;white-space:pre-wrap;margin:10px 0 0;">' + escapeHtml(r.log.join('\\n')) + '</pre>';
+          }
+          html += '</div>';
+          out.innerHTML = html;
+        }
+      } catch (e) {
+        showToast('Erro ao executar teste', 'error');
+        out.innerHTML = '<div style="color:#991b1b;font-size:13px;margin-top:8px;">' + escapeHtml(String(e && e.message || e)) + '</div>';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = orig;
+      }
     async function onServiceSearch() {
       const q = document.getElementById('cfg-service-search').value.trim();
       const dd = document.getElementById('cfg-service-dropdown');
