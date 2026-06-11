@@ -2935,18 +2935,23 @@ async function generateDashboardPage(
       return String(str || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
     
-    function renderWebhookBlock(webhook) {
+    function renderWebhookBlock(webhook, environment) {
       if (!webhook) return '';
       const configured = !!webhook.configured;
       const url = webhook.url || '';
       const secret = webhook.secret || '';
       const events = webhook.events || [];
+      const envLabel = environment === 'production' ? 'Produção' : (environment === 'sandbox' ? 'Sandbox' : '—');
       let html = '<div class="card" style="margin-bottom:24px;">';
       html += '<div class="card-header"><h3>Webhook Asaas</h3></div>';
       html += '<div style="padding:20px;">';
-      html += '<p style="font-size:13px;color:' + (configured ? '#10b981' : '#f59e0b') + ';margin:0 0 12px 0;">';
-      html += configured ? '✓ Webhook registrado automaticamente no Asaas' : '⚠ Webhook não registrado automaticamente — configure manualmente abaixo';
-      html += '</p>';
+      
+      // Badges API version + ambiente
+      html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">';
+      html += '<span style="background:#dcfce7;color:#166534;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;">API Asaas v3</span>';
+      html += '<span style="background:#e0f2fe;color:#075985;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;">Ambiente: ' + envLabel + '</span>';
+      html += '<span style="background:' + (configured ? '#dcfce7' : '#fef3c7') + ';color:' + (configured ? '#166534' : '#92400e') + ';padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;">' + (configured ? '✓ Registrado automaticamente' : '⚠ Registrar manualmente') + '</span>';
+      html += '</div>';
       
       html += '<div class="form-group"><label>URL do Webhook</label>';
       html += '<div style="display:flex;gap:8px;">';
@@ -2955,7 +2960,7 @@ async function generateDashboardPage(
       html += '</div></div>';
       
       if (secret) {
-        html += '<div class="form-group"><label>Token de Autenticação (asaas-access-token)</label>';
+        html += '<div class="form-group"><label>Token de Autenticação (header <code>asaas-access-token</code>)</label>';
         html += '<div style="display:flex;gap:8px;">';
         html += '<input type="text" id="wh-secret" readonly value="' + escapeHtml(secret) + '" style="flex:1;font-family:monospace;font-size:12px;">';
         html += '<button class="btn btn-secondary btn-sm" onclick="copyToClipboard(\\'wh-secret\\', this)">Copiar</button>';
@@ -2969,15 +2974,29 @@ async function generateDashboardPage(
       });
       html += '</div></div>';
       
-      html += '<details style="margin-top:12px;"><summary style="cursor:pointer;font-size:13px;font-weight:600;">Como configurar manualmente no Asaas</summary>';
-      html += '<ol style="font-size:13px;color:#555;margin-top:8px;padding-left:20px;">';
-      html += '<li>No painel Asaas, acesse <strong>Integrações → Webhooks</strong> (ou <em>Configurações → Notificações via Webhook</em>).</li>';
-      html += '<li>Clique em <strong>Novo Webhook</strong>.</li>';
-      html += '<li>Cole a URL acima no campo <em>URL</em>.</li>';
-      html += '<li>Cole o Token no campo <em>Token de autenticação</em> (asaas-access-token).</li>';
-      html += '<li>Versão da API: <strong>v3</strong>. Tipo de envio: <strong>Sequencial</strong>.</li>';
-      html += '<li>Selecione os eventos listados acima e salve.</li>';
-      html += '</ol></details>';
+      // Passo a passo (visível)
+      html += '<div style="margin-top:16px;padding:16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">';
+      html += '<h4 style="margin:0 0 12px;font-size:14px;color:#0f172a;">📘 Como configurar o webhook no painel Asaas (passo a passo)</h4>';
+      html += '<ol style="font-size:13px;color:#334155;margin:0;padding-left:22px;line-height:1.7;">';
+      html += '<li>Acesse <a href="https://www.asaas.com/login" target="_blank" rel="noopener" style="color:#0369a1;">https://www.asaas.com/login</a> e entre na sua conta.</li>';
+      html += '<li>No menu lateral, vá em <strong>Integrações</strong> → aba <strong>Webhooks</strong> (em contas antigas: <em>Configurações → Notificações via Webhook</em>).</li>';
+      html += '<li>Clique em <strong>+ Novo Webhook</strong>.</li>';
+      html += '<li>Em <strong>Nome</strong>, digite algo como <em>"Bitrix24 Asaas Connector"</em>.</li>';
+      html += '<li>No campo <strong>URL</strong>, cole a URL acima (botão Copiar).</li>';
+      html += '<li>No campo <strong>Token de autenticação</strong> (header <code>asaas-access-token</code>), cole o Token acima (botão Copiar).</li>';
+      html += '<li>Preencha as configurações obrigatórias:';
+      html += '<ul style="margin:4px 0;padding-left:18px;">';
+      html += '<li><strong>E-mail para notificação de falhas</strong>: o mesmo cadastrado em "Dados da Empresa" acima.</li>';
+      html += '<li><strong>Versão da API</strong>: <strong>v3</strong> (obrigatório — o conector só envia compatível com v3).</li>';
+      html += '<li><strong>Envio</strong>: <strong>Sequencial</strong> (recomendado).</li>';
+      html += '<li><strong>Status</strong>: <strong>Ativo / Habilitado</strong>.</li>';
+      html += '</ul></li>';
+      html += '<li>Em <strong>Eventos</strong>, marque <strong>todos</strong> os eventos listados acima (pagamentos, assinaturas e notas fiscais).</li>';
+      html += '<li>Clique em <strong>Salvar</strong>.</li>';
+      html += '</ol>';
+      html += '<p style="margin:12px 0 0;font-size:12px;color:#64748b;">📖 Documentação oficial: <a href="https://docs.asaas.com/docs/webhooks" target="_blank" rel="noopener" style="color:#0369a1;">docs.asaas.com/docs/webhooks</a></p>';
+      html += '<p style="margin:6px 0 0;font-size:12px;color:#64748b;">💡 Após salvar, gere uma cobrança de teste para validar a entrega. O status aparece na aba <strong>Integrações</strong>.</p>';
+      html += '</div>';
       
       html += '<button class="btn btn-warning" style="margin-top:12px;" onclick="repairWebhookFromSettings()">Tentar registrar automaticamente novamente</button>';
       html += '</div></div>';
