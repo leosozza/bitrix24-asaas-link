@@ -376,6 +376,18 @@ async function registerAutomationRobots(clientEndpoint: string, accessToken: str
           Type: 'int',
           Default: 3,
         },
+        bitrix_entity_type: {
+          Name: 'Tipo de Entidade Bitrix (alvo)',
+          Type: 'select',
+          Options: { deal: 'Negócio', lead: 'Lead', contact: 'Contato', company: 'Empresa' },
+          Default: 'deal',
+          Required: 'N',
+        },
+        bitrix_entity_id: {
+          Name: 'ID do Deal/Lead (opcional)',
+          Type: 'string',
+          Required: 'N',
+        },
       },
       RETURN_PROPERTIES: {
         charge_id: { Name: 'ID da Cobrança', Type: 'string' },
@@ -397,6 +409,18 @@ async function registerAutomationRobots(clientEndpoint: string, accessToken: str
           Name: 'ID da Cobrança',
           Type: 'string',
           Required: 'Y',
+        },
+        bitrix_entity_type: {
+          Name: 'Tipo de Entidade Bitrix (alvo)',
+          Type: 'select',
+          Options: { deal: 'Negócio', lead: 'Lead', contact: 'Contato', company: 'Empresa' },
+          Default: 'deal',
+          Required: 'N',
+        },
+        bitrix_entity_id: {
+          Name: 'ID do Deal/Lead (opcional)',
+          Type: 'string',
+          Required: 'N',
         },
       },
       RETURN_PROPERTIES: {
@@ -460,6 +484,18 @@ async function registerAutomationRobots(clientEndpoint: string, accessToken: str
           Type: 'int',
           Default: 7,
         },
+        bitrix_entity_type: {
+          Name: 'Tipo de Entidade Bitrix (alvo)',
+          Type: 'select',
+          Options: { deal: 'Negócio', lead: 'Lead', contact: 'Contato', company: 'Empresa' },
+          Default: 'deal',
+          Required: 'N',
+        },
+        bitrix_entity_id: {
+          Name: 'ID do Deal/Lead (opcional)',
+          Type: 'string',
+          Required: 'N',
+        },
       },
       RETURN_PROPERTIES: {
         subscription_id: { Name: 'ID da Assinatura', Type: 'string' },
@@ -480,6 +516,18 @@ async function registerAutomationRobots(clientEndpoint: string, accessToken: str
           Name: 'ID da Assinatura',
           Type: 'string',
           Required: 'Y',
+        },
+        bitrix_entity_type: {
+          Name: 'Tipo de Entidade Bitrix (alvo)',
+          Type: 'select',
+          Options: { deal: 'Negócio', lead: 'Lead', contact: 'Contato', company: 'Empresa' },
+          Default: 'deal',
+          Required: 'N',
+        },
+        bitrix_entity_id: {
+          Name: 'ID do Deal/Lead (opcional)',
+          Type: 'string',
+          Required: 'N',
         },
       },
       RETURN_PROPERTIES: {
@@ -512,6 +560,18 @@ async function registerAutomationRobots(clientEndpoint: string, accessToken: str
         },
         observations: {
           Name: 'Observações',
+          Type: 'string',
+          Required: 'N',
+        },
+        bitrix_entity_type: {
+          Name: 'Tipo de Entidade Bitrix (alvo)',
+          Type: 'select',
+          Options: { deal: 'Negócio', lead: 'Lead', contact: 'Contato', company: 'Empresa' },
+          Default: 'deal',
+          Required: 'N',
+        },
+        bitrix_entity_id: {
+          Name: 'ID do Deal/Lead (opcional)',
           Type: 'string',
           Required: 'N',
         },

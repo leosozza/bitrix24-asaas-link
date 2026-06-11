@@ -318,15 +318,32 @@ serve(async (req) => {
     
     console.log('Found installation:', installation.id);
     
-    // Resolve Bitrix entity early so timeline comments work on every error path
+    // Resolve Bitrix entity early so timeline comments work on every error path.
+    // Priority: explicit robot properties (bitrix_entity_id / bitrix_entity_type)
+    // override the workflow's document_id, so the user can target any Deal/Lead/Contact.
     const apiEndpoint = installation.client_endpoint || installation.server_endpoint || '';
     const docTypeRaw = String(robotData.document_id?.[1] || '');
     const docIdRaw = String(robotData.document_id?.[2] || robotData.document_id?.[0] || '');
-    const entityIdNum = parseInt(docIdRaw.replace(/[^0-9]/g, '')) || 0;
+
+    const propEntityIdRaw = String(robotData.properties?.bitrix_entity_id ?? '').trim();
+    const propEntityTypeRaw = String(robotData.properties?.bitrix_entity_type ?? '').trim().toLowerCase();
+
     let entityType: 'deal' | 'lead' | 'contact' | 'company' = 'deal';
-    if (/Lead/i.test(docTypeRaw)) entityType = 'lead';
-    else if (/Contact/i.test(docTypeRaw)) entityType = 'contact';
-    else if (/Company/i.test(docTypeRaw)) entityType = 'company';
+    if (propEntityIdRaw) {
+      if (propEntityTypeRaw === 'lead' || propEntityTypeRaw === 'contact' || propEntityTypeRaw === 'company') {
+        entityType = propEntityTypeRaw;
+      } else {
+        entityType = 'deal';
+      }
+    } else {
+      if (/Lead/i.test(docTypeRaw)) entityType = 'lead';
+      else if (/Contact/i.test(docTypeRaw)) entityType = 'contact';
+      else if (/Company/i.test(docTypeRaw)) entityType = 'company';
+    }
+
+    const entityIdSource = propEntityIdRaw || docIdRaw;
+    const entityIdNum = parseInt(entityIdSource.replace(/[^0-9]/g, '')) || 0;
+    console.log('[Robot] Target entity resolved:', { entityType, entityIdNum, fromProperty: !!propEntityIdRaw });
 
     const postTimelineComment = async (text: string) => {
       if (!apiEndpoint || !robotData.auth.access_token || !entityIdNum) return;
@@ -414,9 +431,11 @@ serve(async (req) => {
           break;
         }
         
-        // Create external reference
-        const docId = robotData.document_id[2] || robotData.document_id[0] || 'unknown';
-        const externalReference = `bitrix_${robotData.auth.member_id}_${docId}`;
+        // Create external reference — prefer the resolved target entity (override or workflow)
+        const ownerTypeIdMap: Record<string, number> = { lead: 1, deal: 2, contact: 3, company: 4 };
+        const targetOwnerTypeId = ownerTypeIdMap[entityType] || 2;
+        const targetId = entityIdNum || (robotData.document_id[2] || robotData.document_id[0] || 'unknown');
+        const externalReference = `bitrix_${robotData.auth.member_id}_${entityType}_${targetId}`;
         
         // Create charge
         const payment = await createAsaasCharge(
@@ -449,17 +468,17 @@ serve(async (req) => {
             customer_email: customer_email,
             customer_document: customer_document,
             payment_url: payment.invoiceUrl,
-            bitrix_entity_id: docId,
-            bitrix_entity_type: 'deal',
+            bitrix_entity_id: String(targetId),
+            bitrix_entity_type: entityType,
           }).select('id').single();
           
-          // Create configurable activity with badge in Bitrix24 timeline
-          if (apiEndpoint && robotData.auth.access_token) {
+          // Create configurable activity with badge in Bitrix24 timeline (on resolved entity)
+          if (apiEndpoint && robotData.auth.access_token && entityIdNum) {
             try {
               const methodLabel: Record<string, string> = { pix: 'PIX', boleto: 'Boleto', credit_card: 'Cartão' };
               const actResult = await callBitrixApi(apiEndpoint, 'crm.activity.configurable.add', {
-                ownerTypeId: 2, // Deal
-                ownerId: parseInt(docId),
+                ownerTypeId: targetOwnerTypeId,
+                ownerId: entityIdNum,
                 fields: {
                   completed: false,
                   badgeCode: 'asaas_charge_created',
@@ -598,8 +617,8 @@ serve(async (req) => {
           credit_card: 'CREDIT_CARD',
         };
         
-        // Create subscription in Asaas
-        const docId = robotData.document_id[2] || robotData.document_id[0] || 'unknown';
+        // Create subscription in Asaas — use resolved target entity (override or workflow)
+        const docId = entityIdNum ? String(entityIdNum) : (robotData.document_id[2] || robotData.document_id[0] || 'unknown');
         
         const subscriptionResponse = await fetch(`${baseUrl}/subscriptions`, {
           method: 'POST',
@@ -642,7 +661,7 @@ serve(async (req) => {
             status: 'active',
             description: `Assinatura - Bitrix ${docId}`,
             bitrix_entity_id: docId,
-            bitrix_entity_type: 'deal',
+            bitrix_entity_type: entityType,
           });
         }
         
@@ -708,7 +727,7 @@ serve(async (req) => {
           .eq('is_active', true)
           .single();
         
-        const docId = robotData.document_id[2] || robotData.document_id[0] || 'unknown';
+        const docId = entityIdNum ? String(entityIdNum) : (robotData.document_id[2] || robotData.document_id[0] || 'unknown');
         
         // Build invoice payload
         const invoicePayload: Record<string, unknown> = {
@@ -732,7 +751,7 @@ serve(async (req) => {
           };
         }
         
-        invoicePayload.externalReference = `bitrix_${robotData.auth.member_id}_${docId}`;
+        invoicePayload.externalReference = `bitrix_${robotData.auth.member_id}_${entityType}_${docId}`;
         
         console.log('[Asaas] Creating invoice:', JSON.stringify(invoicePayload));
         
@@ -768,7 +787,7 @@ serve(async (req) => {
             invoice_url: invoice.invoiceUrl,
             external_reference: invoicePayload.externalReference,
             bitrix_entity_id: docId,
-            bitrix_entity_type: 'deal',
+            bitrix_entity_type: entityType,
           });
         }
         
