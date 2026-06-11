@@ -76,9 +76,30 @@ async function registerAsaasWebhook(
     const match = existing.find((wh) => wh.url === webhookUrl);
     if (match) {
       webhookId = match.id;
-      webhookSecret = match.authToken || null;
-      console.log('Webhook already registered:', webhookId);
-      return { webhookId, webhookSecret, webhookUrl, events: WEBHOOK_EVENTS };
+      // List endpoint doesn't return authToken — fetch the webhook individually to get it
+      try {
+        const detailRes = await fetch(`${baseUrl}/webhooks/${match.id}`, {
+          headers: { 'access_token': apiKey },
+        });
+        if (detailRes.ok) {
+          const detail = await detailRes.json();
+          webhookSecret = detail.authToken || null;
+        }
+      } catch (e) {
+        console.warn('Could not fetch webhook detail for authToken:', e);
+      }
+      // If we still don't have a secret, recreate the webhook to ensure we control the token
+      if (!webhookSecret) {
+        console.log('Existing webhook has no retrievable token — recreating');
+        await fetch(`${baseUrl}/webhooks/${match.id}`, {
+          method: 'DELETE',
+          headers: { 'access_token': apiKey },
+        });
+        webhookId = null;
+      } else {
+        console.log('Webhook already registered with token:', webhookId);
+        return { webhookId, webhookSecret, webhookUrl, events: WEBHOOK_EVENTS };
+      }
     }
 
     // Cleanup old webhooks pointing to wrong URLs
