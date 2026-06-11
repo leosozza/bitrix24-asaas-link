@@ -476,10 +476,12 @@ serve(async (req) => {
         pixCode: payment.pixCopiaECola,
       };
     } else if (paymentRequest.paymentMethod === 'boleto') {
+      const pAny = payment as AsaasPayment & { identificationField?: string; barCode?: string };
       responseData = {
         ...responseData,
         boletoUrl: payment.bankSlipUrl,
-        boletoDigitableLine: payment.invoiceUrl, // This would be the digitable line
+        boletoDigitableLine: pAny.identificationField || null,
+        boletoBarCode: pAny.barCode || null,
         dueDate: new Date(payment.dueDate).toLocaleDateString('pt-BR'),
       };
     }
