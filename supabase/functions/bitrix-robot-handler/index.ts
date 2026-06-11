@@ -287,40 +287,8 @@ serve(async (req) => {
     
     console.log('Found installation:', installation.id);
     
-    // Get Asaas configuration
-    const { data: asaasConfig, error: asaasError } = await supabase
-      .from('asaas_configurations')
-      .select('api_key, environment')
-      .eq('tenant_id', installation.tenant_id)
-      .eq('is_active', true)
-      .maybeSingle();
-    
-    if (asaasError || !asaasConfig?.api_key) {
-      console.error('Asaas config not found:', asaasError);
-      
-      // Send error back to Bitrix
-      const apiEndpoint = installation.client_endpoint || installation.server_endpoint || '';
-      await callBitrixApi(apiEndpoint, 'bizproc.event.send', {
-        EVENT_TOKEN: robotData.event_token,
-        RETURN_VALUES: {
-          error: 'Configuração do Asaas não encontrada. Por favor, configure sua API Key.',
-        },
-        LOG_MESSAGE: 'Erro: Asaas não configurado',
-      }, robotData.auth.access_token);
-      
-      return new Response(JSON.stringify({ error: 'Asaas not configured' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-    
-    const baseUrl = getAsaasBaseUrl(asaasConfig.environment);
+    // Resolve Bitrix entity early so timeline comments work on every error path
     const apiEndpoint = installation.client_endpoint || installation.server_endpoint || '';
-    
-    let returnValues: Record<string, unknown> = {};
-    let logMessage = '';
-
-    // Resolve Bitrix entity from document_id (e.g. ["crm","CCrmDocumentDeal","DEAL_123"])
     const docTypeRaw = String(robotData.document_id?.[1] || '');
     const docIdRaw = String(robotData.document_id?.[2] || robotData.document_id?.[0] || '');
     const entityIdNum = parseInt(docIdRaw.replace(/[^0-9]/g, '')) || 0;
@@ -345,29 +313,63 @@ serve(async (req) => {
       }
     };
 
+    // Get Asaas configuration
+    const { data: asaasConfig, error: asaasError } = await supabase
+      .from('asaas_configurations')
+      .select('api_key, environment')
+      .eq('tenant_id', installation.tenant_id)
+      .eq('is_active', true)
+      .maybeSingle();
     
+    if (asaasError || !asaasConfig?.api_key) {
+      console.error('Asaas config not found:', asaasError);
+      await postTimelineComment('[B]❌ Asaas — configuração ausente[/B]\nConfigure a API Key no app Asaas Connector antes de executar o robô.');
+      
+      await callBitrixApi(apiEndpoint, 'bizproc.event.send', {
+        EVENT_TOKEN: robotData.event_token,
+        RETURN_VALUES: {
+          error: 'Configuração do Asaas não encontrada. Por favor, configure sua API Key.',
+        },
+        LOG_MESSAGE: 'Erro: Asaas não configurado',
+      }, robotData.auth.access_token);
+      
+      return new Response(JSON.stringify({ error: 'Asaas not configured' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
     
+    const baseUrl = getAsaasBaseUrl(asaasConfig.environment);
+    
+    let returnValues: Record<string, unknown> = {};
+    let logMessage = '';
+
     // Process based on robot code
     switch (robotData.code) {
       case 'asaas_create_charge': {
         const { payment_method, amount, customer_name, customer_email, customer_document, due_days } = robotData.properties;
-        
-        if (!amount || !customer_document) {
+        console.log('[Robot] create_charge raw inputs:', { amount, customer_document, payment_method });
+
+        const docDigits = stripDocument(customer_document);
+        if (!amount || !docDigits) {
           returnValues = { error: 'Valor e CPF/CNPJ são obrigatórios' };
           logMessage = 'Erro: Dados incompletos';
+          await postTimelineComment('[B]❌ Asaas — dados incompletos[/B]\nInforme valor e CPF/CNPJ do cliente nas propriedades do robô.');
           break;
         }
         
-        const parsedAmount = parseFloat(amount);
+        const parsedAmount = parseBRLAmount(amount);
         if (isNaN(parsedAmount) || parsedAmount <= 0) {
           returnValues = { error: 'Valor inválido' };
           logMessage = 'Erro: Valor inválido';
+          await postTimelineComment(`[B]❌ Asaas — valor inválido[/B]\nValor recebido: \`${String(amount)}\`\nUse formatos como 1500.00 ou R$ 1.500,00.`);
           break;
         }
         
         // Create or find customer
         const customer = await findOrCreateCustomer(asaasConfig.api_key, baseUrl, {
           name: customer_name || 'Cliente',
+
           email: customer_email || '',
           cpfCnpj: customer_document,
         });
