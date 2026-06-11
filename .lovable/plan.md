@@ -1,49 +1,47 @@
-## Objetivo
+## Problema
 
-Atualizar o bloco "Webhook Asaas" da aba Configurações (iframe Bitrix) para deixar claro qual é a versão da API usada e como o usuário configura o webhook manualmente no painel do Asaas, caso o registro automático falhe.
+Teste no Deal 964 falhou silenciosamente (nenhum comentário no timeline) por dois motivos encontrados nos logs do `bitrix-robot-handler`:
 
-## Versão da API
+1. **Parse de valor BR quebrado** — Bitrix enviou `amount = "R$ 1.500,00"`. O código atual faz `parseFloat(amount)` direto, que retorna `NaN` para esse formato → retorna "Valor inválido" sem chamar o Asaas.
+2. **Timeline não é avisada em erros precoces** — as saídas por "Dados incompletos", "Valor inválido" e "Asaas não configurado" usam `break`/`return` antes do `postTimelineComment`, então o usuário não vê nada no timeline do Deal.
 
-Hoje o conector usa a **API REST do Asaas v3** em todas as edge functions:
-- Produção: `https://api.asaas.com/v3`
-- Sandbox: `https://sandbox.asaas.com/api/v3`
+## Correções em `supabase/functions/bitrix-robot-handler/index.ts`
 
-Essa informação será destacada no bloco do webhook.
+### 1. Normalizar valores no formato brasileiro
+Adicionar helper:
 
-## Mudanças
+```text
+parseBRLAmount("R$ 1.500,00")  → 1500.00
+parseBRLAmount("1500.00")      → 1500.00
+parseBRLAmount("1.500,5")      → 1500.50
+```
 
-Arquivo único: `supabase/functions/bitrix-payment-iframe/index.ts` — função `renderWebhookBlock()`.
+Regras: remover `R$`/espaços; se tiver vírgula, tratar `.` como separador de milhar e `,` como decimal; senão usar `parseFloat`.
 
-1. **Cabeçalho informativo**
-   - Adicionar uma linha com badge: `API Asaas v3` (esverdeada).
-   - Mostrar o ambiente atual (Sandbox/Produção) ao lado.
+Aplicar em `asaas_create_charge` (campo `amount`) e em `asaas_create_subscription` se também receber valor.
 
-2. **Passo a passo expandido (substitui o `<details>` atual)**
-   Lista numerada visível por padrão, com 8 passos:
-   1. Acessar `https://www.asaas.com/login` e entrar na sua conta.
-   2. Menu lateral → **Integrações** → aba **Webhooks** (em contas antigas: **Configurações → Notificações via Webhook**).
-   3. Clicar em **+ Novo Webhook**.
-   4. Em **Nome**, usar algo como "Bitrix24 Asaas Connector".
-   5. Colar a URL do webhook (botão Copiar acima) no campo **URL**.
-   6. Colar o Token (botão Copiar acima) no campo **Token de autenticação** (header `asaas-access-token`).
-   7. Configurações obrigatórias:
-      - **E-mail para notificação de erros**: o e-mail da empresa cadastrado acima.
-      - **Versão da API**: **v3**.
-      - **Envio**: **Sequencial** (recomendado).
-      - **Status**: **Ativo / Habilitado**.
-   8. Em **Eventos**, marcar todos os eventos da lista acima (pagamentos, assinaturas e notas fiscais) e clicar em **Salvar**.
+### 2. Postar comentário no timeline em TODOS os erros do robô
+Mover a definição de `entityType` / `entityIdNum` / `postTimelineComment` para **antes** do bloco que valida `asaas_configurations`, e chamar `postTimelineComment` nestes pontos do `asaas_create_charge`:
 
-3. **Link direto** para a documentação oficial do webhook Asaas:
-   - `https://docs.asaas.com/docs/webhooks` (abre em nova aba).
+- Asaas não configurado → "❌ Asaas — configuração ausente. Configure a API Key no app."
+- Dados incompletos (`amount` ou `customer_document` vazios) → "❌ Asaas — dados incompletos: informe valor e CPF/CNPJ."
+- Valor inválido (após parseBRLAmount) → "❌ Asaas — valor inválido: `<valor recebido>`."
+- Falha ao criar cliente → já existe.
+- Falha ao criar cobrança → já existe.
+- Sucesso → já existe.
 
-4. **Dica de validação**
-   - Pequena nota: "Após salvar no Asaas, gere uma cobrança de teste no Sandbox para validar a entrega. O status do webhook aparece na aba **Integrações**."
+### 3. Pequeno ajuste de robustez
+- Tornar `customer_document` tolerante a máscara (`12.345.678/0001-99`) — strip de tudo que não for dígito antes de mandar para o Asaas.
+- Log do amount cru recebido do Bitrix para facilitar diagnóstico futuro.
 
-## Fora de escopo
+## O que NÃO está nesse plano (separar se quiser)
 
-- Sem mudanças no backend (a função `bitrix-config` já registra com `https://sandbox.asaas.com/api/v3` ou `https://api.asaas.com/v3`).
-- Sem mudanças no dashboard React `/dashboard/settings` (o bloco webhook só existe no iframe).
+- O erro `ERROR_METHOD_NOT_FOUND` em `bizproc.event.send` que apareceu no log — está relacionado ao retorno do robô para o workflow, não ao timeline. Posso investigar em seguida se você confirmar.
+- Mesmo tratamento de timeline nos outros robôs (`asaas_check_payment`, `asaas_create_subscription`, etc.). Faço junto se quiser.
 
-## Deploy
+## Resultado esperado
 
-Redeploy de `bitrix-payment-iframe` após a edição.
+Repetindo o teste do Deal 964 com `R$ 1.500,00` e CNPJ mascarado:
+- A cobrança é criada de verdade no Asaas (valor 1500.00).
+- Aparece comentário no timeline do Deal 964 com ID, método, valor e link de pagamento.
+- Se ainda assim falhar, o motivo do erro aparece no timeline em vez de sumir.
