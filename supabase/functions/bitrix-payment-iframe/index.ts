@@ -2983,6 +2983,18 @@ async function generateDashboardPage(
       
       let html = '';
       
+      // Empresa (usado para registro do webhook e cobranças)
+      const p = result.profile || {};
+      html += '<div class="card" style="margin-bottom:24px;">';
+      html += '<div class="card-header"><h3>Dados da Empresa</h3></div>';
+      html += '<div style="padding:20px;">';
+      html += '<p style="margin:0 0 16px;color:#64748b;font-size:13px;">Esses dados são usados no registro do webhook no Asaas e nas notificações de cobrança. Um e-mail real é obrigatório.</p>';
+      html += '<div class="form-group"><label>Nome da Empresa *</label><input type="text" id="cfg-company" value="' + (p.company_name || '').replace(/"/g, '&quot;') + '" placeholder="Minha Empresa LTDA"></div>';
+      html += '<div class="form-group"><label>E-mail *</label><input type="email" id="cfg-email" value="' + (p.email || '').replace(/"/g, '&quot;') + '" placeholder="contato@minhaempresa.com"></div>';
+      html += '<div class="form-group"><label>Telefone</label><input type="text" id="cfg-phone" value="' + (p.phone || '').replace(/"/g, '&quot;') + '" placeholder="(11) 99999-9999"></div>';
+      html += '<button class="btn btn-primary" onclick="saveProfile()">Salvar Empresa</button>';
+      html += '</div></div>';
+      
       // Asaas Config
       html += '<div class="card" style="margin-bottom:24px;">';
       html += '<div class="card-header"><h3>Configuração Asaas</h3></div>';
