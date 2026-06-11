@@ -184,6 +184,36 @@ serve(async (req) => {
           );
         }
         
+        // Fetch customer info (from transaction or Asaas customer endpoint) to persist
+        let customerName: string | null = null;
+        let customerEmail: string | null = null;
+        let customerDoc: string | null = null;
+        if (transaction_id) {
+          const { data: tx } = await supabase
+            .from('transactions')
+            .select('customer_name, customer_email, customer_document')
+            .eq('id', transaction_id)
+            .maybeSingle();
+          customerName = tx?.customer_name || null;
+          customerEmail = tx?.customer_email || null;
+          customerDoc = tx?.customer_document || null;
+        }
+        if (!customerName && invoice.customer) {
+          try {
+            const custRes = await fetch(`${baseUrl}/customers/${invoice.customer}`, {
+              headers: { 'access_token': apiKey },
+            });
+            if (custRes.ok) {
+              const custData = await custRes.json();
+              customerName = custData.name || null;
+              customerEmail = custData.email || null;
+              customerDoc = custData.cpfCnpj || null;
+            }
+          } catch (cerr) {
+            console.error('[Asaas] Error fetching customer for invoice persistence:', cerr);
+          }
+        }
+        
         // Save to database
         const { data: savedInvoice, error: saveError } = await supabase
           .from('invoices')
@@ -192,6 +222,9 @@ serve(async (req) => {
             transaction_id: transaction_id || null,
             asaas_invoice_id: invoice.id,
             customer_id: invoice.customer,
+            customer_name: customerName,
+            customer_email: customerEmail,
+            customer_document: customerDoc,
             value: value,
             service_description: service_description,
             observations: observations,
@@ -206,7 +239,7 @@ serve(async (req) => {
             bitrix_entity_id: bitrix_entity_id,
           })
           .select()
-          .single();
+          .maybeSingle();
         
         if (saveError) {
           console.error('[DB] Error saving invoice:', saveError);
