@@ -21,8 +21,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { CheckCircle, Loader2 } from 'lucide-react';
+import { CheckCircle, Loader2, Zap, CheckCircle2, XCircle, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
 import bitrix24Logo from '@/assets/bitrix24-logo.png';
 import asaasLogo from '@/assets/asaas-logo.png';
 export default function DashboardIntegrations() {
