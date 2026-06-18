@@ -808,6 +808,10 @@ serve(async (req) => {
             status: 'canceled',
           };
           logMessage = `Assinatura cancelada: ${subscription_id}`;
+
+          await updateDealAsaasFields(apiEndpoint, robotData.auth.access_token, entityType, entityIdNum, {
+            UF_CRM_ASAAS_SUBSCRIPTION_STATUS: 'canceled',
+          });
         } else {
           const errorData = await cancelResponse.json();
           returnValues = { error: errorData.errors?.[0]?.description || 'Erro ao cancelar assinatura' };
