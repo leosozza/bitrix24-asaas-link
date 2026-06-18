@@ -8,8 +8,10 @@ import {
   LogOut,
   CalendarDays,
   GitBranch,
-  FileText
+  FileText,
+  Shield
 } from 'lucide-react';
+import { useIsSuperAdmin } from '@/hooks/useIsSuperAdmin';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
