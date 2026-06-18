@@ -3857,7 +3857,7 @@ async function generateDashboardPage(
       html += '<div style="margin-top:24px;padding-top:20px;border-top:1px solid #e5e7eb;">';
       html += '<h4 style="margin:0 0 12px;font-size:15px;color:#0f172a;">Webhook Asaas</h4>';
       html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">';
-      html += '<span style="background:' + (wh.configured ? '#dcfce7' : '#fef3c7') + ';color:' + (wh.configured ? '#166534' : '#92400e') + ';padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;">' + (wh.configured ? '✓ Registrado automaticamente' : '⚠ Registrar manualmente') + '</span>';
+      html += '<span style="background:' + (wh.configured ? '#dcfce7' : '#fef3c7') + ';color:' + (wh.configured ? '#166534' : '#92400e') + ';padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">' + (wh.configured ? icn('check') + ' Registrado automaticamente' : icn('alert') + ' Registrar manualmente') + '</span>';
       html += '</div>';
       html += '<div class="form-group"><label>URL do Webhook</label><div style="display:flex;gap:8px;">';
       html += '<input type="text" id="wh-url" readonly value="' + escapeHtml(wh.url || '') + '" style="flex:1;font-family:monospace;font-size:12px;">';
