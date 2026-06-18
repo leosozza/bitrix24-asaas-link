@@ -3896,7 +3896,7 @@ async function generateDashboardPage(
       html += '<li>Em <strong>Eventos</strong>, marque <strong>todos</strong> os eventos listados.</li>';
       html += '<li>Clique em <strong>Salvar</strong>.</li>';
       html += '</ol>';
-      html += '<p style="margin:14px 0 0;font-size:12px;color:#64748b;">📖 <a href="https://docs.asaas.com/docs/webhooks" target="_blank" rel="noopener" style="color:#0369a1;">docs.asaas.com/docs/webhooks</a></p>';
+      html += '<p style="margin:14px 0 0;font-size:12px;color:#64748b;"><a href="https://docs.asaas.com/docs/webhooks" target="_blank" rel="noopener" style="color:#0369a1;">docs.asaas.com/docs/webhooks</a></p>';
       html += '</div>';
       html += '<div class="modal-footer"><button class="btn btn-primary" onclick="closeModal(\\'webhook-help-modal\\')">Entendi</button></div>';
       html += '</div></div>';
