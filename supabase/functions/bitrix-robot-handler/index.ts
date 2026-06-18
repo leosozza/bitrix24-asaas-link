@@ -659,7 +659,7 @@ serve(async (req) => {
       }
       
       case 'asaas_create_subscription': {
-        const { payment_method, amount, customer_name, customer_email, customer_document, cycle, first_due_days } = robotData.properties;
+        const { payment_method, amount, customer_name, customer_email, customer_document, cycle, first_due_days, description: subDescription, end_date, max_payments } = robotData.properties;
         console.log('[Robot] create_subscription raw inputs:', { amount, customer_document, cycle });
 
         const docDigits = stripDocument(customer_document);
