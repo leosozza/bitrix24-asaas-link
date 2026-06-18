@@ -2539,6 +2539,81 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
     }
     
     
+    case 'get_plan': {
+      const { data: sub } = await supabase
+        .from('tenant_subscriptions')
+        .select('plan_id, status, current_period_start, current_period_end, transactions_used, subscription_plans(name, price, transaction_limit, features)')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+      const { data: plans } = await supabase
+        .from('subscription_plans')
+        .select('id, name, price, transaction_limit, features')
+        .eq('is_active', true)
+        .order('price', { ascending: true });
+      const fmtDate = (d: any) => d ? new Date(d).toLocaleDateString('pt-BR') : null;
+      const current = sub ? {
+        plan_id: sub.plan_id,
+        plan_name: (sub as any).subscription_plans?.name,
+        status: sub.status,
+        period_start: fmtDate(sub.current_period_start),
+        period_end: fmtDate(sub.current_period_end),
+        used: sub.transactions_used || 0,
+        limit: (sub as any).subscription_plans?.transaction_limit ?? 0,
+      } : null;
+      return jsonSuccess({ current, plans: plans || [] });
+    }
+    
+    case 'get_notifications': {
+      const { data: prefs } = await supabase
+        .from('notification_preferences')
+        .select('email_transactions, payment_alerts, weekly_reports')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+      return jsonSuccess({ prefs: prefs || { email_transactions: true, payment_alerts: true, weekly_reports: false } });
+    }
+    
+    case 'save_notifications': {
+      const d = data || {};
+      const { error } = await supabase
+        .from('notification_preferences')
+        .upsert({
+          tenant_id: tenantId,
+          email_transactions: !!d.email_transactions,
+          payment_alerts: !!d.payment_alerts,
+          weekly_reports: !!d.weekly_reports,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'tenant_id' });
+      if (error) return jsonError('Erro ao salvar: ' + error.message);
+      return jsonSuccess({ message: 'Preferências salvas' });
+    }
+    
+    case 'change_password': {
+      const cur = (data?.current_password || '').toString();
+      const nw = (data?.new_password || '').toString();
+      if (!cur || nw.length < 8) return jsonError('Senha inválida');
+      const { data: profile } = await supabase.from('profiles').select('email').eq('id', tenantId).maybeSingle();
+      if (!profile?.email) return jsonError('Perfil sem email');
+      const anon = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_ANON_KEY')!);
+      const { error: signErr } = await anon.auth.signInWithPassword({ email: profile.email, password: cur });
+      if (signErr) return jsonError('Senha atual incorreta');
+      const { error: upErr } = await supabase.auth.admin.updateUserById(tenantId, { password: nw });
+      if (upErr) return jsonError('Erro ao atualizar senha: ' + upErr.message);
+      return jsonSuccess({ message: 'Senha alterada' });
+    }
+    
+    case 'delete_account': {
+      const pwd = (data?.password || '').toString();
+      if (!pwd) return jsonError('Senha obrigatória');
+      const { data: profile } = await supabase.from('profiles').select('email').eq('id', tenantId).maybeSingle();
+      if (!profile?.email) return jsonError('Perfil sem email');
+      const anon = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_ANON_KEY')!);
+      const { error: signErr } = await anon.auth.signInWithPassword({ email: profile.email, password: pwd });
+      if (signErr) return jsonError('Senha incorreta');
+      const { error: delErr } = await supabase.auth.admin.deleteUser(tenantId);
+      if (delErr) return jsonError('Erro ao excluir: ' + delErr.message);
+      return jsonSuccess({ message: 'Conta excluída' });
+    }
+    
     default:
       return jsonError(`Unknown action: ${action}`);
   }
@@ -2951,6 +3026,19 @@ async function generateDashboardPage(
         <span class="dock-label">Notas Fiscais</span>
       </button>
       <div class="dock-separator"></div>
+      <button class="dock-tab" onclick="switchTab('plan')" data-tab="plan">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+        <span class="dock-label">Plano</span>
+      </button>
+      <button class="dock-tab" onclick="switchTab('notifications')" data-tab="notifications">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        <span class="dock-label">Notificações</span>
+      </button>
+      <button class="dock-tab" onclick="switchTab('security')" data-tab="security">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        <span class="dock-label">Segurança</span>
+      </button>
+      <div class="dock-separator"></div>
       <button class="dock-tab" onclick="switchTab('integrations')" data-tab="integrations">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
         <span class="dock-label">Integrações</span>
@@ -3081,6 +3169,27 @@ async function generateDashboardPage(
         <div class="card-body" id="invoice-table">
           <div class="loading-overlay"><div class="spinner-sm"></div> Carregando...</div>
         </div>
+      </div>
+    </div>
+    
+    <!-- PLAN TAB -->
+    <div id="tab-plan" class="tab-content">
+      <div id="plan-content">
+        <div class="loading-overlay"><div class="spinner-sm"></div> Carregando...</div>
+      </div>
+    </div>
+    
+    <!-- NOTIFICATIONS TAB -->
+    <div id="tab-notifications" class="tab-content">
+      <div id="notifications-content">
+        <div class="loading-overlay"><div class="spinner-sm"></div> Carregando...</div>
+      </div>
+    </div>
+    
+    <!-- SECURITY TAB -->
+    <div id="tab-security" class="tab-content">
+      <div id="security-content">
+        <div class="loading-overlay"><div class="spinner-sm"></div> Carregando...</div>
       </div>
     </div>
     
@@ -3226,6 +3335,9 @@ async function generateDashboardPage(
           case 'invoices': loadInvoices(); break;
           case 'integrations': loadIntegrations(); break;
           case 'settings': loadSettings(); loadSplits(); break;
+          case 'plan': loadPlan(); break;
+          case 'notifications': loadNotifications(); break;
+          case 'security': loadSecurity(); break;
         }
       }
       
@@ -4037,6 +4149,149 @@ async function generateDashboardPage(
       if (result.success) { showToast(result.message); }
       else { showToast(result.error || 'Erro', 'error'); }
     }
+    
+    // ============= PLAN TAB =============
+    async function loadPlan() {
+      const c = document.getElementById('plan-content');
+      c.innerHTML = '<div class="loading-overlay"><div class="spinner-sm"></div> Carregando...</div>';
+      const r = await apiCall('get_plan');
+      if (!r.success) { c.innerHTML = '<div class="empty-state"><p>'+(r.error||'Erro')+'</p></div>'; return; }
+      const cur = r.current; const plans = r.plans || [];
+      const usedPct = cur && cur.limit > 0 ? Math.min(100, Math.round((cur.used/cur.limit)*100)) : 0;
+      const limitTxt = cur && cur.limit === -1 ? 'Ilimitado' : (cur ? cur.limit : '-');
+      const remaining = cur && cur.limit > 0 ? Math.max(0, cur.limit - cur.used) : null;
+      const statusBadge = cur ? (cur.status === 'trial' ? '<span class="badge" style="background:#dbeafe;color:#1e40af;">Trial</span>' : '<span class="badge" style="background:#dcfce7;color:#166534;">Ativo</span>') : '';
+      let html = '';
+      html += '<div class="card"><div class="card-header" style="display:flex;align-items:center;gap:12px;">';
+      html += '<div style="width:40px;height:40px;border-radius:10px;background:#dbeafe;display:flex;align-items:center;justify-content:center;color:#2563eb;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg></div>';
+      html += '<div style="flex:1;"><h3 style="margin:0;">Plano e Uso</h3><p style="margin:2px 0 0;color:#6b7280;font-size:13px;">Seu plano atual e consumo de transações</p></div>';
+      html += statusBadge + '</div>';
+      html += '<div class="card-body">';
+      if (cur) {
+        html += '<div style="background:#f9fafb;border-radius:10px;padding:16px;display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;">';
+        html += '<div><div style="font-weight:600;font-size:16px;">Plano '+escapeHtml(cur.plan_name||'-')+'</div><div style="color:#6b7280;font-size:13px;margin-top:2px;">'+(cur.status==='trial'?'Trial até ':'Válido até ')+escapeHtml(cur.period_end||'-')+'</div></div></div>';
+        html += '<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;"><span style="color:#6b7280;">Transações utilizadas</span><span style="font-weight:600;">'+cur.used+' / '+limitTxt+'</span></div>';
+        html += '<div style="background:#e5e7eb;border-radius:6px;height:8px;overflow:hidden;"><div style="background:#2563eb;height:100%;width:'+usedPct+'%;"></div></div>';
+        if (remaining !== null) html += '<div style="color:#6b7280;font-size:12px;margin-top:6px;">'+remaining+' transações restantes neste período</div>';
+      } else {
+        html += '<div class="empty-state"><p>Nenhum plano ativo.</p></div>';
+      }
+      html += '</div></div>';
+      // Plans grid
+      html += '<div class="card" style="margin-top:24px;"><div class="card-header"><h3>Escolha seu Plano</h3></div><div class="card-body">';
+      html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;">';
+      for (const p of plans) {
+        const isCur = cur && cur.plan_id === p.id;
+        const limit = p.transaction_limit === -1 ? 'Ilimitado' : p.transaction_limit;
+        html += '<div style="border:2px solid '+(isCur?'#2563eb':'#e5e7eb')+';border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:12px;'+(isCur?'background:#eff6ff;':'')+'">';
+        html += '<div style="display:flex;align-items:center;justify-content:space-between;"><h4 style="margin:0;font-size:18px;">'+escapeHtml(p.name)+'</h4>'+(isCur?'<span class="badge" style="background:#2563eb;color:white;">Atual</span>':'')+'</div>';
+        html += '<div><span style="font-size:28px;font-weight:700;">R$ '+Number(p.price).toFixed(2).replace('.',',')+'</span><span style="color:#6b7280;font-size:13px;">/mês</span></div>';
+        html += '<div style="color:#6b7280;font-size:13px;">'+limit+' transações/mês</div>';
+        html += '<ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:6px;font-size:13px;">';
+        for (const f of (p.features||[])) html += '<li style="display:flex;gap:6px;"><span style="color:#10b981;">✓</span>'+escapeHtml(f)+'</li>';
+        html += '</ul>';
+        if (isCur) {
+          html += '<button class="btn btn-outline" disabled>Plano atual</button>';
+        } else {
+          html += '<button class="btn btn-primary" onclick="contractPlan(\\''+p.id+'\\',\\''+escapeHtml(p.name)+'\\')">Contratar</button>';
+        }
+        html += '</div>';
+      }
+      html += '</div></div></div>';
+      c.innerHTML = html;
+    }
+    
+    function contractPlan(planId, planName) {
+      const msg = encodeURIComponent('Olá! Quero contratar o plano '+planName+' do Asaas Connector.');
+      const url = 'https://wa.me/5541996984530?text='+msg;
+      if (typeof BX24 !== 'undefined') { try { BX24.openApplication({}); } catch(e){} }
+      window.open(url, '_blank');
+      showToast('Abrindo WhatsApp para contratação...');
+    }
+    
+    // ============= NOTIFICATIONS TAB =============
+    async function loadNotifications() {
+      const c = document.getElementById('notifications-content');
+      c.innerHTML = '<div class="loading-overlay"><div class="spinner-sm"></div> Carregando...</div>';
+      const r = await apiCall('get_notifications');
+      if (!r.success) { c.innerHTML = '<div class="empty-state"><p>'+(r.error||'Erro')+'</p></div>'; return; }
+      const p = r.prefs || { email_transactions:true, payment_alerts:true, weekly_reports:false };
+      let html = '<div class="card">';
+      html += '<div class="card-header" style="display:flex;align-items:center;gap:12px;">';
+      html += '<div style="width:40px;height:40px;border-radius:10px;background:#dbeafe;display:flex;align-items:center;justify-content:center;color:#2563eb;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div>';
+      html += '<div><h3 style="margin:0;">Notificações</h3><p style="margin:2px 0 0;color:#6b7280;font-size:13px;">Configure como deseja ser notificado</p></div></div>';
+      html += '<div class="card-body" style="display:flex;flex-direction:column;gap:16px;">';
+      const row = (k,t,d,v) => '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #f3f4f6;"><div><div style="font-weight:600;">'+t+'</div><div style="color:#6b7280;font-size:13px;">'+d+'</div></div><button class="toggle '+(v?'on':'')+'" data-key="'+k+'" onclick="this.classList.toggle(\\'on\\');saveNotifications()"></button></div>';
+      html += row('email_transactions','Notificações por email','Receba atualizações sobre suas transações',p.email_transactions);
+      html += row('payment_alerts','Alertas de pagamento','Notificações quando um pagamento for confirmado',p.payment_alerts);
+      html += row('weekly_reports','Relatórios semanais','Resumo semanal de transações e métricas',p.weekly_reports);
+      html += '</div></div>';
+      c.innerHTML = html;
+    }
+    
+    let __notifSaveTimer = null;
+    function saveNotifications() {
+      clearTimeout(__notifSaveTimer);
+      __notifSaveTimer = setTimeout(async () => {
+        const prefs = {};
+        document.querySelectorAll('#notifications-content [data-key]').forEach(b => { prefs[b.dataset.key] = b.classList.contains('on'); });
+        const r = await apiCall('save_notifications', { data: prefs });
+        if (r.success) showToast('Preferências salvas');
+        else showToast(r.error || 'Erro ao salvar', 'error');
+      }, 300);
+    }
+    
+    // ============= SECURITY TAB =============
+    async function loadSecurity() {
+      const c = document.getElementById('security-content');
+      let html = '<div class="card">';
+      html += '<div class="card-header" style="display:flex;align-items:center;gap:12px;">';
+      html += '<div style="width:40px;height:40px;border-radius:10px;background:#dbeafe;display:flex;align-items:center;justify-content:center;color:#2563eb;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>';
+      html += '<div><h3 style="margin:0;">Segurança</h3><p style="margin:2px 0 0;color:#6b7280;font-size:13px;">Configurações de segurança da conta</p></div></div>';
+      html += '<div class="card-body">';
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-bottom:1px solid #f3f4f6;"><div><div style="font-weight:600;">Alterar senha</div><div style="color:#6b7280;font-size:13px;">Atualize sua senha de acesso</div></div><button class="btn btn-outline" onclick="openPasswordModal()">Alterar</button></div>';
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 0;"><div><div style="font-weight:600;color:#ef4444;">Excluir conta</div><div style="color:#6b7280;font-size:13px;">Remove permanentemente sua conta e todos os dados</div></div><button class="btn" style="background:#ef4444;color:white;" onclick="openDeleteAccountModal()">Excluir</button></div>';
+      html += '</div></div>';
+      // Modals
+      html += '<div class="modal-overlay" id="password-modal"><div class="modal"><div class="modal-header"><h3>Alterar senha</h3><button class="modal-close" onclick="closeModal(\\'password-modal\\')">×</button></div>';
+      html += '<div class="modal-body"><div class="form-group"><label>Senha atual</label><input type="password" id="pwd-current" class="input"/></div>';
+      html += '<div class="form-group"><label>Nova senha</label><input type="password" id="pwd-new" class="input"/></div>';
+      html += '<div class="form-group"><label>Confirmar nova senha</label><input type="password" id="pwd-confirm" class="input"/></div></div>';
+      html += '<div class="modal-footer"><button class="btn btn-outline" onclick="closeModal(\\'password-modal\\')">Cancelar</button><button class="btn btn-primary" onclick="submitChangePassword()">Alterar senha</button></div></div></div>';
+      html += '<div class="modal-overlay" id="delete-account-modal"><div class="modal"><div class="modal-header"><h3 style="color:#ef4444;">Excluir conta</h3><button class="modal-close" onclick="closeModal(\\'delete-account-modal\\')">×</button></div>';
+      html += '<div class="modal-body"><p style="color:#374151;">Essa ação é <strong>permanente</strong>. Todos os dados (transações, configurações, integrações) serão removidos.</p>';
+      html += '<div class="form-group"><label>Digite <strong>EXCLUIR</strong> para confirmar</label><input type="text" id="del-confirm" class="input"/></div>';
+      html += '<div class="form-group"><label>Sua senha</label><input type="password" id="del-password" class="input"/></div></div>';
+      html += '<div class="modal-footer"><button class="btn btn-outline" onclick="closeModal(\\'delete-account-modal\\')">Cancelar</button><button class="btn" style="background:#ef4444;color:white;" onclick="submitDeleteAccount()">Excluir conta permanentemente</button></div></div></div>';
+      c.innerHTML = html;
+    }
+    
+    function openPasswordModal() { openModal('password-modal'); }
+    function openDeleteAccountModal() { openModal('delete-account-modal'); }
+    
+    async function submitChangePassword() {
+      const cur = document.getElementById('pwd-current').value;
+      const nw = document.getElementById('pwd-new').value;
+      const cf = document.getElementById('pwd-confirm').value;
+      if (!cur || !nw) return showToast('Preencha todos os campos', 'error');
+      if (nw.length < 8) return showToast('A nova senha precisa ter pelo menos 8 caracteres', 'error');
+      if (nw !== cf) return showToast('As senhas não conferem', 'error');
+      const r = await apiCall('change_password', { data: { current_password: cur, new_password: nw } });
+      if (r.success) { showToast('Senha alterada com sucesso'); closeModal('password-modal'); }
+      else showToast(r.error || 'Erro ao alterar senha', 'error');
+    }
+    
+    async function submitDeleteAccount() {
+      const conf = document.getElementById('del-confirm').value;
+      const pwd = document.getElementById('del-password').value;
+      if (conf !== 'EXCLUIR') return showToast('Digite EXCLUIR para confirmar', 'error');
+      if (!pwd) return showToast('Informe sua senha', 'error');
+      const r = await apiCall('delete_account', { data: { password: pwd } });
+      if (r.success) { showToast('Conta excluída'); setTimeout(() => { try { BX24.installFinish(); } catch(e){} location.reload(); }, 1500); }
+      else showToast(r.error || 'Erro ao excluir', 'error');
+    }
+    
+    
     
     
     // BX24 init

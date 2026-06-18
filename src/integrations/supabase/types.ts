@@ -454,6 +454,41 @@ export type Database = {
           },
         ]
       }
+      notification_preferences: {
+        Row: {
+          created_at: string
+          email_transactions: boolean
+          payment_alerts: boolean
+          tenant_id: string
+          updated_at: string
+          weekly_reports: boolean
+        }
+        Insert: {
+          created_at?: string
+          email_transactions?: boolean
+          payment_alerts?: boolean
+          tenant_id: string
+          updated_at?: string
+          weekly_reports?: boolean
+        }
+        Update: {
+          created_at?: string
+          email_transactions?: boolean
+          payment_alerts?: boolean
+          tenant_id?: string
+          updated_at?: string
+          weekly_reports?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_preferences_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           address: string | null
