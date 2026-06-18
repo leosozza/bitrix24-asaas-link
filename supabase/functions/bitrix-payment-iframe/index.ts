@@ -880,6 +880,327 @@ async function ensureDealAsaasFields(clientEndpoint: string, accessToken: string
 
 // ============= END BITRIX API FUNCTIONS =============
 
+// ============= CRM TAB HELPERS =============
+
+function addPeriod(date: Date, period: string, count = 1): Date {
+  const d = new Date(date);
+  const map: Record<string, number> = { WEEKLY: 7, BIWEEKLY: 14, MONTHLY: 30, QUARTERLY: 90, SEMIANNUALLY: 180, YEARLY: 365 };
+  const days = (map[period] || 30) * count;
+  d.setUTCDate(d.getUTCDate() + days);
+  return d;
+}
+
+function toISODate(d: Date): string {
+  return d.toISOString().split('T')[0];
+}
+
+function splitInstallmentValues(saldo: number, n: number): number[] {
+  if (n <= 0) return [];
+  const base = Math.floor((saldo * 100) / n) / 100;
+  const arr = Array(n).fill(base);
+  const used = base * n;
+  const diff = Math.round((saldo - used) * 100) / 100;
+  arr[n - 1] = Math.round((base + diff) * 100) / 100;
+  return arr;
+}
+
+async function asaasFetch(apiKey: string, baseUrl: string, path: string, init: RequestInit = {}): Promise<any> {
+  const resp = await fetch(`${baseUrl}${path}`, {
+    ...init,
+    headers: {
+      'access_token': apiKey,
+      'Content-Type': 'application/json',
+      ...(init.headers || {}),
+    },
+  });
+  const text = await resp.text();
+  if (!text) return {};
+  try { return JSON.parse(text); } catch { return { raw: text }; }
+}
+
+async function loadInstallationContext(supabase: any, inst: any) {
+  const { data: cfg } = await supabase
+    .from('asaas_configurations')
+    .select('api_key, environment')
+    .eq('tenant_id', inst.tenant_id)
+    .eq('is_active', true)
+    .maybeSingle();
+  if (!cfg?.api_key) throw new Error('Asaas não configurado para este tenant');
+  const baseUrl = cfg.environment === 'production' ? 'https://api.asaas.com/v3' : 'https://sandbox.asaas.com/api/v3';
+  return { apiKey: cfg.api_key, baseUrl, environment: cfg.environment };
+}
+
+async function getEntityContact(clientEndpoint: string, accessToken: string, entityType: string, entityId: string) {
+  // Fetch the deal/lead to get contact info, opportunity, etc.
+  const method = entityType === 'deal' ? 'crm.deal.get' : 'crm.lead.get';
+  const res = await callBitrixApi(clientEndpoint, method, { id: entityId }, accessToken);
+  const entity = res.result || {};
+  
+  let contact: any = {};
+  if (entityType === 'deal' && entity.CONTACT_ID) {
+    const cRes = await callBitrixApi(clientEndpoint, 'crm.contact.get', { id: entity.CONTACT_ID }, accessToken);
+    contact = cRes.result || {};
+  } else if (entityType === 'lead') {
+    // Lead has contact info inline
+    contact = {
+      NAME: entity.NAME,
+      LAST_NAME: entity.LAST_NAME,
+      EMAIL: entity.EMAIL,
+      PHONE: entity.PHONE,
+      UF_CRM_CPF: entity.UF_CRM_CPF,
+    };
+  }
+  
+  const email = Array.isArray(contact.EMAIL) ? contact.EMAIL[0]?.VALUE : (contact.EMAIL || '');
+  const phone = Array.isArray(contact.PHONE) ? contact.PHONE[0]?.VALUE : (contact.PHONE || '');
+  // Try several common CPF field names
+  const cpfRaw = contact.UF_CRM_CPF || contact.UF_CRM_CPF_CNPJ || contact.UF_CRM_DOCUMENT || entity.UF_CRM_CPF || '';
+  const cpfCnpj = String(cpfRaw).replace(/\D/g, '');
+  const name = [contact.NAME, contact.LAST_NAME].filter(Boolean).join(' ').trim() || entity.TITLE || 'Cliente';
+  
+  return {
+    entity,
+    contact,
+    customerData: { name, email, phone, cpfCnpj },
+    dealValue: parseFloat(entity.OPPORTUNITY || '0') || 0,
+  };
+}
+
+async function findOrCreateAsaasCustomerSimple(apiKey: string, baseUrl: string, data: { name: string; email: string; cpfCnpj: string; phone?: string }) {
+  if (!data.cpfCnpj || data.cpfCnpj.length < 11) {
+    throw new Error('CPF/CNPJ do contato é obrigatório para criar cobrança. Cadastre o documento no Contato do Bitrix.');
+  }
+  const search = await asaasFetch(apiKey, baseUrl, `/customers?cpfCnpj=${data.cpfCnpj}`);
+  if (search.data && search.data.length > 0) return search.data[0];
+  const created = await asaasFetch(apiKey, baseUrl, `/customers`, {
+    method: 'POST',
+    body: JSON.stringify({
+      name: data.name || 'Cliente',
+      email: data.email || undefined,
+      cpfCnpj: data.cpfCnpj,
+      mobilePhone: data.phone || undefined,
+    }),
+  });
+  if (created.errors) throw new Error('Asaas: ' + JSON.stringify(created.errors));
+  return created;
+}
+
+async function getClientEndpointForInst(inst: any, supabase: any): Promise<{ endpoint: string; token: string } | null> {
+  // Reload installation to get fresh tokens
+  const { data: full } = await supabase
+    .from('bitrix_installations')
+    .select('domain, access_token')
+    .eq('id', inst.id)
+    .maybeSingle();
+  if (!full?.access_token || !full?.domain) return null;
+  return { endpoint: `https://${full.domain}/rest/`, token: full.access_token };
+}
+
+async function handleCrmTabLoad(body: any, supabase: any, inst: any): Promise<Response> {
+  try {
+    const { entityType, entityId } = body;
+    if (!entityType || !entityId) return jsonError('entityType e entityId são obrigatórios');
+    
+    const ctx = await loadInstallationContext(supabase, inst);
+    const ep = await getClientEndpointForInst(inst, supabase);
+    if (!ep) return jsonError('Instalação Bitrix sem token de acesso');
+    
+    let customer: any = null;
+    let charges: any[] = [];
+    let subscriptions: any[] = [];
+    let dealValue = 0;
+    
+    try {
+      const ec = await getEntityContact(ep.endpoint, ep.token, entityType, entityId);
+      dealValue = ec.dealValue;
+      
+      if (ec.customerData.cpfCnpj && ec.customerData.cpfCnpj.length >= 11) {
+        const search = await asaasFetch(ctx.apiKey, ctx.baseUrl, `/customers?cpfCnpj=${ec.customerData.cpfCnpj}`);
+        if (search.data && search.data.length > 0) {
+          customer = search.data[0];
+          const ch = await asaasFetch(ctx.apiKey, ctx.baseUrl, `/payments?customer=${customer.id}&limit=100`);
+          charges = (ch.data || []).sort((a: any, b: any) => (a.dueDate || '').localeCompare(b.dueDate || ''));
+          const sb = await asaasFetch(ctx.apiKey, ctx.baseUrl, `/subscriptions?customer=${customer.id}&limit=50`);
+          subscriptions = sb.data || [];
+        }
+      }
+    } catch (e: any) {
+      console.error('[CrmTabLoad] contact/charge error:', e.message);
+    }
+    
+    return jsonSuccess({ customer, charges, subscriptions, dealValue });
+  } catch (e: any) {
+    return jsonError(e.message);
+  }
+}
+
+async function updateDealUfFields(clientEndpoint: string, accessToken: string, entityType: string, entityId: string, fields: Record<string, any>) {
+  if (entityType !== 'deal') return; // Lead writes skipped for now
+  await callBitrixApi(clientEndpoint, 'crm.deal.update', { id: entityId, fields }, accessToken);
+}
+
+async function handleCrmTabCreate(body: any, supabase: any, inst: any): Promise<Response> {
+  try {
+    const { entityType, entityId, payload } = body;
+    if (!payload) return jsonError('payload obrigatório');
+    const ctx = await loadInstallationContext(supabase, inst);
+    const ep = await getClientEndpointForInst(inst, supabase);
+    if (!ep) return jsonError('Instalação Bitrix sem token de acesso');
+    
+    const ec = await getEntityContact(ep.endpoint, ep.token, entityType, entityId);
+    const customer = await findOrCreateAsaasCustomerSimple(ctx.apiKey, ctx.baseUrl, ec.customerData);
+    
+    const type = payload.type as 'ONCE' | 'INSTALLMENT' | 'SUBSCRIPTION';
+    const billingType = payload.billingType || 'BOLETO';
+    const period = payload.period || 'MONTHLY';
+    const total = Number(payload.total) || 0;
+    const entry = Number(payload.entryValue) || 0;
+    const installments = Math.max(1, parseInt(payload.installments) || 1);
+    const description = (payload.description || '').toString();
+    const startDate = new Date(payload.startDate + 'T12:00:00Z');
+    if (isNaN(startDate.getTime())) throw new Error('Data de início inválida');
+    
+    const externalRef = `bitrix-${entityType}-${entityId}`;
+    const created: any[] = [];
+    const installmentsList: any[] = [];
+    let firstCharge: any = null;
+    let subscriptionRec: any = null;
+    let entryCharge: any = null;
+    
+    // Entry charge (always at startDate)
+    if (entry > 0) {
+      const entryPayload: any = {
+        customer: customer.id,
+        billingType,
+        value: entry,
+        dueDate: toISODate(startDate),
+        description: (description ? description + ' - ' : '') + 'Entrada',
+        externalReference: externalRef + '-entry',
+      };
+      const r = await asaasFetch(ctx.apiKey, ctx.baseUrl, `/payments`, { method: 'POST', body: JSON.stringify(entryPayload) });
+      if (r.errors) throw new Error('Asaas (entrada): ' + JSON.stringify(r.errors));
+      entryCharge = r;
+      created.push(r);
+      installmentsList.push({ n: 0, label: 'Entrada', id: r.id, value: r.value, dueDate: r.dueDate, url: r.invoiceUrl });
+    }
+    
+    const saldo = Math.max(0, total - entry);
+    
+    if (type === 'ONCE') {
+      const p: any = {
+        customer: customer.id, billingType,
+        value: total, dueDate: toISODate(startDate),
+        description: description || `Cobrança ${entityType} ${entityId}`,
+        externalReference: externalRef,
+      };
+      const r = await asaasFetch(ctx.apiKey, ctx.baseUrl, `/payments`, { method: 'POST', body: JSON.stringify(p) });
+      if (r.errors) throw new Error('Asaas: ' + JSON.stringify(r.errors));
+      firstCharge = entryCharge || r;
+      created.push(r);
+      installmentsList.push({ n: 1, id: r.id, value: r.value, dueDate: r.dueDate, url: r.invoiceUrl });
+    } else if (type === 'INSTALLMENT') {
+      const values = splitInstallmentValues(saldo, installments);
+      // First installment dueDate = startDate if no entry, else startDate + 1 period
+      const baseDate = entry > 0 ? addPeriod(startDate, period, 1) : startDate;
+      for (let i = 0; i < installments; i++) {
+        const dueDate = addPeriod(baseDate, period, i);
+        const p: any = {
+          customer: customer.id, billingType,
+          value: values[i],
+          dueDate: toISODate(dueDate),
+          description: (description ? description + ' - ' : '') + `Parcela ${i + 1}/${installments}`,
+          externalReference: externalRef + `-p${i + 1}`,
+        };
+        const r = await asaasFetch(ctx.apiKey, ctx.baseUrl, `/payments`, { method: 'POST', body: JSON.stringify(p) });
+        if (r.errors) throw new Error(`Asaas (parcela ${i + 1}): ` + JSON.stringify(r.errors));
+        if (!firstCharge) firstCharge = entryCharge || r;
+        created.push(r);
+        installmentsList.push({ n: i + 1, id: r.id, value: r.value, dueDate: r.dueDate, url: r.invoiceUrl });
+      }
+    } else if (type === 'SUBSCRIPTION') {
+      const nextDue = entry > 0 ? addPeriod(startDate, period, 1) : startDate;
+      const subPayload: any = {
+        customer: customer.id, billingType,
+        value: saldo || total,
+        nextDueDate: toISODate(nextDue),
+        cycle: period,
+        description: description || `Assinatura ${entityType} ${entityId}`,
+        externalReference: externalRef,
+      };
+      if (payload.endDate) subPayload.endDate = payload.endDate;
+      const r = await asaasFetch(ctx.apiKey, ctx.baseUrl, `/subscriptions`, { method: 'POST', body: JSON.stringify(subPayload) });
+      if (r.errors) throw new Error('Asaas (assinatura): ' + JSON.stringify(r.errors));
+      subscriptionRec = r;
+      if (!firstCharge) firstCharge = entryCharge;
+    }
+    
+    // Update Deal UF_CRM_ASAAS_* fields (best-effort)
+    try {
+      const uf: Record<string, any> = {};
+      if (firstCharge) {
+        uf.UF_CRM_ASAAS_CHARGE_ID = firstCharge.id;
+        uf.UF_CRM_ASAAS_CHARGE_URL = firstCharge.invoiceUrl || '';
+        uf.UF_CRM_ASAAS_CHARGE_STATUS = firstCharge.status || '';
+        uf.UF_CRM_ASAAS_CHARGE_VALUE = firstCharge.value || 0;
+        uf.UF_CRM_ASAAS_BILLING_TYPE = firstCharge.billingType || billingType;
+        if (firstCharge.dueDate) uf.UF_CRM_ASAAS_DUE_DATE = firstCharge.dueDate;
+        if (firstCharge.bankSlipUrl) uf.UF_CRM_ASAAS_BOLETO_URL = firstCharge.bankSlipUrl;
+      }
+      if (subscriptionRec) {
+        uf.UF_CRM_ASAAS_SUBSCRIPTION_ID = subscriptionRec.id;
+        uf.UF_CRM_ASAAS_SUBSCRIPTION_URL = `https://www.asaas.com/subscriptions/show/${subscriptionRec.id}`;
+        uf.UF_CRM_ASAAS_SUBSCRIPTION_STATUS = subscriptionRec.status || 'ACTIVE';
+        uf.UF_CRM_ASAAS_SUBSCRIPTION_VALUE = subscriptionRec.value || 0;
+        uf.UF_CRM_ASAAS_NEXT_DUE = subscriptionRec.nextDueDate || '';
+        uf.UF_CRM_ASAAS_CYCLE = subscriptionRec.cycle || period;
+      }
+      if (installmentsList.length > 0) {
+        uf.UF_CRM_ASAAS_INSTALLMENTS_JSON = JSON.stringify(installmentsList);
+      }
+      if (Object.keys(uf).length > 0) {
+        await updateDealUfFields(ep.endpoint, ep.token, entityType, entityId, uf);
+      }
+    } catch (e: any) {
+      console.error('[CrmTabCreate] UF update failed:', e.message);
+    }
+    
+    return jsonSuccess({ created: created.length + (subscriptionRec ? 1 : 0), charges: created, subscription: subscriptionRec });
+  } catch (e: any) {
+    console.error('[CrmTabCreate] error:', e);
+    return jsonError(e.message);
+  }
+}
+
+async function handleCrmTabCancelCharge(body: any, supabase: any, inst: any): Promise<Response> {
+  try {
+    const { chargeId } = body;
+    if (!chargeId) return jsonError('chargeId obrigatório');
+    const ctx = await loadInstallationContext(supabase, inst);
+    const r = await asaasFetch(ctx.apiKey, ctx.baseUrl, `/payments/${chargeId}`, { method: 'DELETE' });
+    if (r.errors) throw new Error('Asaas: ' + JSON.stringify(r.errors));
+    return jsonSuccess({ deleted: true });
+  } catch (e: any) {
+    return jsonError(e.message);
+  }
+}
+
+async function handleCrmTabCancelSub(body: any, supabase: any, inst: any): Promise<Response> {
+  try {
+    const { subscriptionId } = body;
+    if (!subscriptionId) return jsonError('subscriptionId obrigatório');
+    const ctx = await loadInstallationContext(supabase, inst);
+    const r = await asaasFetch(ctx.apiKey, ctx.baseUrl, `/subscriptions/${subscriptionId}`, { method: 'DELETE' });
+    if (r.errors) throw new Error('Asaas: ' + JSON.stringify(r.errors));
+    return jsonSuccess({ deleted: true });
+  } catch (e: any) {
+    return jsonError(e.message);
+  }
+}
+
+// ============= END CRM TAB HELPERS =============
+
+
+
 // Generate auth page when installation is not linked
 function generateAuthPage(data: PaymentData): string {
   return `
