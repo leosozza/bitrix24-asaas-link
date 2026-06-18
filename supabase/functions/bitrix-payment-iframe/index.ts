@@ -3260,6 +3260,9 @@ async function generateDashboardPage(
           case 'invoices': loadInvoices(); break;
           case 'integrations': loadIntegrations(); break;
           case 'settings': loadSettings(); loadSplits(); break;
+          case 'plan': loadPlan(); break;
+          case 'notifications': loadNotifications(); break;
+          case 'security': loadSecurity(); break;
         }
       }
       
