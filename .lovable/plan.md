@@ -1,84 +1,83 @@
 ## Objetivo
 
-1. Marcar como **obrigatórios** no placement "Pagamentos Asaas" todos os campos que o Asaas exige para criar cobrança/assinatura.
-2. Após cada tentativa de envio ao Asaas, **registrar no timeline do Deal/Lead**:
-   - Sucesso → comentário com resumo (valor, nº cobranças, IDs Asaas, link).
-   - Erro → comentário com a lista completa dos erros retornados pelo Asaas (campo + descrição).
+Reorganizar a aba **Configurações** do iframe Bitrix (renderizada em `supabase/functions/bitrix-payment-iframe/index.ts`, ~linhas 3500–3760) para reduzir o ruído visual, deixando apenas o essencial visível e o resto em modais/colapsáveis.
 
-## Campos obrigatórios (validados antes do envio)
+## Novo layout da aba Configurações
 
-Bloqueia o botão "Criar cobrança" e mostra borda vermelha + mensagem se faltar:
-
-**Cliente / Contato**
-- Nome (CRM já fornece)
-- CPF/CNPJ (`UF_CRM_*` ou contato vinculado) — Asaas exige para criar customer
-- E-mail OU telefone (pelo menos um)
-
-**Cobrança**
-- Valor total > 0
-- Forma de pagamento (BOLETO / PIX / CREDIT_CARD / UNDEFINED)
-- Data de vencimento (ou Data de início, no caso de recorrente/parcelado)
-
-**Recorrente / Parcelado (quando aplicável)**
-- Ciclo (Semanal / Quinzenal / Mensal) — quando recorrente
-- Nº de parcelas recorrentes — quando recorrente
-- Data de fim do contrato — quando recorrente
-- Nº de parcelas da entrada — quando "Parcelar entrada" estiver marcado
-- Valor de entrada > 0 — quando houver entrada
-- Datas de cada parcela da entrada — quando entrada parcelada
-
-**Split (quando aplicável)**
-- Wallet ID destino + percentual ou valor fixo por linha
-
-Visualmente: label com `*` vermelho, atributo `required`, validação JS antes do POST, toast listando o que falta.
-
-## Timeline do Deal/Lead após envio
-
-Em `bitrix-payment-iframe` → `crm_tab_create`, depois de tentar criar no Asaas:
-
-**Em caso de sucesso** — chamar `crm.timeline.comment.add`:
-```
-✅ Cobrança Asaas criada
-Valor total: R$ X
-Cobranças geradas: N (entrada Nx + recorrente Nx)
-IDs Asaas: pay_xxx, pay_yyy
-Link da 1ª cobrança: https://...
+```text
+┌─────────────────────────────────────────────────────────────┐
+│  [↻ Atualizar Integração]                  (topo, direita)  │
+├─────────────────────────────────────────────────────────────┤
+│  CABEÇALHO — Dados da Empresa                       [✏️]    │
+│  Delivery Real                                              │
+│  deliveryreal@hotmail.com · 41996984530                     │
+│  Endereço: …                                                │
+├─────────────────────────────────────────────────────────────┤
+│  CARD — Asaas Conectado · Produção          [✏️ Editar]    │
+│  🟢 API Asaas v3   🔵 Ambiente: Produção                    │
+│  ✓ Webhook registrado automaticamente   [ℹ️ Como configurar]│
+├─────────────────────────────────────────────────────────────┤
+│  CARD colapsável — ⚙️ Configuração Fiscal           [▼]    │
+│     (fechado por padrão; abre para editar)                  │
+├─────────────────────────────────────────────────────────────┤
+│  CARD — Split de Pagamento              [+ Novo Split]      │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-**Em caso de erro (qualquer cobrança falhou)** — chamar `crm.timeline.comment.add`:
+O **Teste de Integração Asaas** sai daqui e vai para a aba **Integrações**.
+
+## Modais
+
+1. **Editar Dados da Empresa** — formulário atual (nome, email, telefone) + novo campo **Endereço**. Botão Salvar Empresa fica dentro do modal.
+2. **Editar Configuração Asaas** — Ambiente + Chave API + bloco Webhook (URL, token salvo, colar token gerado pelo Asaas, lista de eventos). Botões Salvar Configuração / Salvar Token / Tentar registrar novamente ficam dentro.
+3. **Como configurar o webhook (passo a passo)** — conteúdo atual do bloco azul, aberto por botão `ℹ️ Como configurar` no card Asaas.
+4. **Atualizar Integração** — progresso da atualização (ver abaixo).
+
+## Botão "Atualizar Integração" no topo
+
+Substitui o atual "Reparar Integração Bitrix (robôs + campos)". Ao clicar abre um modal com lista de passos e estado de cada um:
+
+```text
+Atualizando integração…
+  ✓ Verificando campos do Deal
+  ✓ Criando campos faltantes (UF_CRM_ASAAS_*)
+  ⏳ Verificando robôs de automação
+  · Verificando placements (abas CRM)
+  · Sincronizando Pay System
+Concluído ✅
 ```
-❌ Erro ao criar cobrança Asaas
-Cobranças criadas com sucesso: N
-Cobranças com erro: M
 
-Erros retornados pelo Asaas:
-- [campo|code] descrição completa
-- [campo|code] descrição completa
-...
+O edge function `bitrix-payment-iframe` já tem `repair_integration` (chamado por `repairIntegration` / `repairIntegrationFromSettings`). Vamos:
+- Adicionar uma action `repair_integration_stream` (ou um novo `repair_integration_steps` que retorna `[{step, status, message}]` ao final) e, no front, exibir os passos com `setTimeout` progressivo enquanto o backend roda; ou
+- Implementação simples: backend continua síncrono retornando o resumo, mas o modal mostra um stepper animado client-side (passos pré-definidos marcados sequencialmente) até a resposta chegar, e no fim mostra o resumo real ("X campos criados, Y robôs registrados, Z placements ok").
 
-Payload enviado: { valor, vencimento, forma }
-```
+Vamos pela versão simples (stepper client-side + resumo final) — sem mudar contrato do backend.
 
-Implementação:
-- Nova função `addDealTimelineComment(client, entityType, entityId, comment)` que escolhe `ENTITY_TYPE = 'deal' | 'lead'`.
-- `crm_tab_create` acumula `successList[]` e `errorList[]` por cobrança gerada (entrada + recorrentes). No final, monta o texto e posta 1 comentário consolidado.
-- Mesmo se todas falharem, registra no timeline (o usuário precisa ver o erro lá).
+## Endereço da Empresa
 
-## Arquivos
+Hoje a tabela só guarda `name/email/phone`. Adicionar coluna `address text` em `bitrix_installations` (ou na tabela onde os dados da empresa são salvos — confirmar lendo `handleCompanySave`) via `supabase--migration`, incluir no payload do `company_save` e no `loadSettings`.
+
+## Arquivos a editar
 
 - `supabase/functions/bitrix-payment-iframe/index.ts`
-  - `generateCrmPaymentTabPage()` — adicionar `required`, asteriscos, validação JS.
-  - `handleCrmTabCreate` — acumular sucessos/erros + chamar `crm.timeline.comment.add` no final.
-  - Nova helper `addDealTimelineComment`.
+  - `generateSettingsTab` (HTML) — novo layout, cards colapsáveis, botões que abrem modais.
+  - Adicionar markup dos 4 modais + CSS de modal (já existe `.modal` no arquivo? verificar; se não, adicionar estilos simples).
+  - JS: `openCompanyModal()`, `openAsaasModal()`, `openWebhookHelpModal()`, `openUpdateIntegrationModal()` + stepper.
+  - Mover renderização de "Teste de Integração Asaas" para `generateIntegrationsTab`.
+  - `company_save`: aceitar e gravar `address`.
+- Migração SQL: `ALTER TABLE bitrix_installations ADD COLUMN IF NOT EXISTS company_address text;` (ou na tabela correta).
 
 ## Fora de escopo
 
-- Tornar os campos `UF_CRM_ASAAS_*` obrigatórios na ficha nativa do Deal.
-- Reenvio automático em caso de falha.
-- Atividade tipo "tarefa" no timeline (usar somente comentário).
+- Redesign visual além de cards/modais (sem mudar paleta).
+- Refatorar o teste de integração em si — só muda de aba.
+- Tornar o "Atualizar Integração" verdadeiramente streaming (SSE) — fica como melhoria futura; usaremos stepper client-side.
 
 ## Validação
 
-1. Abrir aba sem CPF no contato → botão bloqueado, mensagem "CPF/CNPJ obrigatório".
-2. Preencher tudo → enviar → no timeline do Deal aparece comentário verde de sucesso com IDs.
-3. Forçar erro (ex: valor 0.01 com forma inválida) → no timeline aparece comentário vermelho com lista de erros do Asaas.
+1. Abrir aba Configurações dentro do Bitrix: ver cabeçalho com Delivery Real, card Asaas resumido, Fiscal colapsado, Split.
+2. Clicar no lápis de Empresa → modal abre com dados pré-preenchidos → salvar persiste endereço.
+3. Clicar em Editar no card Asaas → modal mostra Ambiente, Chave API e bloco Webhook.
+4. Clicar em "ℹ️ Como configurar" → modal com passo a passo.
+5. Clicar em "Atualizar Integração" no topo → modal com stepper anima, ao final mostra resumo de campos/robôs criados (toast + lista).
+6. Aba Integrações agora exibe o card "Teste de Integração Asaas".
