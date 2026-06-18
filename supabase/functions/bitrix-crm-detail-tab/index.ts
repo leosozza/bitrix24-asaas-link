@@ -1014,20 +1014,29 @@ serve(async (req) => {
 
           const billingMapLower = (bt: string) => bt.toLowerCase() === 'credit_card' ? 'credit_card' : bt.toLowerCase();
 
-          // Entry charges (monthly consecutive)
-          if (j.entry > 0 && j.entryDue) {
-            const entryN = j.entryN || 1;
+          // Entry charges — honor per-row overrides if provided, else monthly consecutive
+          if (j.entry > 0 && (j.entryDue || (j.entryItems && j.entryItems.length))) {
             const entryMethod = j.entryMethod || 'PIX';
-            const per = Math.round((j.entry / entryN) * 100) / 100;
-            const d0 = new Date(j.entryDue + 'T12:00:00');
-            for (let i = 0; i < entryN; i++) {
-              const d = new Date(d0); d.setMonth(d.getMonth() + i);
-              const v = i === entryN - 1 ? Number((j.entry - per * (entryN - 1)).toFixed(2)) : per;
+            let items: { due: string; val: number }[] = [];
+            if (Array.isArray(j.entryItems) && j.entryItems.length > 0) {
+              items = j.entryItems.map((it: any) => ({ due: String(it.due), val: Number(it.val) || 0 })).filter(it => it.due && it.val > 0);
+            } else {
+              const entryN = j.entryN || 1;
+              const per = Math.round((j.entry / entryN) * 100) / 100;
+              const d0 = new Date(j.entryDue + 'T12:00:00');
+              for (let i = 0; i < entryN; i++) {
+                const d = new Date(d0); d.setMonth(d.getMonth() + i);
+                const v = i === entryN - 1 ? Number((j.entry - per * (entryN - 1)).toFixed(2)) : per;
+                items.push({ due: d.toISOString().split('T')[0], val: v });
+              }
+            }
+            for (let i = 0; i < items.length; i++) {
+              const it = items[i];
               const r = await fetch(`${base}/payments`, {
                 method: 'POST', headers: { 'access_token': cfg.api_key, 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                  customer: customerId, billingType: entryMethod, value: v, dueDate: d.toISOString().split('T')[0],
-                  description: `Entrada ${i + 1}/${entryN} — ${j.entityType} #${j.entityId}`,
+                  customer: customerId, billingType: entryMethod, value: it.val, dueDate: it.due,
+                  description: `Entrada ${i + 1}/${items.length} — ${j.entityType} #${j.entityId}`,
                   externalReference: `bitrix_${j.entityType}_${j.entityId}_entry_${i + 1}`,
                 }),
               });
@@ -1035,7 +1044,7 @@ serve(async (req) => {
               if (p.errors) { issuesArr.push(`Entrada ${i + 1}: ${p.errors[0]?.description}`); continue; }
               createdCharges.push(p.id);
               await supabase.from('transactions').insert({
-                tenant_id: installation.tenant_id, asaas_id: p.id, amount: v,
+                tenant_id: installation.tenant_id, asaas_id: p.id, amount: it.val,
                 payment_method: billingMapLower(entryMethod), status: 'pending',
                 customer_name: j.name, customer_email: j.email, customer_document: j.doc,
                 due_date: p.dueDate, payment_url: p.invoiceUrl,
@@ -1043,6 +1052,7 @@ serve(async (req) => {
               });
             }
           }
+
 
           // Balance: recurring (subscription) or installments (multiple charges)
           if (hasBalance && j.recCount > 0) {
