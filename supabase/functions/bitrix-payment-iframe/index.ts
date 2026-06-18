@@ -3767,12 +3767,13 @@ async function generateDashboardPage(
       html += '<div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;font-weight:600;margin-bottom:6px;">Dados da Empresa</div>';
       html += '<div style="font-size:20px;font-weight:700;color:#0f172a;margin-bottom:8px;">' + escapeHtml(p.company_name || '—') + '</div>';
       const metaParts = [];
-      if (p.email) metaParts.push('<span>📧 ' + escapeHtml(p.email) + '</span>');
-      if (p.phone) metaParts.push('<span>📱 ' + escapeHtml(p.phone) + '</span>');
-      if (p.address) metaParts.push('<span>📍 ' + escapeHtml(p.address) + '</span>');
-      html += '<div style="display:flex;flex-wrap:wrap;gap:14px;color:#64748b;font-size:13px;">' + (metaParts.join('') || '<span style="color:#94a3b8;">Sem dados de contato — clique no lápis para preencher.</span>') + '</div>';
+      if (p.email) metaParts.push('<span style="display:inline-flex;align-items:center;gap:6px;">' + icn('mail') + escapeHtml(p.email) + '</span>');
+      if (p.phone) metaParts.push('<span style="display:inline-flex;align-items:center;gap:6px;">' + icn('phone') + escapeHtml(p.phone) + '</span>');
+      if (p.address) metaParts.push('<span style="display:inline-flex;align-items:center;gap:6px;">' + icn('pin') + escapeHtml(p.address) + '</span>');
+      html += '<div style="display:flex;flex-wrap:wrap;gap:14px;color:#64748b;font-size:13px;">' + (metaParts.join('') || '<span style="color:#94a3b8;">Sem dados de contato — clique em Editar para preencher.</span>') + '</div>';
       html += '</div>';
-      html += '<button class="btn btn-secondary btn-sm" onclick="openCompanyModal()" title="Editar dados da empresa" style="display:flex;align-items:center;gap:6px;">✏️ Editar</button>';
+      html += '<button class="btn btn-secondary btn-sm" onclick="openCompanyModal()" title="Editar dados da empresa" style="display:inline-flex;align-items:center;gap:6px;">' + icn('pencil') + ' Editar</button>';
+
       html += '</div></div>';
       
       // Card Asaas resumido
