@@ -17,6 +17,10 @@ import DashboardIntegrations from "./pages/DashboardIntegrations";
 import DashboardMcp from "./pages/DashboardMcp";
 import DashboardSettings from "./pages/DashboardSettings";
 import BitrixPreview from "./pages/BitrixPreview";
+import AdminOverview from "./pages/admin/AdminOverview";
+import AdminTenants from "./pages/admin/AdminTenants";
+import AdminPlans from "./pages/admin/AdminPlans";
+import { AdminGuard } from "./components/admin/AdminGuard";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -97,6 +101,9 @@ const App = () => (
                 }
               />
               <Route path="/bitrix-preview" element={<BitrixPreview />} />
+              <Route path="/admin" element={<ProtectedRoute><AdminGuard><AdminOverview /></AdminGuard></ProtectedRoute>} />
+              <Route path="/admin/tenants" element={<ProtectedRoute><AdminGuard><AdminTenants /></AdminGuard></ProtectedRoute>} />
+              <Route path="/admin/plans" element={<ProtectedRoute><AdminGuard><AdminPlans /></AdminGuard></ProtectedRoute>} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

@@ -8,8 +8,10 @@ import {
   LogOut,
   CalendarDays,
   GitBranch,
-  FileText
+  FileText,
+  Shield
 } from 'lucide-react';
+import { useIsSuperAdmin } from '@/hooks/useIsSuperAdmin';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -42,6 +44,7 @@ export function DashboardSidebar() {
   const collapsed = state === 'collapsed';
   const location = useLocation();
   const { signOut } = useAuth();
+  const { isSuperAdmin } = useIsSuperAdmin();
 
   const isActive = (path: string) => {
     if (path === '/dashboard') {
@@ -85,6 +88,24 @@ export function DashboardSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
+              {isSuperAdmin && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild>
+                    <NavLink
+                      to="/admin"
+                      className={cn(
+                        'flex items-center gap-3 px-3 py-2 rounded-lg transition-colors',
+                        location.pathname.startsWith('/admin')
+                          ? 'bg-amber-500/10 text-amber-600 font-medium'
+                          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                      )}
+                    >
+                      <Shield className="w-5 h-5 flex-shrink-0" />
+                      {!collapsed && <span>Admin</span>}
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
