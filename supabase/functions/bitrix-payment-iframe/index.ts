@@ -3097,6 +3097,27 @@ async function generateDashboardPage(
       </div>
     </div>
     
+    <!-- PLAN TAB -->
+    <div id="tab-plan" class="tab-content">
+      <div id="plan-content">
+        <div class="loading-overlay"><div class="spinner-sm"></div> Carregando...</div>
+      </div>
+    </div>
+    
+    <!-- NOTIFICATIONS TAB -->
+    <div id="tab-notifications" class="tab-content">
+      <div id="notifications-content">
+        <div class="loading-overlay"><div class="spinner-sm"></div> Carregando...</div>
+      </div>
+    </div>
+    
+    <!-- SECURITY TAB -->
+    <div id="tab-security" class="tab-content">
+      <div id="security-content">
+        <div class="loading-overlay"><div class="spinner-sm"></div> Carregando...</div>
+      </div>
+    </div>
+    
     <!-- INTEGRATIONS TAB -->
     <div id="tab-integrations" class="tab-content">
       <div id="integrations-content">
