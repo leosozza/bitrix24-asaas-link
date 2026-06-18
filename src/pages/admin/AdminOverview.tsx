@@ -55,6 +55,13 @@ export default function AdminOverview() {
 
   return (
     <AdminLayout title="Visão Geral" description="Métricas dos tenants ConnectPay">
+      <div className="flex items-center justify-between mb-4">
+        <div />
+        <Button variant="outline" size="sm" onClick={handleRegisterWebhook} disabled={registering}>
+          {registering ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Webhook className="w-4 h-4 mr-2" />}
+          Reparar webhook Asaas
+        </Button>
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {cards.map((c) => (
           <Card key={c.label}>
