@@ -321,10 +321,10 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
 .actions{white-space:nowrap}
 .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
 .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-.fg{margin-bottom:10px}
-.fg label{display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px}
+.fg{margin-bottom:12px}
+.fg label{display:block;font-size:13px;font-weight:600;color:#475569;margin-bottom:5px}
 .fg label .req{color:#ef4444}
-.fg input,.fg select,.fg textarea{width:100%;padding:9px 11px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;font-family:inherit}
+.fg input,.fg select,.fg textarea{width:100%;padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;outline:none;font-family:inherit}
 .fg input:focus,.fg select:focus{border-color:#0066cc;box-shadow:0 0 0 3px rgba(0,102,204,.1)}
 .fg input[readonly]{background:#f8fafc;color:#475569}
 .section{border:1px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:14px}
