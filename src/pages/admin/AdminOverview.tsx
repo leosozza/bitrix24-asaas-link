@@ -1,8 +1,13 @@
 import { AdminLayout } from './AdminLayout';
-import { useAdminTenants } from '@/hooks/useAdminTenants';
+import { useAdminTenants, adminApi } from '@/hooks/useAdminTenants';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, Sparkles, CheckCircle2, AlertCircle, XCircle, DollarSign } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Users, Sparkles, CheckCircle2, AlertCircle, XCircle, DollarSign, Webhook } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useState } from 'react';
+import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
+import { Loader2 } from 'lucide-react';
 
 function formatBRL(v: number) {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
