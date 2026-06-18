@@ -289,31 +289,18 @@ async function registerAutomationRobots(clientEndpoint: string, accessToken: str
           Required: 'Y',
           Default: 'pix',
         },
-        amount: {
-          Name: 'Valor (R$)',
-          Type: 'double',
-          Required: 'Y',
-        },
-        customer_name: {
-          Name: 'Nome do Cliente',
-          Type: 'string',
-          Required: 'Y',
-        },
-        customer_email: {
-          Name: 'Email do Cliente',
-          Type: 'string',
-          Required: 'N',
-        },
-        customer_document: {
-          Name: 'CPF/CNPJ',
-          Type: 'string',
-          Required: 'Y',
-        },
-        due_days: {
-          Name: 'Dias para Vencimento',
-          Type: 'int',
-          Default: 3,
-        },
+        amount: { Name: 'Valor da Cobrança (R$)', Type: 'double', Required: 'Y' },
+        customer_name: { Name: 'Nome do Cliente', Type: 'string', Required: 'Y' },
+        customer_email: { Name: 'Email do Cliente', Type: 'string', Required: 'N' },
+        customer_document: { Name: 'CPF/CNPJ', Type: 'string', Required: 'Y' },
+        due_days: { Name: 'Dias para Vencimento', Type: 'int', Default: 3 },
+        description: { Name: 'Descrição da Cobrança', Type: 'string', Required: 'N' },
+        external_reference: { Name: 'Referência Externa', Type: 'string', Required: 'N' },
+        installment_count: { Name: 'Nº de Parcelas (cartão)', Type: 'int', Required: 'N' },
+        interest_percent: { Name: 'Juros ao mês (%)', Type: 'double', Required: 'N' },
+        fine_percent: { Name: 'Multa por atraso (%)', Type: 'double', Required: 'N' },
+        discount_value: { Name: 'Desconto (R$)', Type: 'double', Required: 'N' },
+        discount_due_days: { Name: 'Validade do desconto (dias antes venc.)', Type: 'int', Required: 'N' },
         bitrix_entity_type: {
           Name: 'Tipo de Entidade Bitrix (alvo)',
           Type: 'select',
@@ -321,11 +308,7 @@ async function registerAutomationRobots(clientEndpoint: string, accessToken: str
           Default: 'deal',
           Required: 'N',
         },
-        bitrix_entity_id: {
-          Name: 'ID do Deal/Lead (opcional)',
-          Type: 'string',
-          Required: 'N',
-        },
+        bitrix_entity_id: { Name: 'ID do Deal/Lead (opcional)', Type: 'string', Required: 'N' },
       },
       RETURN_PROPERTIES: {
         charge_id: {
