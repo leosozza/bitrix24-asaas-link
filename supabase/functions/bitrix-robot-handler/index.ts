@@ -707,31 +707,40 @@ serve(async (req) => {
         // Create subscription in Asaas — use resolved target entity (override or workflow)
         const docId = entityIdNum ? String(entityIdNum) : (robotData.document_id[2] || robotData.document_id[0] || 'unknown');
         
+        const subPayload: Record<string, unknown> = {
+          customer: customer.id,
+          billingType: billingTypeMap[payment_method] || 'PIX',
+          value: parsedAmount,
+          cycle: cycle.toUpperCase(),
+          nextDueDate: nextDueDate.toISOString().split('T')[0],
+          description: (subDescription ? String(subDescription).trim() : '') || `Assinatura - Bitrix ${docId}`,
+          externalReference: `bitrix_${robotData.auth.member_id}_${entityType}_${docId}`,
+        };
+        if (end_date && String(end_date).trim()) {
+          subPayload.endDate = String(end_date).trim();
+        }
+        if (max_payments && parseInt(String(max_payments)) > 0) {
+          subPayload.maxPayments = parseInt(String(max_payments));
+        }
+
         const subscriptionResponse = await fetch(`${baseUrl}/subscriptions`, {
           method: 'POST',
           headers: {
             'access_token': asaasConfig.api_key,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            customer: customer.id,
-            billingType: billingTypeMap[payment_method] || 'PIX',
-            value: parsedAmount,
-            cycle: cycle.toUpperCase(),
-            nextDueDate: nextDueDate.toISOString().split('T')[0],
-            description: `Assinatura - Bitrix ${docId}`,
-          }),
+          body: JSON.stringify(subPayload),
         });
-        
+
         const subscription = await subscriptionResponse.json();
         console.log('[Asaas] Subscription created:', subscription.id, subscription.status);
-        
+
         if (subscription.errors) {
           returnValues = { error: subscription.errors[0]?.description || 'Erro ao criar assinatura' };
           logMessage = `Erro: ${subscription.errors[0]?.description}`;
           break;
         }
-        
+
         // Save subscription to database
         if (installation.tenant_id) {
           await supabase.from('subscriptions').insert({
@@ -746,12 +755,12 @@ serve(async (req) => {
             cycle: cycle.toUpperCase(),
             next_due_date: subscription.nextDueDate,
             status: 'active',
-            description: `Assinatura - Bitrix ${docId}`,
+            description: String(subPayload.description),
             bitrix_entity_id: docId,
             bitrix_entity_type: entityType,
           });
         }
-        
+
         returnValues = {
           subscription_id: subscription.id,
           subscription_status: subscription.status,
@@ -759,6 +768,16 @@ serve(async (req) => {
           customer_id: customer.id,
         };
         logMessage = `Assinatura criada: ${subscription.id} - R$ ${parsedAmount}/${cycle}`;
+
+        await updateDealAsaasFields(apiEndpoint, robotData.auth.access_token, entityType, entityIdNum, {
+          UF_CRM_ASAAS_SUBSCRIPTION_ID: subscription.id,
+          UF_CRM_ASAAS_SUBSCRIPTION_URL: `https://www.asaas.com/subscriptions/show/${subscription.id}`,
+          UF_CRM_ASAAS_SUBSCRIPTION_STATUS: subscription.status,
+          UF_CRM_ASAAS_SUBSCRIPTION_VALUE: parsedAmount,
+          UF_CRM_ASAAS_NEXT_DUE: subscription.nextDueDate,
+          UF_CRM_ASAAS_CYCLE: cycle.toUpperCase(),
+          UF_CRM_ASAAS_BILLING_TYPE: billingTypeMap[payment_method] || payment_method,
+        });
         break;
       }
       
