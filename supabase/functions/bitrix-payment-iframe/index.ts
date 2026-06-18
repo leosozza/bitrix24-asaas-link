@@ -3757,7 +3757,7 @@ async function generateDashboardPage(
       
       // Top action: Atualizar Integração
       html += '<div style="display:flex;justify-content:flex-end;margin-bottom:16px;">';
-      html += '<button class="btn btn-primary" onclick="openUpdateIntegrationModal()" title="Sincroniza campos, robôs e placements do Bitrix">↻ Atualizar Integração</button>';
+      html += '<button class="btn btn-primary" onclick="openUpdateIntegrationModal()" title="Sincroniza campos, robôs e placements do Bitrix" style="display:inline-flex;align-items:center;gap:8px;">' + icn('refresh') + ' Atualizar Integração</button>';
       html += '</div>';
       
       // Cabeçalho: Dados da Empresa
