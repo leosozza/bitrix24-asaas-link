@@ -4596,9 +4596,22 @@ async function loadCharges() {
   try {
     const r = await apiCall('crm_tab_load');
     state.customer = r.customer;
+    state.customerData = r.customerData || null;
     state.dealValue = r.dealValue || 0;
     if (state.dealValue && !document.getElementById('fTotal').value) {
       document.getElementById('fTotal').value = state.dealValue;
+    }
+    // Validate contact has CPF/CNPJ + email or phone (Asaas requirements)
+    const warn = document.getElementById('contactWarn');
+    const cd = state.customerData || {};
+    const probs = [];
+    if (!cd.cpfCnpj || String(cd.cpfCnpj).length < 11) probs.push('CPF/CNPJ do contato');
+    if (!cd.email && !cd.phone) probs.push('E-mail ou telefone do contato');
+    if (probs.length > 0) {
+      warn.innerHTML = '<strong>⚠️ Dados obrigatórios do contato faltando:</strong><br>' + probs.map(p => '• ' + p).join('<br>') + '<br><small>Preencha no Contato/Lead antes de gerar a cobrança.</small>';
+      warn.classList.remove('hidden');
+    } else {
+      warn.classList.add('hidden');
     }
     // Prefill saved contract fields from Bitrix
     const sf = r.savedFields || {};
