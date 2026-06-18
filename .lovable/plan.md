@@ -1,109 +1,118 @@
-## Fase 2 — Gerenciamento de Tenants e Planos Contratados
+## Objetivo
 
-Painel super-admin (você/Thoth24) para ver e gerenciar todos os tenants do ConnectPay, com trial automático de 14 dias do Pro e cobrança recorrente via Asaas.
+Reescrever a aba **Asaas** dentro de Deals/Leads/SPAs do Bitrix24 (`bitrix-crm-detail-tab`) com **4 abas internas** (Cobranças, Assinaturas, NFSe, Split) + um novo módulo **"Planejamento de Contrato"** estilo BomControle: entrada parcelada + recorrência (semanal/quinzenal/mensal) com cálculo automático de parcelas e datas, criando tudo no Asaas e sincronizando com campos personalizados do Bitrix.
 
-### 1. Banco de dados
+## Layout
 
-**Migration** (única, com aprovação):
-
-- Estender `tenant_subscriptions`:
-  - `trial_ends_at timestamptz` (default `now() + 14 days`)
-  - `asaas_subscription_id text` (id da assinatura no Asaas Thoth24)
-  - `asaas_customer_id text`
-  - `cancel_at_period_end boolean default false`
-  - `canceled_at timestamptz`
-  - `notes text` (anotações do admin)
-- Adicionar valor `'past_due'` ao enum `subscription_status` se faltar.
-- Atualizar `handle_new_user()` para, após criar profile, criar `tenant_subscriptions` com:
-  - `plan_id` = Pro
-  - `status` = `'trial'`
-  - `trial_ends_at` = `now() + 14 days`
-  - `current_period_end` = mesma data
-- Adicionar role `'super_admin'` ao enum `app_role` (se não existir).
-- RLS:
-  - `tenant_subscriptions`: política extra `super_admin` pode SELECT/UPDATE em tudo (via `has_role`).
-  - `subscription_plans`: super_admin pode UPDATE (editar preço/limite/features).
-  - `profiles`: super_admin pode SELECT todos.
-- GRANTs já existem; só adicionar onde faltar para super_admin.
-- Seed: marcar seu próprio user como `super_admin` (vou pedir o email na fase de implementação).
-
-### 2. Edge function `admin-tenant-management`
-
-Ações (todas validam `has_role(super_admin)` via JWT):
-
-- `list_tenants` — retorna profiles + subscription + plano + uso atual.
-- `change_plan` — troca plano de um tenant; ajusta assinatura no Asaas (cancela antiga, cria nova com novo valor).
-- `cancel_subscription` — `cancel_at_period_end=true` ou cancelamento imediato; cancela no Asaas.
-- `extend_trial` — adiciona N dias em `trial_ends_at` e `current_period_end`.
-- `reactivate` — reativa assinatura cancelada.
-- `create_asaas_subscription` — ao fim do trial (ou ação manual), cria customer + subscription no **Asaas do Thoth24** (usa secret `THOTH_ASAAS_API_KEY` — vou pedir via `add_secret`).
-- `reset_usage` — zera `transactions_used` no início de cada período.
-
-Webhook `thoth-asaas-webhook` para eventos da nossa própria conta Asaas: `PAYMENT_CONFIRMED` → `status='active'`, novo período; `PAYMENT_OVERDUE` → `'past_due'`; `SUBSCRIPTION_DELETED` → `'canceled'`.
-
-### 3. Cron (pg_cron)
-
-- Diário 03:00: marca como `expired` trials vencidos sem assinatura; envia para cobrança quem optou por continuar.
-- Diário 03:10: reseta `transactions_used` quando entra novo período.
-
-### 4. Frontend — Painel Admin
-
-Rota nova `/admin` protegida por `ProtectedRoute` + check `has_role('super_admin')` (redireciona se não for).
-
-Páginas:
-
-- **`/admin`** — Visão geral:
-  - Cards: total de tenants, em trial, ativos, inadimplentes, cancelados, MRR estimado.
-  - Gráfico simples de novos tenants nos últimos 30 dias.
-- **`/admin/tenants`** — Tabela:
-  - Colunas: empresa, email, plano atual, status (badge colorido), trial até, próximo vencimento, transações usadas/limite, MRR, ações.
-  - Filtros: status, plano, busca por nome/email.
-  - Ações por linha (dropdown): Ver detalhes, Trocar plano, Estender trial, Cancelar, Reativar, Adicionar nota.
-- **`/admin/tenants/:id`** — Detalhe:
-  - Dados do tenant + instalação Bitrix vinculada.
-  - Histórico de pagamentos (do Asaas Thoth24).
-  - Logs de uso (transações por mês).
-  - Notas internas.
-- **`/admin/plans`** — Gerenciar planos:
-  - Editar nome, preço, transaction_limit, features, is_active dos 3 planos existentes.
-
-### 5. Estrutura de arquivos
-
-```text
-src/
-  pages/
-    admin/
-      AdminLayout.tsx
-      AdminOverview.tsx
-      AdminTenants.tsx
-      AdminTenantDetail.tsx
-      AdminPlans.tsx
-  components/admin/
-    TenantTable.tsx
-    TenantActionsMenu.tsx
-    ChangePlanDialog.tsx
-    ExtendTrialDialog.tsx
-    PlanEditCard.tsx
-  hooks/
-    useIsSuperAdmin.ts
-    useAdminTenants.ts
-supabase/functions/
-  admin-tenant-management/index.ts
-  thoth-asaas-webhook/index.ts
+```
+┌─ Métricas [Cobrado | Recebido | Em Aberto | Qtd] ────┐
+├─ [Cobranças] [Planejamento] [Assinaturas] [NFSe] [Split] ─┤
+│                                                          │
+│  conteúdo da aba ativa                                   │
+└──────────────────────────────────────────────────────────┘
 ```
 
-Adicionar item "Admin" no `DashboardSidebar` visível só para super_admins.
+Navegação por abas em vanilla JS (sem reload).
 
-### Detalhes técnicos
+## Módulo "Planejamento de Contrato" (núcleo da mudança)
 
-- Cobrança via Asaas próprio do Thoth24 — separado da conta Asaas que cada cliente conecta no produto. Secret nova: `THOTH_ASAAS_API_KEY` + `THOTH_ASAAS_ENV` (`sandbox`/`production`).
-- Trial: ao criar usuário, já entra com plano Pro status `trial` por 14 dias. Sem cartão. Ao expirar, status vira `expired` e o frontend mostra modal bloqueante pedindo escolha de plano.
-- Enforcement de limite NÃO entra nesta fase (você marcou apenas Painel Admin). Fica como fase 3.
-- Toda ação admin grava em `integration_logs` com `action='admin_*'` para auditoria.
+Formulário no topo da aba Planejamento, com **todos os campos obrigatórios marcados com asterisco e validados antes do envio**:
 
-### Fora de escopo (próximas fases)
+**Bloco 1 — Cliente** (auto-preenchido do Contato/Empresa do Deal, editável):
+- Nome *, Email *, CPF/CNPJ *, Telefone
 
-- Auto-serviço do tenant (upgrade/downgrade pelo próprio cliente).
-- Checkout público com cartão para tenant pagar.
-- Enforcement automático de limite de transações.
-- Emissão de NFSe das mensalidades cobradas.
+**Bloco 2 — Contrato**:
+- Data de início do contrato *
+- Data de fim do contrato *
+- Observação das parcelas
+- Forma de pagamento * (PIX / Boleto / Cartão)
+
+**Bloco 3 — Entrada parcelada** (opcional):
+- Valor da entrada (R$) — ex. 3000
+- Número de parcelas da entrada (lista 1–12) — ex. 3
+- Primeiro vencimento da entrada *
+- Mostra preview: "3 parcelas de R$ 1.000,00"
+- Tabela editável das parcelas (cada linha: nº, vencimento, valor) com botão "✏️ Editar" e "✖ Remover" igual à imagem
+
+**Bloco 4 — Recorrência (saldo)**:
+- Valor total do contrato * (ou "saldo a parcelar")
+- Ciclo * (lista: **Semanal** [padrão] / Quinzenal / Mensal)
+- Dia da semana (se semanal/quinzenal — ex. Quarta) ou dia do mês (se mensal)
+- Calculado automaticamente a partir de Data início / Data fim / Ciclo:
+  - Quantidade de cobranças
+  - Valor de cada cobrança = saldo / qtd (último ajuste de centavos)
+  - Primeira data = próxima ocorrência do dia escolhido a partir de Data início
+
+**Tabela de pré-visualização** (estilo BomControle, da imagem):
+| Parcela | Forma | Vencimento | Faturamento | Total | ✖ | ✏️ |
+
+Permite editar valor/data de cada linha antes de enviar.
+
+**Botão "Enviar ao Asaas"** — cria no Asaas:
+- Cobranças da entrada → `POST /payments` (uma por parcela)
+- Recorrência → `POST /subscriptions` com `nextDueDate`, `cycle` (WEEKLY/BIWEEKLY/MONTHLY), `endDate`, `value`
+- Cada cobrança/assinatura gera registro em `transactions` / `subscriptions` com `bitrix_entity_*`
+
+## Sincronização com Bitrix (Campos personalizados + Timeline)
+
+**Auto-criação de campos personalizados** (UF_CRM_*) no Deal na primeira vez que o tenant abre a aba:
+- `UF_CRM_ASAAS_CONTRACT_START` (date) — Data início contrato
+- `UF_CRM_ASAAS_CONTRACT_END` (date) — Data fim contrato
+- `UF_CRM_ASAAS_ENTRY_VALUE` (double) — Valor da entrada
+- `UF_CRM_ASAAS_ENTRY_INSTALLMENTS` (enum 1–12) — Nº parcelas entrada
+- `UF_CRM_ASAAS_RECURRING_VALUE` (double) — Valor da recorrência
+- `UF_CRM_ASAAS_CYCLE` (enum WEEKLY/BIWEEKLY/MONTHLY) — Ciclo
+- `UF_CRM_ASAAS_WEEKDAY` (enum SEG..DOM)
+- `UF_CRM_ASAAS_PAYMENT_METHOD` (enum PIX/BOLETO/CREDIT_CARD)
+
+Criados via `crm.deal.userfield.add` (idempotente: checa antes com `crm.deal.userfield.list`). Flag em `bitrix_installations.custom_fields_created` para não repetir.
+
+**Bidirecionalidade**:
+- Ao abrir a aba, edge function chama `crm.deal.get` e pré-popula o formulário com os valores desses campos se já existirem.
+- Ao enviar com sucesso, chama `crm.deal.update` gravando os campos com os valores submetidos.
+
+**Timeline do negócio**:
+- Sucesso: `crm.timeline.comment.add` com texto "✅ Planejamento Asaas enviado: entrada R$ X em N parcelas + recorrência semanal de R$ Y até DD/MM/AAAA. IDs: …"
+- Erro: `crm.timeline.comment.add` com "❌ Falha no envio Asaas: <lista de erros do Asaas>"
+- Atividade configurável com badge `asaas_contract_planned` no card do Deal.
+
+## Abas adicionais (mantém escopo já confirmado)
+
+- **Cobranças**: tabela + modal Nova Cobrança (valor, método, vencimento, descrição, juros, multa, desconto). Ações por linha: copiar link, reenviar (`notify`), alterar vencimento (`PUT`), cancelar (`DELETE`), reembolsar (`refund`), emitir NFSe.
+- **Assinaturas**: lista de `subscriptions` filtradas por `bitrix_entity_*` + criação manual (ciclo/valor/dia). Ações: pausar, cancelar, ver cobranças geradas.
+- **NFSe**: lista de `invoices`, botão emitir por cobrança confirmada, baixar PDF, cancelar. Reusa `asaas-invoice-process`.
+- **Split**: visualizar/editar `split_configurations` aplicáveis ao Deal.
+
+Auto-preenchimento de cliente (Contato/Empresa) via `crm.deal.contact.items.get` + `crm.contact.get` (Lead usa `crm.lead.get`), injetado como `window.defaultCustomer`.
+
+## Actions no edge function (`bitrix-crm-detail-tab`)
+
+Adicionar handlers JSON:
+- `get_crm_customer`, `get_deal_fields` — leitura inicial
+- `ensure_custom_fields` — cria UF_CRM_ASAAS_*
+- `submit_contract_plan` — orquestra criação de cobranças+assinatura, atualiza Deal, comenta timeline
+- `create_charge`, `cancel_charge`, `refund_charge`, `update_due_date`, `resend_notification`
+- `create_subscription`, `cancel_subscription`, `list_subscription_payments`
+- `issue_invoice`, `cancel_invoice` (proxy para `asaas-invoice-process`)
+- `save_split`, `list_splits`
+
+Helpers internos: `findOrCreateAsaasCustomer`, `calculateInstallments(start,end,cycle,weekday)`, `addTimelineComment`, `createConfigurableActivity` (já existe, estender badgeCodes).
+
+## Schema DB
+
+Verificar e (se faltar) adicionar via migração:
+- `subscriptions.bitrix_entity_type`, `subscriptions.bitrix_entity_id` (provável que já existam — confirmar antes)
+- `bitrix_installations.custom_fields_created boolean default false`
+- Nova tabela `contract_plans` (opcional para histórico): tenant_id, bitrix_entity_type, bitrix_entity_id, start_date, end_date, entry_value, entry_installments, recurring_value, cycle, weekday, payment_method, asaas_subscription_id, status. RLS por tenant + grants padrão.
+
+Migração executada antes da reescrita do edge function.
+
+## Deploy
+
+Redesplegar apenas `bitrix-crm-detail-tab` ao final (mais migração se aplicável).
+
+## Fora de escopo
+
+- Mudanças no dashboard React (admin/cliente).
+- Webhook Thoth24 (já feito).
+- Fluxos de automação / robots.
