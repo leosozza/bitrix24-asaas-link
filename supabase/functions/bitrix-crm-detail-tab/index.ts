@@ -466,10 +466,22 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
         </div>
       </div>
 
+      <div id="w_entryTable_wrap" style="display:none">
+        <div class="section">
+          <h4><span class="num">3b</span> Parcelas da Entrada (edite data/valor se necessário)</h4>
+          <table class="preview-table">
+            <thead><tr><th>#</th><th>Vencimento</th><th>Valor (R$)</th><th>Método</th></tr></thead>
+            <tbody id="w_entryTable"></tbody>
+          </table>
+          <div style="margin-top:6px;font-size:11px;color:#64748b">Soma das parcelas deve igualar o valor da entrada.</div>
+        </div>
+      </div>
+
       <div class="balance-box">
         <span>Saldo a parcelar:</span>
         <b id="w_balance">R$ 0,00</b>
       </div>
+
 
       <div class="section" id="w_balanceSection">
         <h4><span class="num">4</span> Modalidade do Saldo</h4>
