@@ -173,51 +173,63 @@ function html(ctx: {
   const statusLabels: Record<string, string> = { pending: 'Pendente', confirmed: 'Confirmado', received: 'Recebido', overdue: 'Vencido', refunded: 'Reembolsado', cancelled: 'Cancelado', active: 'Ativa', inactive: 'Inativa', expired: 'Expirada' };
   const methodLabels: Record<string, string> = { pix: 'PIX', boleto: 'Boleto', credit_card: 'Cartão', PIX: 'PIX', BOLETO: 'Boleto', CREDIT_CARD: 'Cartão' };
 
+  const ICONS = {
+    link: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>',
+    mail: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>',
+    x: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+    refund: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>',
+    invoice: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="14" x2="15" y2="14"/></svg>',
+    download: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
+    plus: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+    check: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+    pause: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>',
+  };
+
   const txRows = transactions.map(t => `
     <tr>
-      <td>${t.customer_name || '-'}</td>
+      <td>${escHtml(t.customer_name || '-')}</td>
       <td><b>R$ ${(Number(t.amount) || 0).toFixed(2).replace('.', ',')}</b></td>
       <td>${methodLabels[t.payment_method] || t.payment_method}</td>
       <td><span class="badge" style="background:${statusColors[t.status] || '#6b7280'}20;color:${statusColors[t.status] || '#6b7280'}">${statusLabels[t.status] || t.status}</span></td>
       <td>${t.due_date ? new Date(t.due_date).toLocaleDateString('pt-BR') : '-'}</td>
       <td class="actions">
-        ${t.payment_url ? `<button class="ico" title="Copiar link" onclick="copyText('${t.payment_url}')">🔗</button>` : ''}
-        <button class="ico" title="Reenviar" onclick="rowAction('resend_notification','${t.asaas_id}')">📧</button>
-        <button class="ico" title="Cancelar" onclick="rowAction('cancel_charge','${t.asaas_id}')">✖</button>
-        ${t.status === 'received' || t.status === 'confirmed' ? `<button class="ico" title="Reembolsar" onclick="rowAction('refund_charge','${t.asaas_id}')">↩</button>` : ''}
-        ${t.status === 'received' || t.status === 'confirmed' ? `<button class="ico" title="Emitir NFSe" onclick="rowAction('issue_invoice','${t.id}')">🧾</button>` : ''}
+        ${t.payment_url ? `<button class="ico" title="Copiar link" onclick="copyText('${escAttr(t.payment_url)}')">${ICONS.link}</button>` : ''}
+        <button class="ico" title="Reenviar" onclick="rowAction('resend_notification','${escAttr(t.asaas_id)}')">${ICONS.mail}</button>
+        <button class="ico" title="Cancelar" onclick="rowAction('cancel_charge','${escAttr(t.asaas_id)}')">${ICONS.x}</button>
+        ${t.status === 'received' || t.status === 'confirmed' ? `<button class="ico" title="Reembolsar" onclick="rowAction('refund_charge','${escAttr(t.asaas_id)}')">${ICONS.refund}</button>` : ''}
+        ${t.status === 'received' || t.status === 'confirmed' ? `<button class="ico" title="Emitir NFSe" onclick="rowAction('issue_invoice','${escAttr(t.id)}')">${ICONS.invoice}</button>` : ''}
       </td>
     </tr>`).join('') || `<tr><td colspan="6" class="empty">Nenhuma cobrança vinculada.</td></tr>`;
 
   const subRows = subscriptions.map(s => `
     <tr>
-      <td>${s.customer_name || '-'}</td>
+      <td>${escHtml(s.customer_name || '-')}</td>
       <td><b>R$ ${(Number(s.value) || 0).toFixed(2).replace('.', ',')}</b></td>
       <td>${s.cycle || '-'}</td>
       <td>${s.next_due_date ? new Date(s.next_due_date).toLocaleDateString('pt-BR') : '-'}</td>
       <td><span class="badge">${statusLabels[s.status] || s.status}</span></td>
       <td class="actions">
-        <button class="ico" title="Cancelar" onclick="rowAction('cancel_subscription','${s.asaas_id}')">✖</button>
+        <button class="ico" title="Cancelar" onclick="rowAction('cancel_subscription','${escAttr(s.asaas_id)}')">${ICONS.x}</button>
       </td>
     </tr>`).join('') || `<tr><td colspan="6" class="empty">Nenhuma assinatura.</td></tr>`;
 
   const invRows = invoices.map(i => `
     <tr>
-      <td>${i.invoice_number || '-'}</td>
-      <td>${i.customer_name || '-'}</td>
+      <td>${escHtml(i.invoice_number || '-')}</td>
+      <td>${escHtml(i.customer_name || '-')}</td>
       <td>R$ ${(Number(i.value) || 0).toFixed(2).replace('.', ',')}</td>
       <td><span class="badge">${i.status}</span></td>
       <td class="actions">
-        ${i.invoice_url ? `<a class="ico" target="_blank" href="${i.invoice_url}">⬇</a>` : ''}
+        ${i.invoice_url ? `<a class="ico" target="_blank" href="${escAttr(i.invoice_url)}">${ICONS.download}</a>` : ''}
       </td>
     </tr>`).join('') || `<tr><td colspan="5" class="empty">Nenhuma NFSe.</td></tr>`;
 
   const splitRows = splits.map(s => `
     <tr>
-      <td>${s.name}</td>
-      <td>${s.wallet_id}</td>
+      <td>${escHtml(s.name)}</td>
+      <td>${escHtml(s.wallet_id)}</td>
       <td>${s.split_type === 'percentage' ? s.split_value + '%' : 'R$ ' + Number(s.split_value).toFixed(2)}</td>
-      <td>${s.is_active ? '✅' : '⏸'}</td>
+      <td>${s.is_active ? ICONS.check : ICONS.pause}</td>
     </tr>`).join('') || `<tr><td colspan="4" class="empty">Nenhum split configurado.</td></tr>`;
 
   const planSummary = contractPlan ? `
