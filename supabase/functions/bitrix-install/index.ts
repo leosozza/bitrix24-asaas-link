@@ -108,7 +108,7 @@ async function registerPaySystemHandler(clientEndpoint: string, accessToken: str
       CURRENCY: ['BRL'],
       CLIENT_TYPE: 'b2c',
       IFRAME_DATA: {
-        ACTION_URI: `${appDomain}/functions/v1/bitrix-payment-iframe`,
+        ACTION_URI: `${Deno.env.get('SUPABASE_URL')}/functions/v1/bitrix-payment-iframe`,
         FIELDS: {
           paymentId: { CODE: 'PAYMENT_ID' },
           orderId: { CODE: 'ORDER_ID' },
