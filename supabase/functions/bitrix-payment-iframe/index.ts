@@ -4134,13 +4134,25 @@ serve(async (req) => {
       });
     }
 
-    // Detect context: payment checkout vs normal app opening
+    // Detect context: payment checkout vs CRM tab vs normal app opening
     const isPaymentContext = paymentData.paymentId && parseFloat(paymentData.amount || '0') > 0;
+    const isCrmTabContext = paymentData.placement === 'CRM_DEAL_DETAIL_TAB' || paymentData.placement === 'CRM_LEAD_DETAIL_TAB';
 
     // Scenario 3a: Payment context - show payment page
     if (isPaymentContext) {
       console.log('Showing payment page - checkout context');
       const html = generatePaymentPage(paymentData, asaasConfig);
+      return new Response(html, {
+        headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' },
+      });
+    }
+
+    // Scenario 3b: CRM Detail Tab (Deal/Lead) - show payments tab
+    if (isCrmTabContext) {
+      console.log('Showing CRM payment tab for placement:', paymentData.placement);
+      const entityType = paymentData.placement === 'CRM_DEAL_DETAIL_TAB' ? 'deal' : 'lead';
+      const entityId = paymentData.placementOptions?.ID || '';
+      const html = generateCrmPaymentTabPage(paymentData, entityType, entityId);
       return new Response(html, {
         headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' },
       });
