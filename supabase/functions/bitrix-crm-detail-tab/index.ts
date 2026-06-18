@@ -313,9 +313,9 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
 .empty{text-align:center;color:#94a3b8;padding:24px}
 .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
 .head h3{font-size:15px}
-.btn{background:linear-gradient(135deg,#2FC6F6,#0066cc);color:#fff;border:0;padding:9px 16px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:4px}
+.btn{background:linear-gradient(135deg,#2FC6F6,#0066cc);color:#fff;border:0;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:4px}
 .btn:disabled{opacity:.5;cursor:not-allowed}
-.btn-sec{background:#f1f5f9;color:#475569;border:0;padding:9px 16px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer}
+.btn-sec{background:#f1f5f9;color:#475569;border:0;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer}
 .ico{background:transparent;border:0;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;color:#475569;text-decoration:none}
 .ico:hover{color:#0066cc;background:#f1f5f9;border-radius:6px}
 .actions{white-space:nowrap}
