@@ -879,11 +879,7 @@ function refreshPreviewOnly(){
       }
     }
   }
-  var tbody = document.getElementById('w_preview');
-  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="5" class="empty">Preencha os dados acima.</td></tr>'; return; }
-  tbody.innerHTML = rows.map(function(r){
-    return '<tr><td>'+r.n+'</td><td>'+r.type+'</td><td>'+new Date(r.due).toLocaleDateString('pt-BR')+'</td><td>R$ '+r.val.toFixed(2).replace('.',',')+'</td><td>'+r.method+'</td></tr>';
-  }).join('');
+  finalizeSchedule(rows);
 }
 
 
