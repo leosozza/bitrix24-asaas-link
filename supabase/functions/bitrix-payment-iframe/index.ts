@@ -4480,9 +4480,27 @@ async function loadCharges() {
     if (state.dealValue && !document.getElementById('fTotal').value) {
       document.getElementById('fTotal').value = state.dealValue;
     }
+    // Prefill saved contract fields from Bitrix
+    const sf = r.savedFields || {};
+    if (sf.contractStart) document.getElementById('fStart').value = String(sf.contractStart).split('T')[0];
+    if (sf.contractEnd) document.getElementById('fEnd').value = String(sf.contractEnd).split('T')[0];
+    if (sf.cycle) {
+      const pSel = document.getElementById('fPeriod');
+      if ([...pSel.options].some(o => o.value === sf.cycle)) pSel.value = sf.cycle;
+    }
+    const recN = parseInt(sf.recurringInstallments);
+    if (recN > 1) {
+      const iSel = document.getElementById('fInstallments');
+      if ([...iSel.options].some(o => parseInt(o.value) === recN)) iSel.value = String(recN);
+    }
+    const entN = parseInt(sf.entryInstallments);
+    if (entN > 1) {
+      document.getElementById('fSplitEntry').checked = true;
+      const eSel = document.getElementById('fEntryN');
+      if ([...eSel.options].some(o => parseInt(o.value) === entN)) eSel.value = String(entN);
+    }
     renderCharges(r.charges || [], r.subscriptions || []);
     recalc();
-  } catch (e) {
     document.getElementById('chargesArea').innerHTML = '<div class="alert alert-error">Erro ao carregar: ' + e.message + '</div>';
   }
 }
