@@ -1,45 +1,48 @@
-## Diagnóstico
+## Plano
 
-O código da Edge Function `bitrix-payment-iframe` **já contém o novo layout** (cabeçalho com lápis, card Asaas resumido, botão "Atualizar Integração" no topo, modais, etc. — linhas 3722–3893). Mesmo assim, o iframe dentro do Bitrix continua mostrando o layout antigo (forms inline "Salvar Empresa", "Salvar Configuração", botão "Reparar Integração Bitrix (robôs + campos)" no fim, etc.). Essas strings **não existem mais no código fonte** — só podem vir de uma versão antiga em execução.
+Trocar todos os emojis (`↻ ✏️ 📧 📱 📍 ⚙️ ℹ️ 🟢 ⚠ 📘 📖 ✓`) da aba Configurações por SVGs inline limpos no mesmo padrão do dock (stroke 2, currentColor). Depois forçar redeploy para que o iframe atualize e exiba também as abas **Plano / Notificações / Segurança** (que já existem no código mas não foram propagadas no último deploy parcial).
 
-Hipóteses prováveis (em ordem):
+### Passo 1 — Helper de ícones SVG
+Em `supabase/functions/bitrix-payment-iframe/index.ts`, logo antes de `loadSettings()`, adicionar:
 
-1. **ACTION_URI registrada no install aponta para `APP_DOMAIN` (frontend) e não para `SUPABASE_URL`** (`bitrix-install/index.ts` linha 111). O Bitrix está carregando o iframe a partir do domínio do frontend, que pode estar servindo uma build antiga via SPA, ou um proxy. Isso explica também por que mudanças na Edge Function nunca chegam ao usuário.
-2. **Cache do Bitrix Marketplace** (o wrapper `/marketplace/app/...` faz cache do HTML do iframe interno).
-3. **Edge Function não redeployou** (menos provável — auto-deploy roda no save).
-
-## Plano de correção
-
-### Passo 1 — Apontar `ACTION_URI` para a Edge Function
-Em `supabase/functions/bitrix-install/index.ts` linha 111, trocar:
-```ts
-ACTION_URI: `${appDomain}/functions/v1/bitrix-payment-iframe`,
+```js
+function icn(name, size) { /* retorna <svg> inline */ }
 ```
-por:
-```ts
-ACTION_URI: `${Deno.env.get('SUPABASE_URL')}/functions/v1/bitrix-payment-iframe`,
-```
-Mesmo padrão já usado em `bitrix-robot-handler` (linha 275) e nos webhooks (regra registrada na memória).
 
-### Passo 2 — Re-registrar o app no Bitrix
-A `ACTION_URI` só é gravada em `app.install`. Para installations existentes (Delivery Real) precisamos reenviar via `app.update` ou pelo botão "Atualizar Integração". Vamos:
+Com ícones: `refresh`, `mail`, `phone`, `pin`, `pencil`, `info`, `file`, `check`, `alert`. Tamanho padrão 14px, `vertical-align:-2px`.
 
-- Adicionar uma chamada `app.update` no handler `repair_integration` (dentro de `bitrix-payment-iframe`) que faz `BX.callMethod('app.update', { ACTION_URI: <novo> })`.
-- Assim, clicar em "Reparar Integração" (ou "Atualizar Integração" no novo layout) corrige a URL sem precisar reinstalar.
+### Passo 2 — Substituir emojis em `loadSettings()`
+| Onde | De | Para |
+|---|---|---|
+| Botão topo + título modal | `↻ Atualizar Integração` | `icn('refresh') + ' Atualizar Integração'` |
+| Linha de e-mail no header | `📧` | `icn('mail')` |
+| Linha de telefone | `📱` | `icn('phone')` |
+| Linha de endereço | `📍` | `icn('pin')` |
+| Botão Editar (empresa + asaas) | `✏️ Editar` | `icn('pencil') + ' Editar'` |
+| Botão Como configurar | `ℹ️ Como configurar` | `icn('info') + ' Como configurar'` |
+| Status Asaas conectado | `🟢` | `icn('check')` em verde + texto |
+| Status Asaas não config. | `⚠` | `icn('alert')` em âmbar + texto |
+| Badge webhook OK | `✓ Registrado…` | `icn('check') + ' Registrado…'` |
+| Badge webhook pendente | `⚠ …` | `icn('alert') + ' …'` |
+| Título Config Fiscal | `⚙️ Configuração Fiscal` | `icn('file', 16) + ' Configuração Fiscal'` |
+| Header modal webhook help | `📘 Como configurar…` | `icn('info', 18) + ' Como configurar…'` |
+| Link docs no modal | `📖` | remover (texto puro) |
 
-### Passo 3 — Cache-buster no iframe
-Append `?v=<timestamp_deploy>` na ACTION_URI para garantir que o Bitrix carregue versão nova mesmo se houver cache CDN/marketplace.
+Cores aplicadas via `<span style="color:#16a34a">` para verde e `#d97706` para âmbar, envolvendo `icn(...)` quando indicar status.
 
-### Passo 4 — Verificação
-1. Salvar a Edge Function `bitrix-install` (auto-deploy).
-2. No tenant Delivery Real, abrir o iframe atual e clicar em "Reparar Integração Bitrix" (botão antigo ainda visível porque é o que está rodando).
-3. O `repair_integration` rodará o `app.update` e atualizará a ACTION_URI.
-4. Recarregar o app no menu do Bitrix → deve aparecer o **novo layout** (cabeçalho com lápis, card Asaas resumido, "↻ Atualizar Integração" no topo, Configuração Fiscal colapsada, "Teste de Integração" movido para aba Integrações).
+### Passo 3 — Redeploy
+Chamar `supabase--deploy_edge_functions` para `bitrix-payment-iframe`. Isso garante que a versão deployada também passe a ter as **abas Plano / Notificações / Segurança** no dock (já presentes no código nas linhas 3029–3040 mas ainda não no runtime, segundo o screenshot do usuário).
 
-### Arquivos a editar
-- `supabase/functions/bitrix-install/index.ts` — trocar `appDomain` por `SUPABASE_URL` na `ACTION_URI` + cache-buster.
-- `supabase/functions/bitrix-payment-iframe/index.ts` — adicionar `app.update` no início do `repair_integration` para corrigir installations existentes.
+### Verificação (do usuário)
+Após Ctrl+F5 no iframe Bitrix:
+- Dock com 9 abas (incluindo Plano, Notificações, Segurança)
+- Settings sem emojis, todos os ícones em SVG monocromático
+- Botão "Atualizar Integração" com ícone refresh limpo
 
 ### Fora de escopo
-- Nenhuma mudança visual nova — o layout novo já está implementado, só precisa ser carregado.
-- Nenhuma mudança em frontend React (`DashboardSettings.tsx` já foi refeito numa entrega anterior).
+- Sem mudança em layout, cores de fundo ou cards.
+- Sem mexer no React `/dashboard/settings`.
+- Sem trocar para `@bitrix24/b24icons` (iframe é HTML server-rendered, SVG inline é o equivalente mais limpo e sem CDN).
+
+### Arquivo
+- `supabase/functions/bitrix-payment-iframe/index.ts`
