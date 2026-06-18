@@ -33,6 +33,28 @@ function json(body: unknown, status = 200) {
   });
 }
 
+const webhookUrl = `${SUPABASE_URL}/functions/v1/thoth-asaas-webhook`;
+
+async function registerThothWebhook() {
+  if (!THOTH_ASAAS_API_KEY) return { ok: false, error: 'THOTH_ASAAS_API_KEY not configured' };
+  const res = await asaas('/webhooks', {
+    method: 'POST',
+    body: JSON.stringify({
+      name: 'ConnectPay Thoth24 Billing',
+      url: webhookUrl,
+      email: 'contato@thoth24.com',
+      apiVersion: '3',
+      events: ['PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED', 'PAYMENT_OVERDUE', 'SUBSCRIPTION_UPDATED', 'SUBSCRIPTION_DELETED'],
+    }),
+  });
+  // Asaas returns 409 when webhook already exists with same URL
+  if (!res.ok && res.status !== 409) {
+    return { ok: false, status: res.status, data: res.data };
+  }
+  return { ok: true, status: res.status, data: res.data };
+}
+
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
   if (req.method === 'GET') return new Response('OK', { headers: corsHeaders });
