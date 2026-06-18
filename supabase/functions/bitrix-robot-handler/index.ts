@@ -608,6 +608,21 @@ serve(async (req) => {
             `[B]✅ Asaas — cobrança criada com sucesso[/B]\nID: ${payment.id}\nMétodo: ${m}\nValor: ${amountFmt}\nStatus: ${payment.status}${link}`
           );
         }
+
+        // Update Deal UF_CRM_ASAAS_* fields (best-effort)
+        {
+          const billingTypeLabel: Record<string, string> = { pix: 'PIX', boleto: 'BOLETO', credit_card: 'CREDIT_CARD' };
+          await updateDealAsaasFields(apiEndpoint, robotData.auth.access_token, entityType, entityIdNum, {
+            UF_CRM_ASAAS_CHARGE_ID: payment.id,
+            UF_CRM_ASAAS_CHARGE_URL: payment.invoiceUrl,
+            UF_CRM_ASAAS_CHARGE_STATUS: payment.status,
+            UF_CRM_ASAAS_CHARGE_VALUE: parsedAmount,
+            UF_CRM_ASAAS_BILLING_TYPE: billingTypeLabel[payment_method] || payment_method,
+            UF_CRM_ASAAS_DUE_DATE: payment.dueDate,
+            UF_CRM_ASAAS_PIX_CODE: payment.pixCode,
+            UF_CRM_ASAAS_BOLETO_URL: payment.bankSlipUrl,
+          });
+        }
         break;
       }
       
