@@ -1,48 +1,109 @@
-## Plano
+## Fase 2 — Gerenciamento de Tenants e Planos Contratados
 
-Trocar todos os emojis (`↻ ✏️ 📧 📱 📍 ⚙️ ℹ️ 🟢 ⚠ 📘 📖 ✓`) da aba Configurações por SVGs inline limpos no mesmo padrão do dock (stroke 2, currentColor). Depois forçar redeploy para que o iframe atualize e exiba também as abas **Plano / Notificações / Segurança** (que já existem no código mas não foram propagadas no último deploy parcial).
+Painel super-admin (você/Thoth24) para ver e gerenciar todos os tenants do ConnectPay, com trial automático de 14 dias do Pro e cobrança recorrente via Asaas.
 
-### Passo 1 — Helper de ícones SVG
-Em `supabase/functions/bitrix-payment-iframe/index.ts`, logo antes de `loadSettings()`, adicionar:
+### 1. Banco de dados
 
-```js
-function icn(name, size) { /* retorna <svg> inline */ }
+**Migration** (única, com aprovação):
+
+- Estender `tenant_subscriptions`:
+  - `trial_ends_at timestamptz` (default `now() + 14 days`)
+  - `asaas_subscription_id text` (id da assinatura no Asaas Thoth24)
+  - `asaas_customer_id text`
+  - `cancel_at_period_end boolean default false`
+  - `canceled_at timestamptz`
+  - `notes text` (anotações do admin)
+- Adicionar valor `'past_due'` ao enum `subscription_status` se faltar.
+- Atualizar `handle_new_user()` para, após criar profile, criar `tenant_subscriptions` com:
+  - `plan_id` = Pro
+  - `status` = `'trial'`
+  - `trial_ends_at` = `now() + 14 days`
+  - `current_period_end` = mesma data
+- Adicionar role `'super_admin'` ao enum `app_role` (se não existir).
+- RLS:
+  - `tenant_subscriptions`: política extra `super_admin` pode SELECT/UPDATE em tudo (via `has_role`).
+  - `subscription_plans`: super_admin pode UPDATE (editar preço/limite/features).
+  - `profiles`: super_admin pode SELECT todos.
+- GRANTs já existem; só adicionar onde faltar para super_admin.
+- Seed: marcar seu próprio user como `super_admin` (vou pedir o email na fase de implementação).
+
+### 2. Edge function `admin-tenant-management`
+
+Ações (todas validam `has_role(super_admin)` via JWT):
+
+- `list_tenants` — retorna profiles + subscription + plano + uso atual.
+- `change_plan` — troca plano de um tenant; ajusta assinatura no Asaas (cancela antiga, cria nova com novo valor).
+- `cancel_subscription` — `cancel_at_period_end=true` ou cancelamento imediato; cancela no Asaas.
+- `extend_trial` — adiciona N dias em `trial_ends_at` e `current_period_end`.
+- `reactivate` — reativa assinatura cancelada.
+- `create_asaas_subscription` — ao fim do trial (ou ação manual), cria customer + subscription no **Asaas do Thoth24** (usa secret `THOTH_ASAAS_API_KEY` — vou pedir via `add_secret`).
+- `reset_usage` — zera `transactions_used` no início de cada período.
+
+Webhook `thoth-asaas-webhook` para eventos da nossa própria conta Asaas: `PAYMENT_CONFIRMED` → `status='active'`, novo período; `PAYMENT_OVERDUE` → `'past_due'`; `SUBSCRIPTION_DELETED` → `'canceled'`.
+
+### 3. Cron (pg_cron)
+
+- Diário 03:00: marca como `expired` trials vencidos sem assinatura; envia para cobrança quem optou por continuar.
+- Diário 03:10: reseta `transactions_used` quando entra novo período.
+
+### 4. Frontend — Painel Admin
+
+Rota nova `/admin` protegida por `ProtectedRoute` + check `has_role('super_admin')` (redireciona se não for).
+
+Páginas:
+
+- **`/admin`** — Visão geral:
+  - Cards: total de tenants, em trial, ativos, inadimplentes, cancelados, MRR estimado.
+  - Gráfico simples de novos tenants nos últimos 30 dias.
+- **`/admin/tenants`** — Tabela:
+  - Colunas: empresa, email, plano atual, status (badge colorido), trial até, próximo vencimento, transações usadas/limite, MRR, ações.
+  - Filtros: status, plano, busca por nome/email.
+  - Ações por linha (dropdown): Ver detalhes, Trocar plano, Estender trial, Cancelar, Reativar, Adicionar nota.
+- **`/admin/tenants/:id`** — Detalhe:
+  - Dados do tenant + instalação Bitrix vinculada.
+  - Histórico de pagamentos (do Asaas Thoth24).
+  - Logs de uso (transações por mês).
+  - Notas internas.
+- **`/admin/plans`** — Gerenciar planos:
+  - Editar nome, preço, transaction_limit, features, is_active dos 3 planos existentes.
+
+### 5. Estrutura de arquivos
+
+```text
+src/
+  pages/
+    admin/
+      AdminLayout.tsx
+      AdminOverview.tsx
+      AdminTenants.tsx
+      AdminTenantDetail.tsx
+      AdminPlans.tsx
+  components/admin/
+    TenantTable.tsx
+    TenantActionsMenu.tsx
+    ChangePlanDialog.tsx
+    ExtendTrialDialog.tsx
+    PlanEditCard.tsx
+  hooks/
+    useIsSuperAdmin.ts
+    useAdminTenants.ts
+supabase/functions/
+  admin-tenant-management/index.ts
+  thoth-asaas-webhook/index.ts
 ```
 
-Com ícones: `refresh`, `mail`, `phone`, `pin`, `pencil`, `info`, `file`, `check`, `alert`. Tamanho padrão 14px, `vertical-align:-2px`.
+Adicionar item "Admin" no `DashboardSidebar` visível só para super_admins.
 
-### Passo 2 — Substituir emojis em `loadSettings()`
-| Onde | De | Para |
-|---|---|---|
-| Botão topo + título modal | `↻ Atualizar Integração` | `icn('refresh') + ' Atualizar Integração'` |
-| Linha de e-mail no header | `📧` | `icn('mail')` |
-| Linha de telefone | `📱` | `icn('phone')` |
-| Linha de endereço | `📍` | `icn('pin')` |
-| Botão Editar (empresa + asaas) | `✏️ Editar` | `icn('pencil') + ' Editar'` |
-| Botão Como configurar | `ℹ️ Como configurar` | `icn('info') + ' Como configurar'` |
-| Status Asaas conectado | `🟢` | `icn('check')` em verde + texto |
-| Status Asaas não config. | `⚠` | `icn('alert')` em âmbar + texto |
-| Badge webhook OK | `✓ Registrado…` | `icn('check') + ' Registrado…'` |
-| Badge webhook pendente | `⚠ …` | `icn('alert') + ' …'` |
-| Título Config Fiscal | `⚙️ Configuração Fiscal` | `icn('file', 16) + ' Configuração Fiscal'` |
-| Header modal webhook help | `📘 Como configurar…` | `icn('info', 18) + ' Como configurar…'` |
-| Link docs no modal | `📖` | remover (texto puro) |
+### Detalhes técnicos
 
-Cores aplicadas via `<span style="color:#16a34a">` para verde e `#d97706` para âmbar, envolvendo `icn(...)` quando indicar status.
+- Cobrança via Asaas próprio do Thoth24 — separado da conta Asaas que cada cliente conecta no produto. Secret nova: `THOTH_ASAAS_API_KEY` + `THOTH_ASAAS_ENV` (`sandbox`/`production`).
+- Trial: ao criar usuário, já entra com plano Pro status `trial` por 14 dias. Sem cartão. Ao expirar, status vira `expired` e o frontend mostra modal bloqueante pedindo escolha de plano.
+- Enforcement de limite NÃO entra nesta fase (você marcou apenas Painel Admin). Fica como fase 3.
+- Toda ação admin grava em `integration_logs` com `action='admin_*'` para auditoria.
 
-### Passo 3 — Redeploy
-Chamar `supabase--deploy_edge_functions` para `bitrix-payment-iframe`. Isso garante que a versão deployada também passe a ter as **abas Plano / Notificações / Segurança** no dock (já presentes no código nas linhas 3029–3040 mas ainda não no runtime, segundo o screenshot do usuário).
+### Fora de escopo (próximas fases)
 
-### Verificação (do usuário)
-Após Ctrl+F5 no iframe Bitrix:
-- Dock com 9 abas (incluindo Plano, Notificações, Segurança)
-- Settings sem emojis, todos os ícones em SVG monocromático
-- Botão "Atualizar Integração" com ícone refresh limpo
-
-### Fora de escopo
-- Sem mudança em layout, cores de fundo ou cards.
-- Sem mexer no React `/dashboard/settings`.
-- Sem trocar para `@bitrix24/b24icons` (iframe é HTML server-rendered, SVG inline é o equivalente mais limpo e sem CDN).
-
-### Arquivo
-- `supabase/functions/bitrix-payment-iframe/index.ts`
+- Auto-serviço do tenant (upgrade/downgrade pelo próprio cliente).
+- Checkout público com cartão para tenant pagar.
+- Enforcement automático de limite de transações.
+- Emissão de NFSe das mensalidades cobradas.
