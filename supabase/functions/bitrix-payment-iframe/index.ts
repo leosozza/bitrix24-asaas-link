@@ -3792,6 +3792,349 @@ function generatePaymentPage(data: PaymentData, asaasConfig: { apiKey: string; e
 </html>`;
 }
 
+// ============= CRM TAB (DEAL/LEAD DETAIL) =============
+
+function generateCrmPaymentTabPage(data: PaymentData, entityType: 'deal' | 'lead', entityId: string): string {
+  const safeMember = (data.memberId || '').replace(/"/g, '');
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pagamentos Asaas</title>
+<script src="//api.bitrix24.com/api/v1/"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}
+  body{background:#f7f9fb;color:#1f2937;padding:18px;font-size:14px;}
+  h2{font-size:18px;font-weight:600;color:#0c4a6e;margin-bottom:14px;display:flex;align-items:center;gap:8px;}
+  .card{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:18px;margin-bottom:18px;box-shadow:0 1px 2px rgba(0,0,0,.04);}
+  .row{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:12px;}
+  .row.two{grid-template-columns:1fr 1fr 1fr;}
+  .row.one{grid-template-columns:1fr;}
+  label{display:block;font-size:12px;color:#475569;font-weight:500;margin-bottom:4px;}
+  input,select,textarea{width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;background:#fff;outline:none;transition:border .15s;}
+  input:focus,select:focus,textarea:focus{border-color:#0ea5e9;box-shadow:0 0 0 3px rgba(14,165,233,.15);}
+  .btn{padding:9px 16px;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;transition:opacity .15s;}
+  .btn:disabled{opacity:.5;cursor:not-allowed;}
+  .btn-primary{background:#00A868;color:#fff;}
+  .btn-primary:hover:not(:disabled){background:#008f59;}
+  .btn-danger{background:#fff;color:#dc2626;border:1px solid #fecaca;padding:4px 8px;font-size:12px;}
+  .btn-danger:hover{background:#fef2f2;}
+  .btn-link{background:transparent;color:#0ea5e9;text-decoration:underline;padding:0;}
+  .summary{display:flex;gap:18px;font-size:13px;color:#334155;margin:8px 0 14px;padding:10px 14px;background:#f0f9ff;border-radius:6px;border-left:3px solid #0ea5e9;}
+  .summary strong{color:#0c4a6e;}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th{text-align:left;padding:10px 8px;background:#f8fafc;color:#475569;font-weight:600;font-size:12px;text-transform:uppercase;border-bottom:2px solid #e5e7eb;}
+  td{padding:10px 8px;border-bottom:1px solid #f1f5f9;}
+  tr:hover td{background:#fafbfc;}
+  .badge{display:inline-block;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:600;}
+  .badge-pending{background:#fef3c7;color:#92400e;}
+  .badge-paid{background:#dcfce7;color:#166534;}
+  .badge-overdue{background:#fee2e2;color:#991b1b;}
+  .badge-cancelled{background:#e5e7eb;color:#4b5563;}
+  .badge-active{background:#dbeafe;color:#1e40af;}
+  .empty{text-align:center;padding:40px 20px;color:#94a3b8;font-style:italic;}
+  .loader{text-align:center;padding:30px;color:#64748b;}
+  .alert{padding:10px 14px;border-radius:6px;margin-bottom:12px;font-size:13px;}
+  .alert-error{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;}
+  .alert-success{background:#dcfce7;color:#166534;border:1px solid #86efac;}
+  .hidden{display:none !important;}
+  .field-row{display:flex;gap:12px;align-items:flex-end;margin-bottom:12px;}
+  .actions{display:flex;gap:6px;}
+  @media (max-width:768px){.row,.row.two{grid-template-columns:1fr 1fr;}}
+</style>
+</head>
+<body>
+
+<div id="alertBox"></div>
+
+<div class="card">
+  <h2>💳 Pagamento do Contrato</h2>
+  <div class="row">
+    <div>
+      <label>Tipo Pagamento</label>
+      <select id="fType" onchange="updateForm()">
+        <option value="ONCE">À vista</option>
+        <option value="INSTALLMENT" selected>Parcelado</option>
+        <option value="SUBSCRIPTION">Recorrente (Assinatura)</option>
+      </select>
+    </div>
+    <div>
+      <label>Período</label>
+      <select id="fPeriod" onchange="recalc()">
+        <option value="WEEKLY" selected>Semanal</option>
+        <option value="BIWEEKLY">Quinzenal</option>
+        <option value="MONTHLY">Mensal</option>
+        <option value="QUARTERLY">Trimestral</option>
+        <option value="SEMIANNUALLY">Semestral</option>
+        <option value="YEARLY">Anual</option>
+      </select>
+    </div>
+    <div>
+      <label>Forma Pagamento</label>
+      <select id="fBilling">
+        <option value="BOLETO" selected>Boleto Bancário</option>
+        <option value="PIX">PIX</option>
+        <option value="CREDIT_CARD">Cartão de Crédito</option>
+        <option value="UNDEFINED">Não definido (cliente escolhe)</option>
+      </select>
+    </div>
+    <div>
+      <label>Início (1º Vencimento)</label>
+      <input type="date" id="fStart" onchange="recalc()">
+    </div>
+    <div>
+      <label>Fim (opcional)</label>
+      <input type="date" id="fEnd" onchange="recalc()">
+    </div>
+  </div>
+  <div class="row">
+    <div><label>Valor Total (R$)</label><input type="number" step="0.01" id="fTotal" placeholder="0,00" onchange="recalc()"></div>
+    <div><label>Entrada (R$)</label><input type="number" step="0.01" id="fEntry" placeholder="0,00" onchange="recalc()"></div>
+    <div><label>Nº de Parcelas</label><input type="number" min="1" id="fInstallments" value="1" onchange="recalc()"></div>
+    <div style="grid-column:span 2;"><label>Descrição</label><input type="text" id="fDesc" placeholder="Ex.: Assinatura Plano Pró"></div>
+  </div>
+  <div class="summary" id="summary">Preencha os campos acima para visualizar o resumo.</div>
+  <div style="text-align:right;">
+    <button class="btn btn-primary" id="btnCreate" onclick="createPayment()">+ Gerar Cobranças</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>📋 Cobranças do Cliente</h2>
+  <div id="chargesArea"><div class="loader">Carregando...</div></div>
+</div>
+
+<script>
+const ENTITY_TYPE = ${JSON.stringify(entityType)};
+const ENTITY_ID = ${JSON.stringify(entityId)};
+const MEMBER_ID = ${JSON.stringify(safeMember)};
+const API_URL = window.location.origin + window.location.pathname;
+
+let state = { customer: null, dealValue: 0 };
+
+function showAlert(type, msg, timeout) {
+  const box = document.getElementById('alertBox');
+  box.innerHTML = '<div class="alert alert-' + type + '">' + msg + '</div>';
+  if (timeout) setTimeout(() => { box.innerHTML = ''; }, timeout);
+}
+
+async function apiCall(action, payload) {
+  const body = Object.assign({ action: action, memberId: MEMBER_ID, entityType: ENTITY_TYPE, entityId: ENTITY_ID }, payload || {});
+  const resp = await fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const text = await resp.text();
+  let json;
+  try { json = JSON.parse(text); } catch (e) { throw new Error('Resposta inválida: ' + text.substring(0, 200)); }
+  if (json.error) throw new Error(json.error);
+  return json;
+}
+
+function fmtBRL(v) {
+  return (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+function fmtDate(s) {
+  if (!s) return '-';
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return s;
+  return d.toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+}
+function statusBadge(s) {
+  const map = {
+    PENDING: ['badge-pending', 'Pendente'],
+    AWAITING_RISK_ANALYSIS: ['badge-pending', 'Em análise'],
+    CONFIRMED: ['badge-paid', 'Confirmado'],
+    RECEIVED: ['badge-paid', 'Pago'],
+    RECEIVED_IN_CASH: ['badge-paid', 'Pago (dinheiro)'],
+    OVERDUE: ['badge-overdue', 'Vencido'],
+    REFUNDED: ['badge-cancelled', 'Reembolsado'],
+    REFUND_REQUESTED: ['badge-pending', 'Reembolso solic.'],
+    CHARGEBACK_REQUESTED: ['badge-overdue', 'Chargeback'],
+    CHARGEBACK_DISPUTE: ['badge-overdue', 'Disputa'],
+    DELETED: ['badge-cancelled', 'Excluído'],
+    ACTIVE: ['badge-active', 'Ativa'],
+    EXPIRED: ['badge-cancelled', 'Expirada'],
+  };
+  const [cls, label] = map[s] || ['badge-pending', s || '-'];
+  return '<span class="badge ' + cls + '">' + label + '</span>';
+}
+function billingLabel(b) {
+  return ({ PIX: 'PIX', BOLETO: 'Boleto', CREDIT_CARD: 'Cartão', UNDEFINED: 'A definir' })[b] || b;
+}
+function periodDays(p) {
+  return ({ WEEKLY: 7, BIWEEKLY: 14, MONTHLY: 30, QUARTERLY: 90, SEMIANNUALLY: 180, YEARLY: 365 })[p] || 30;
+}
+function periodLabel(p) {
+  return ({ WEEKLY: 'Semanal', BIWEEKLY: 'Quinzenal', MONTHLY: 'Mensal', QUARTERLY: 'Trimestral', SEMIANNUALLY: 'Semestral', YEARLY: 'Anual' })[p] || p;
+}
+
+function updateForm() {
+  const t = document.getElementById('fType').value;
+  document.getElementById('fInstallments').disabled = (t === 'ONCE' || t === 'SUBSCRIPTION');
+  document.getElementById('fEnd').disabled = (t === 'ONCE');
+  document.getElementById('fPeriod').disabled = (t === 'ONCE');
+  if (t === 'ONCE') document.getElementById('fInstallments').value = 1;
+  recalc();
+}
+
+function recalc() {
+  const t = document.getElementById('fType').value;
+  const total = parseFloat(document.getElementById('fTotal').value) || 0;
+  const entry = parseFloat(document.getElementById('fEntry').value) || 0;
+  const start = document.getElementById('fStart').value;
+  const end = document.getElementById('fEnd').value;
+  const period = document.getElementById('fPeriod').value;
+  let nInst = parseInt(document.getElementById('fInstallments').value) || 1;
+
+  // Auto-calc N installments when end date is set
+  if (start && end && t !== 'ONCE') {
+    const ms = new Date(end).getTime() - new Date(start).getTime();
+    if (ms > 0) {
+      nInst = Math.max(1, Math.floor(ms / (periodDays(period) * 86400000)) + 1);
+      document.getElementById('fInstallments').value = nInst;
+    }
+  }
+
+  const saldo = Math.max(0, total - entry);
+  let summary = '';
+  if (t === 'ONCE') {
+    summary = '<span>1 cobrança no valor de <strong>' + fmtBRL(total) + '</strong></span>';
+  } else if (t === 'INSTALLMENT') {
+    const vP = nInst > 0 ? saldo / nInst : 0;
+    summary = '<span>Saldo: <strong>' + fmtBRL(saldo) + '</strong></span>'
+            + '<span>' + nInst + 'x de <strong>' + fmtBRL(vP) + '</strong> (' + periodLabel(period) + ')</span>'
+            + (entry > 0 ? '<span>+ Entrada: <strong>' + fmtBRL(entry) + '</strong></span>' : '');
+  } else {
+    summary = '<span>Assinatura <strong>' + periodLabel(period) + '</strong> de <strong>' + fmtBRL(saldo || total) + '</strong></span>'
+            + (entry > 0 ? '<span>+ Entrada: <strong>' + fmtBRL(entry) + '</strong></span>' : '')
+            + (end ? '<span>Encerra em <strong>' + fmtDate(end) + '</strong></span>' : '');
+  }
+  document.getElementById('summary').innerHTML = summary;
+}
+
+async function loadCharges() {
+  try {
+    const r = await apiCall('crm_tab_load');
+    state.customer = r.customer;
+    state.dealValue = r.dealValue || 0;
+    if (state.dealValue && !document.getElementById('fTotal').value) {
+      document.getElementById('fTotal').value = state.dealValue;
+    }
+    renderCharges(r.charges || [], r.subscriptions || []);
+    recalc();
+  } catch (e) {
+    document.getElementById('chargesArea').innerHTML = '<div class="alert alert-error">Erro ao carregar: ' + e.message + '</div>';
+  }
+}
+
+function renderCharges(charges, subs) {
+  const area = document.getElementById('chargesArea');
+  let html = '';
+  if (subs.length > 0) {
+    html += '<h3 style="font-size:14px;color:#475569;margin-bottom:8px;">Assinaturas</h3>';
+    html += '<table><thead><tr><th>ID</th><th>Tipo</th><th>Ciclo</th><th>Valor</th><th>Próx. Venc.</th><th>Status</th><th></th></tr></thead><tbody>';
+    subs.forEach(s => {
+      html += '<tr>'
+        + '<td>' + (s.id || '').substring(0, 12) + '...</td>'
+        + '<td>' + billingLabel(s.billingType) + '</td>'
+        + '<td>' + periodLabel(s.cycle) + '</td>'
+        + '<td>' + fmtBRL(s.value) + '</td>'
+        + '<td>' + fmtDate(s.nextDueDate) + '</td>'
+        + '<td>' + statusBadge(s.status) + '</td>'
+        + '<td class="actions"><button class="btn btn-danger" onclick="cancelSub(\\''+s.id+'\\')">Cancelar</button></td>'
+        + '</tr>';
+    });
+    html += '</tbody></table>';
+  }
+  if (charges.length > 0) {
+    html += '<h3 style="font-size:14px;color:#475569;margin:14px 0 8px;">Cobranças</h3>';
+    html += '<table><thead><tr><th>#</th><th>Tipo</th><th>Vencimento</th><th>Valor</th><th>Status</th><th>Link</th><th></th></tr></thead><tbody>';
+    charges.forEach((c, i) => {
+      const canCancel = !['RECEIVED','CONFIRMED','REFUNDED','DELETED'].includes(c.status);
+      html += '<tr>'
+        + '<td>' + (i + 1) + '</td>'
+        + '<td>' + billingLabel(c.billingType) + '</td>'
+        + '<td>' + fmtDate(c.dueDate) + '</td>'
+        + '<td>' + fmtBRL(c.value) + '</td>'
+        + '<td>' + statusBadge(c.status) + '</td>'
+        + '<td>' + (c.invoiceUrl ? '<a href="' + c.invoiceUrl + '" target="_blank">Abrir ↗</a>' : '-') + '</td>'
+        + '<td class="actions">' + (canCancel ? '<button class="btn btn-danger" onclick="cancelCharge(\\''+c.id+'\\')">✕</button>' : '') + '</td>'
+        + '</tr>';
+    });
+    html += '</tbody></table>';
+  }
+  if (!html) html = '<div class="empty">Nenhuma cobrança encontrada para este cliente.</div>';
+  if (state.customer) {
+    html = '<div style="font-size:12px;color:#64748b;margin-bottom:10px;">Cliente Asaas: <strong>' + (state.customer.name || '-') + '</strong> · ' + (state.customer.cpfCnpj || '-') + '</div>' + html;
+  }
+  area.innerHTML = html;
+}
+
+async function createPayment() {
+  const btn = document.getElementById('btnCreate');
+  btn.disabled = true;
+  btn.textContent = 'Processando...';
+  try {
+    const payload = {
+      type: document.getElementById('fType').value,
+      billingType: document.getElementById('fBilling').value,
+      period: document.getElementById('fPeriod').value,
+      startDate: document.getElementById('fStart').value,
+      endDate: document.getElementById('fEnd').value,
+      total: parseFloat(document.getElementById('fTotal').value) || 0,
+      entryValue: parseFloat(document.getElementById('fEntry').value) || 0,
+      installments: parseInt(document.getElementById('fInstallments').value) || 1,
+      description: document.getElementById('fDesc').value,
+    };
+    if (!payload.total || payload.total <= 0) throw new Error('Informe o valor total.');
+    if (!payload.startDate) throw new Error('Informe a data de início.');
+    const r = await apiCall('crm_tab_create', { payload: payload });
+    showAlert('success', 'Cobranças geradas com sucesso! ' + (r.created || 0) + ' item(ns) criado(s).', 4000);
+    await loadCharges();
+  } catch (e) {
+    showAlert('error', 'Erro: ' + e.message, 6000);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '+ Gerar Cobranças';
+  }
+}
+
+async function cancelCharge(id) {
+  if (!confirm('Cancelar esta cobrança?')) return;
+  try {
+    await apiCall('crm_tab_cancel_charge', { chargeId: id });
+    showAlert('success', 'Cobrança cancelada.', 3000);
+    await loadCharges();
+  } catch (e) {
+    showAlert('error', 'Erro: ' + e.message, 6000);
+  }
+}
+async function cancelSub(id) {
+  if (!confirm('Cancelar esta assinatura?')) return;
+  try {
+    await apiCall('crm_tab_cancel_subscription', { subscriptionId: id });
+    showAlert('success', 'Assinatura cancelada.', 3000);
+    await loadCharges();
+  } catch (e) {
+    showAlert('error', 'Erro: ' + e.message, 6000);
+  }
+}
+
+// Default start date = today
+document.getElementById('fStart').value = new Date().toISOString().split('T')[0];
+updateForm();
+loadCharges();
+if (typeof BX24 !== 'undefined') { BX24.init(function(){ BX24.fitWindow(); }); }
+</script>
+</body>
+</html>`;
+}
+
+// ============= END CRM TAB =============
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
