@@ -734,6 +734,7 @@ serve(async (req) => {
         status: 'active',
         pay_systems_registered: false,
         robots_registered: false,
+        deal_fields_registered: false,
         updated_at: new Date().toISOString(),
       }, {
         onConflict: 'member_id',
