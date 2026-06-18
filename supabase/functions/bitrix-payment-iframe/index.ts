@@ -3858,17 +3858,20 @@ serve(async (req) => {
         let serverEndpoint = params.get('SERVER_ENDPOINT') || params.get('server_endpoint') || 'https://oauth.bitrix.info/rest/';
         
         // Try to extract from PLACEMENT_OPTIONS (JSON data from Bitrix24 placement)
-        const placementOptions = params.get('PLACEMENT_OPTIONS');
-        if (placementOptions) {
+        const placementOptionsRaw = params.get('PLACEMENT_OPTIONS');
+        let parsedPlacementOptions: any = null;
+        if (placementOptionsRaw) {
           try {
-            const options = JSON.parse(placementOptions);
+            const options = JSON.parse(placementOptionsRaw);
+            parsedPlacementOptions = options;
             memberId = memberId || options.member_id || options.memberId || '';
             domain = domain || options.DOMAIN || options.domain || '';
             console.log('Parsed PLACEMENT_OPTIONS:', options);
           } catch (e) {
-            console.log('Failed to parse PLACEMENT_OPTIONS:', placementOptions);
+            console.log('Failed to parse PLACEMENT_OPTIONS:', placementOptionsRaw);
           }
         }
+        const placement = params.get('PLACEMENT') || params.get('placement') || '';
         
         // Try to extract from auth params (sent during app loading)
         const authMemberId = params.get('AUTH_MEMBER_ID') || params.get('auth[member_id]');
@@ -3876,7 +3879,7 @@ serve(async (req) => {
         memberId = memberId || authMemberId || '';
         domain = domain || authDomain || '';
         
-        console.log('Extracted - Domain:', domain, 'MemberId:', memberId, 'AccessToken:', accessToken ? '***exists***' : 'MISSING');
+        console.log('Extracted - Domain:', domain, 'MemberId:', memberId, 'Placement:', placement, 'AccessToken:', accessToken ? '***exists***' : 'MISSING');
         console.log('Server endpoint:', serverEndpoint);
         
         paymentData = {
@@ -3892,6 +3895,8 @@ serve(async (req) => {
           memberId: memberId,
           accessToken: accessToken,
           serverEndpoint: serverEndpoint,
+          placement: placement,
+          placementOptions: parsedPlacementOptions,
         };
       } else {
         // JSON body - check if it's a dashboard action
