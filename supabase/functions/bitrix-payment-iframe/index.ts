@@ -351,31 +351,18 @@ async function registerAutomationRobots(clientEndpoint: string, accessToken: str
           Required: 'Y',
           Default: 'pix',
         },
-        amount: {
-          Name: 'Valor (R$)',
-          Type: 'double',
-          Required: 'Y',
-        },
-        customer_name: {
-          Name: 'Nome do Cliente',
-          Type: 'string',
-          Required: 'Y',
-        },
-        customer_email: {
-          Name: 'Email do Cliente',
-          Type: 'string',
-          Required: 'N',
-        },
-        customer_document: {
-          Name: 'CPF/CNPJ',
-          Type: 'string',
-          Required: 'Y',
-        },
-        due_days: {
-          Name: 'Dias para Vencimento',
-          Type: 'int',
-          Default: 3,
-        },
+        amount: { Name: 'Valor da Cobrança (R$)', Type: 'double', Required: 'Y' },
+        customer_name: { Name: 'Nome do Cliente', Type: 'string', Required: 'Y' },
+        customer_email: { Name: 'Email do Cliente', Type: 'string', Required: 'N' },
+        customer_document: { Name: 'CPF/CNPJ', Type: 'string', Required: 'Y' },
+        due_days: { Name: 'Dias para Vencimento', Type: 'int', Default: 3 },
+        description: { Name: 'Descrição da Cobrança', Type: 'string', Required: 'N' },
+        external_reference: { Name: 'Referência Externa', Type: 'string', Required: 'N' },
+        installment_count: { Name: 'Nº de Parcelas (cartão)', Type: 'int', Required: 'N' },
+        interest_percent: { Name: 'Juros ao mês (%)', Type: 'double', Required: 'N' },
+        fine_percent: { Name: 'Multa por atraso (%)', Type: 'double', Required: 'N' },
+        discount_value: { Name: 'Desconto (R$)', Type: 'double', Required: 'N' },
+        discount_due_days: { Name: 'Validade do desconto (dias antes venc.)', Type: 'int', Required: 'N' },
         bitrix_entity_type: {
           Name: 'Tipo de Entidade Bitrix (alvo)',
           Type: 'select',
@@ -383,11 +370,7 @@ async function registerAutomationRobots(clientEndpoint: string, accessToken: str
           Default: 'deal',
           Required: 'N',
         },
-        bitrix_entity_id: {
-          Name: 'ID do Deal/Lead (opcional)',
-          Type: 'string',
-          Required: 'N',
-        },
+        bitrix_entity_id: { Name: 'ID do Deal/Lead (opcional)', Type: 'string', Required: 'N' },
       },
       RETURN_PROPERTIES: {
         charge_id: { Name: 'ID da Cobrança', Type: 'string' },
@@ -444,46 +427,29 @@ async function registerAutomationRobots(clientEndpoint: string, accessToken: str
           Required: 'Y',
           Default: 'pix',
         },
-        amount: {
-          Name: 'Valor (R$)',
-          Type: 'double',
-          Required: 'Y',
-        },
+        amount: { Name: 'Valor da Assinatura (R$)', Type: 'double', Required: 'Y' },
         cycle: {
           Name: 'Ciclo de Cobrança',
           Type: 'select',
-          Options: { 
-            WEEKLY: 'Semanal', 
-            BIWEEKLY: 'Quinzenal', 
-            MONTHLY: 'Mensal', 
-            BIMONTHLY: 'Bimestral', 
-            QUARTERLY: 'Trimestral', 
-            SEMIANNUALLY: 'Semestral', 
-            YEARLY: 'Anual' 
+          Options: {
+            WEEKLY: 'Semanal',
+            BIWEEKLY: 'Quinzenal',
+            MONTHLY: 'Mensal',
+            BIMONTHLY: 'Bimestral',
+            QUARTERLY: 'Trimestral',
+            SEMIANNUALLY: 'Semestral',
+            YEARLY: 'Anual',
           },
           Required: 'Y',
           Default: 'MONTHLY',
         },
-        customer_name: {
-          Name: 'Nome do Cliente',
-          Type: 'string',
-          Required: 'Y',
-        },
-        customer_email: {
-          Name: 'Email do Cliente',
-          Type: 'string',
-          Required: 'N',
-        },
-        customer_document: {
-          Name: 'CPF/CNPJ',
-          Type: 'string',
-          Required: 'Y',
-        },
-        first_due_days: {
-          Name: 'Dias para Primeira Cobrança',
-          Type: 'int',
-          Default: 7,
-        },
+        customer_name: { Name: 'Nome do Cliente', Type: 'string', Required: 'Y' },
+        customer_email: { Name: 'Email do Cliente', Type: 'string', Required: 'N' },
+        customer_document: { Name: 'CPF/CNPJ', Type: 'string', Required: 'Y' },
+        first_due_days: { Name: 'Dias para Primeira Cobrança', Type: 'int', Default: 7 },
+        description: { Name: 'Descrição da Assinatura', Type: 'string', Required: 'N' },
+        end_date: { Name: 'Data Final (YYYY-MM-DD, opcional)', Type: 'string', Required: 'N' },
+        max_payments: { Name: 'Máx. cobranças (opcional)', Type: 'int', Required: 'N' },
         bitrix_entity_type: {
           Name: 'Tipo de Entidade Bitrix (alvo)',
           Type: 'select',
@@ -491,11 +457,7 @@ async function registerAutomationRobots(clientEndpoint: string, accessToken: str
           Default: 'deal',
           Required: 'N',
         },
-        bitrix_entity_id: {
-          Name: 'ID do Deal/Lead (opcional)',
-          Type: 'string',
-          Required: 'N',
-        },
+        bitrix_entity_id: { Name: 'ID do Deal/Lead (opcional)', Type: 'string', Required: 'N' },
       },
       RETURN_PROPERTIES: {
         subscription_id: { Name: 'ID da Assinatura', Type: 'string' },
@@ -853,6 +815,63 @@ async function registerBadges(clientEndpoint: string, accessToken: string): Prom
   }
 
   return { success: registered.length > 0, registered };
+}
+
+// Auto-create Asaas custom fields (UF_CRM_ASAAS_*) on Deal entity. Idempotent.
+async function ensureDealAsaasFields(clientEndpoint: string, accessToken: string): Promise<{ success: boolean; created: string[] }> {
+  console.log('[DealFields] Ensuring UF_CRM_ASAAS_* fields on Deal...');
+  const fields: Array<{ FIELD_NAME: string; USER_TYPE_ID: string; LABEL: string }> = [
+    // Charge
+    { FIELD_NAME: 'UF_CRM_ASAAS_CHARGE_ID', USER_TYPE_ID: 'string', LABEL: 'ID Cobrança Asaas' },
+    { FIELD_NAME: 'UF_CRM_ASAAS_CHARGE_URL', USER_TYPE_ID: 'string', LABEL: 'Link de Pagamento' },
+    { FIELD_NAME: 'UF_CRM_ASAAS_CHARGE_STATUS', USER_TYPE_ID: 'string', LABEL: 'Status Cobrança' },
+    { FIELD_NAME: 'UF_CRM_ASAAS_CHARGE_VALUE', USER_TYPE_ID: 'double', LABEL: 'Valor da Cobrança' },
+    { FIELD_NAME: 'UF_CRM_ASAAS_BILLING_TYPE', USER_TYPE_ID: 'string', LABEL: 'Forma de Pagamento' },
+    { FIELD_NAME: 'UF_CRM_ASAAS_DUE_DATE', USER_TYPE_ID: 'date', LABEL: 'Data de Vencimento' },
+    { FIELD_NAME: 'UF_CRM_ASAAS_PAID_AT', USER_TYPE_ID: 'date', LABEL: 'Data do Pagamento' },
+    { FIELD_NAME: 'UF_CRM_ASAAS_PIX_CODE', USER_TYPE_ID: 'string', LABEL: 'PIX Copia-Cola' },
+    { FIELD_NAME: 'UF_CRM_ASAAS_BOLETO_URL', USER_TYPE_ID: 'string', LABEL: 'URL do Boleto' },
+    // Subscription
+    { FIELD_NAME: 'UF_CRM_ASAAS_SUBSCRIPTION_ID', USER_TYPE_ID: 'string', LABEL: 'ID Assinatura Asaas' },
+    { FIELD_NAME: 'UF_CRM_ASAAS_SUBSCRIPTION_URL', USER_TYPE_ID: 'string', LABEL: 'URL Assinatura' },
+    { FIELD_NAME: 'UF_CRM_ASAAS_SUBSCRIPTION_STATUS', USER_TYPE_ID: 'string', LABEL: 'Status Assinatura' },
+    { FIELD_NAME: 'UF_CRM_ASAAS_SUBSCRIPTION_VALUE', USER_TYPE_ID: 'double', LABEL: 'Valor Assinatura' },
+    { FIELD_NAME: 'UF_CRM_ASAAS_NEXT_DUE', USER_TYPE_ID: 'date', LABEL: 'Próximo Vencimento' },
+    { FIELD_NAME: 'UF_CRM_ASAAS_CYCLE', USER_TYPE_ID: 'string', LABEL: 'Ciclo' },
+    // Invoice (NFSe)
+    { FIELD_NAME: 'UF_CRM_ASAAS_INVOICE_ID', USER_TYPE_ID: 'string', LABEL: 'ID NFSe' },
+    { FIELD_NAME: 'UF_CRM_ASAAS_INVOICE_NUMBER', USER_TYPE_ID: 'string', LABEL: 'Número da NFSe' },
+    { FIELD_NAME: 'UF_CRM_ASAAS_INVOICE_PDF', USER_TYPE_ID: 'string', LABEL: 'PDF da NFSe' },
+    { FIELD_NAME: 'UF_CRM_ASAAS_INVOICE_STATUS', USER_TYPE_ID: 'string', LABEL: 'Status NFSe' },
+  ];
+
+  const created: string[] = [];
+  for (const f of fields) {
+    const res = await callBitrixApi(clientEndpoint, 'crm.deal.userfield.add', {
+      fields: {
+        FIELD_NAME: f.FIELD_NAME,
+        USER_TYPE_ID: f.USER_TYPE_ID,
+        EDIT_FORM_LABEL: { pt: f.LABEL, br: f.LABEL, en: f.LABEL, ru: f.LABEL },
+        LIST_COLUMN_LABEL: { pt: f.LABEL, br: f.LABEL, en: f.LABEL, ru: f.LABEL },
+        LIST_FILTER_LABEL: { pt: f.LABEL, br: f.LABEL, en: f.LABEL, ru: f.LABEL },
+        SHOW_FILTER: 'Y',
+        SHOW_IN_LIST: 'Y',
+        EDIT_IN_LIST: 'Y',
+        IS_SEARCHABLE: 'Y',
+        MULTIPLE: 'N',
+      },
+    }, accessToken);
+
+    if (res.result) {
+      console.log(`[DealFields] Created ${f.FIELD_NAME}`);
+      created.push(f.FIELD_NAME);
+    } else if (res.error && /ALREADY|EXIST|DUPLICATE/i.test(String(res.error) + ' ' + String(res.error_description || ''))) {
+      console.log(`[DealFields] Already exists: ${f.FIELD_NAME}`);
+    } else {
+      console.error(`[DealFields] Failed ${f.FIELD_NAME}:`, res.error, res.error_description);
+    }
+  }
+  return { success: true, created };
 }
 
 // ============= END BITRIX API FUNCTIONS =============
@@ -3844,7 +3863,7 @@ serve(async (req) => {
       // Find installation by member_id - include pay_systems_registered and robots_registered flags
       const { data: inst, error: instError } = await supabase
         .from('bitrix_installations')
-        .select('id, tenant_id, domain, pay_systems_registered, robots_registered, placements_registered, badges_registered, access_token')
+        .select('id, tenant_id, domain, pay_systems_registered, robots_registered, placements_registered, badges_registered, deal_fields_registered, access_token')
         .eq('member_id', paymentData.memberId)
         .order('updated_at', { ascending: false })
         .limit(1)
@@ -3964,6 +3983,20 @@ serve(async (req) => {
                   .eq('id', installation.id);
               }
             }
+
+            // 5. Lazy Deal custom fields registration (UF_CRM_ASAAS_*)
+            if (!installation.deal_fields_registered || forceRepair) {
+              console.log('Ensuring Deal Asaas custom fields...');
+              const dealFieldsResult = await ensureDealAsaasFields(clientEndpoint, tokenForRegistration);
+              console.log('Deal fields result:', dealFieldsResult);
+              if (dealFieldsResult.success) {
+                await supabase
+                  .from('bitrix_installations')
+                  .update({ deal_fields_registered: true, updated_at: new Date().toISOString() })
+                  .eq('id', installation.id);
+              }
+            }
+            
             
             // Update domain if we got a valid one
             if (portalDomain && portalDomain.includes('.')) {

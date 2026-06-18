@@ -1,80 +1,122 @@
-## Problema
+## Objetivo
 
-Hoje os robôs Asaas usam o `document_id` automático do workflow para identificar o Deal/Lead onde gravar timeline e atividade. Isso falha quando:
+Estender o conector para que **todos os robôs Asaas** (cobrança avulsa, assinatura, NFSe) usem o payload correto da API do Asaas e que o conector **crie e preencha automaticamente** todos os campos personalizados (`UF_CRM_*`) no Deal do Bitrix — sem o usuário precisar criar nada.
 
-- O workflow roda em outra entidade (ex.: começa num Lead mas precisa criar cobrança ligada a um Deal já existente).
-- O usuário quer disparar o robô de um automation que não está no contexto da entidade alvo.
-- O usuário não tem como apontar manualmente "use o Deal X".
+## 1. Robôs — alinhar campos ao payload Asaas
 
-## Solução
+`supabase/functions/bitrix-install/index.ts` e `supabase/functions/bitrix-payment-iframe/index.ts` (definições espelhadas):
 
-Adicionar uma **propriedade de entrada opcional** chamada `bitrix_entity_id` (e tipo de entidade) em cada robô Asaas. Quando preenchida, o handler ignora o `document_id` do workflow e usa o ID escolhido pelo usuário para:
+### `asaas_create_charge` (cobrança avulsa — `POST /payments`)
+Adicionar campos opcionais:
+- `description` — string, "Descrição da Cobrança"
+- `external_reference` — string, "Referência Externa" (default: ID do Deal)
+- `installment_count` — int, "Nº de Parcelas (cartão)" (default vazio)
+- `interest_percent` — double, "Juros ao mês (%)" (default 0)
+- `fine_percent` — double, "Multa por atraso (%)" (default 0)
+- `discount_value` — double, "Desconto (R$)" (default 0)
+- `discount_due_days` — int, "Validade do desconto (dias antes do venc.)" (default 0)
+Renomear label `amount` → "Valor da Cobrança (R$)".
 
-- Postar o comentário no timeline da entidade certa.
-- Criar a activity configurável (badge de cobrança) no Deal/Lead certo.
-- Gravar `bitrix_entity_id` correto na tabela `transactions`.
+### `asaas_create_subscription` (`POST /subscriptions`)
+- Adicionar `description` (string, "Descrição da Assinatura").
+- Adicionar `end_date` (string ISO, "Data Final — opcional").
+- Adicionar `max_payments` (int, "Máx. cobranças — opcional").
+- Renomear `amount` → "Valor da Assinatura (R$)".
 
-## Mudanças
+### `asaas_create_invoice` (NFSe)
+Já cobre; sem mudança nesta fase.
 
-### 1. `supabase/functions/bitrix-install/index.ts` (registro dos robôs)
+## 2. Handler — enviar payload Asaas correto
 
-Adicionar nas `PROPERTIES` dos 5 robôs (`asaas_create_charge`, `asaas_check_payment`, `asaas_create_subscription`, `asaas_cancel_subscription`, `asaas_create_invoice`):
+`supabase/functions/bitrix-robot-handler/index.ts`:
 
+### `asaas_create_charge` — `POST /payments` com:
 ```text
-bitrix_entity_type:
-  Name: 'Tipo de Entidade Bitrix'
-  Type: 'select'
-  Options: { deal: 'Negócio', lead: 'Lead', contact: 'Contato' }
-  Default: 'deal'
-  Required: 'N'
-
-bitrix_entity_id:
-  Name: 'ID do Deal/Lead/Contato (opcional)'
-  Type: 'string'
-  Required: 'N'
-  Description: 'Se vazio, usa a entidade atual do workflow'
+customer, billingType, value, dueDate,
+description, externalReference,
+installmentCount (se cartão e >1),
+discount: { value, dueDateLimitDays } (se discount_value > 0),
+fine: { value: fine_percent } (se > 0),
+interest: { value: interest_percent } (se > 0)
 ```
 
-### 2. `supabase/functions/bitrix-payment-iframe/index.ts` (re-registro/repair)
-
-Replicar as mesmas adições nas definições dos robôs (a função de repair re-registra os robôs com `bizproc.robot.update` ou delete+add).
-
-### 3. `supabase/functions/bitrix-robot-handler/index.ts` (execução)
-
-No início do `switch`, resolver o alvo:
-
+### `asaas_create_subscription` — `POST /subscriptions` com:
 ```text
-const propEntityId   = robotData.properties.bitrix_entity_id?.toString().trim();
-const propEntityType = (robotData.properties.bitrix_entity_type || 'deal').toLowerCase();
-
-const fallbackDocId  = robotData.document_id[2] || robotData.document_id[0] || '';
-const fallbackType   = inferTypeFromDocId(robotData.document_id[1]); // CRM_DEAL → deal, CRM_LEAD → lead, etc.
-
-const targetEntityId   = propEntityId || stripNonDigits(fallbackDocId);
-const targetEntityType = propEntityId ? propEntityType : fallbackType;
+customer, billingType, value, cycle, nextDueDate,
+description, endDate, maxPayments, externalReference
 ```
 
-Usar `targetEntityId` / `targetEntityType` em:
+Persistir `description` em `transactions.description` e `subscriptions.description`.
 
-- `postTimelineComment` (mapear `deal→2`, `lead→1`, `contact→3` para `ownerTypeId`).
-- `crm.activity.configurable.add` (mesmo mapeamento de `ownerTypeId`).
-- `transactions.insert` (`bitrix_entity_id`, `bitrix_entity_type`).
-- `externalReference` (`bitrix_${member_id}_${targetType}_${targetEntityId}`).
+## 3. Auto-criar campos UF_CRM no Deal
 
-### 4. Auto-repair / re-registro
+Nova função `ensureDealAsaasFields(clientEndpoint, accessToken)` em `bitrix-payment-iframe/index.ts`, executada uma vez (flag nova `deal_fields_registered` em `bitrix_installations`), idempotente (ignora `ERROR_USERFIELD_ALREADY_EXISTS`).
 
-Após o deploy, o usuário precisa rodar o **Repair Tool** existente (ou reinstalar o app) para que os robôs sejam re-registrados com a nova propriedade. Adicionar nota no toast/log de repair: "Robôs atualizados com campo ID do Bitrix".
+Cria via `crm.deal.userfield.add`:
+
+**Cobrança / pagamento avulso**
+| FIELD_NAME                       | USER_TYPE_ID | LABEL                        |
+| -------------------------------- | ------------ | ---------------------------- |
+| `UF_CRM_ASAAS_CHARGE_ID`         | string       | ID Cobrança Asaas            |
+| `UF_CRM_ASAAS_CHARGE_URL`        | string       | Link de Pagamento            |
+| `UF_CRM_ASAAS_CHARGE_STATUS`     | string       | Status Cobrança              |
+| `UF_CRM_ASAAS_CHARGE_VALUE`      | double       | Valor da Cobrança            |
+| `UF_CRM_ASAAS_BILLING_TYPE`      | string       | Forma de Pagamento           |
+| `UF_CRM_ASAAS_DUE_DATE`          | date         | Data de Vencimento           |
+| `UF_CRM_ASAAS_PAID_AT`           | date         | Data do Pagamento            |
+| `UF_CRM_ASAAS_PIX_CODE`          | string       | PIX Copia-Cola               |
+| `UF_CRM_ASAAS_BOLETO_URL`        | string       | URL do Boleto                |
+| `UF_CRM_ASAAS_INVOICE_URL`       | string       | Fatura Asaas                 |
+
+**Assinatura**
+| FIELD_NAME                          | USER_TYPE_ID | LABEL                  |
+| ----------------------------------- | ------------ | ---------------------- |
+| `UF_CRM_ASAAS_SUBSCRIPTION_ID`      | string       | ID Assinatura Asaas    |
+| `UF_CRM_ASAAS_SUBSCRIPTION_URL`     | string       | URL Assinatura         |
+| `UF_CRM_ASAAS_SUBSCRIPTION_STATUS`  | string       | Status Assinatura      |
+| `UF_CRM_ASAAS_SUBSCRIPTION_VALUE`   | double       | Valor Assinatura       |
+| `UF_CRM_ASAAS_NEXT_DUE`             | date         | Próximo Vencimento     |
+| `UF_CRM_ASAAS_CYCLE`                | string       | Ciclo                  |
+
+**NFSe**
+| FIELD_NAME                       | USER_TYPE_ID | LABEL                      |
+| -------------------------------- | ------------ | -------------------------- |
+| `UF_CRM_ASAAS_INVOICE_ID`        | string       | ID NFSe                    |
+| `UF_CRM_ASAAS_INVOICE_NUMBER`    | string       | Número da NFSe             |
+| `UF_CRM_ASAAS_INVOICE_PDF`       | string       | PDF da NFSe                |
+| `UF_CRM_ASAAS_INVOICE_STATUS`    | string       | Status NFSe                |
+
+Migração:
+```sql
+ALTER TABLE public.bitrix_installations
+  ADD COLUMN IF NOT EXISTS deal_fields_registered boolean NOT NULL DEFAULT false;
+```
+
+`bitrix-install` e o Repair Tool resetam essa flag (junto com `pay_systems_registered` / `robots_registered`).
+
+## 4. Preencher os campos no Deal após cada robô
+
+No handler, quando `targetEntityType === 'deal'` e `targetEntityId` existir, chamar `crm.deal.update` (best-effort, erro só loga):
+
+- **`asaas_create_charge`** → `UF_CRM_ASAAS_CHARGE_ID`, `_URL`, `_STATUS`, `_VALUE`, `_BILLING_TYPE`, `_DUE_DATE`, `_PIX_CODE`, `_BOLETO_URL`, `_INVOICE_URL`.
+- **`asaas_check_payment`** → atualiza `_STATUS` e `_PAID_AT`.
+- **`asaas_create_subscription`** → todos os `UF_CRM_ASAAS_SUBSCRIPTION_*` + `_NEXT_DUE` + `_CYCLE` + `_BILLING_TYPE` + `_VALUE`.
+- **`asaas_cancel_subscription`** → atualiza `_SUBSCRIPTION_STATUS = canceled`.
+- **`asaas_create_invoice`** → `UF_CRM_ASAAS_INVOICE_ID`, `_NUMBER`, `_PDF`, `_STATUS`.
+
+Para Lead/Contact: por enquanto continua só timeline + activity, sem criar UF (escopo confirmado: só Deal).
+
+## 5. Webhook sincroniza status
+
+`supabase/functions/asaas-webhook/index.ts`: nos eventos `PAYMENT_RECEIVED/CONFIRMED/OVERDUE/REFUNDED` e `SUBSCRIPTION_*`, se a `transaction` tiver `bitrix_entity_type='deal'` + `bitrix_entity_id`, chamar `crm.deal.update` atualizando os campos de status correspondentes — usando o `access_token` da `bitrix_installations` (refresh se necessário, reutilizando lógica existente).
 
 ## Resultado
 
-No designer do Bizproc o usuário verá no robô Asaas dois campos novos:
-
-- "Tipo de Entidade Bitrix" (Negócio / Lead / Contato)
-- "ID do Deal/Lead/Contato"
-
-Pode deixar vazio (comportamento atual) ou apontar qualquer ID — o resultado/cobrança vai parar no lugar certo, com timeline e activity na entidade escolhida.
+- Cada robô envia ao Asaas exatamente os campos que a API espera, com descrição, juros, multa, desconto, parcelas, etc. configuráveis no designer.
+- No primeiro uso (ou após Repair), todos os ~20 campos `UF_CRM_ASAAS_*` aparecem no Deal automaticamente.
+- Após cada execução de robô e a cada evento do webhook, o Deal alvo fica com os dados da cobrança/assinatura/NFSe preenchidos sem trabalho manual.
 
 ## Não incluído
 
-- UI no dashboard para configurar isso (é configurado no próprio designer do Bitrix).
-- Suporte a SPA dinâmicos (`DYNAMIC_xxx`) — pode ser adicionado depois se precisar.
+- UF_CRM para Lead/Contact/Company (só Deal).
+- UI no dashboard para customizar quais campos são criados.

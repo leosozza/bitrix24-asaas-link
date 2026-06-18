@@ -143,34 +143,59 @@ function stripDocument(raw: unknown): string {
 
 
 async function createAsaasCharge(
-  apiKey: string, 
-  baseUrl: string, 
-  customerId: string, 
-  paymentMethod: string, 
-  amount: number, 
+  apiKey: string,
+  baseUrl: string,
+  customerId: string,
+  paymentMethod: string,
+  amount: number,
   dueDays: number,
-  externalReference: string
+  externalReference: string,
+  extras: {
+    description?: string;
+    installmentCount?: number;
+    interestPercent?: number;
+    finePercent?: number;
+    discountValue?: number;
+    discountDueDays?: number;
+  } = {}
 ) {
-  console.log('[Asaas] Creating charge:', { paymentMethod, amount, dueDays });
-  
+  console.log('[Asaas] Creating charge:', { paymentMethod, amount, dueDays, extras });
+
   const dueDate = new Date();
   dueDate.setDate(dueDate.getDate() + dueDays);
-  
+
   const billingTypeMap: Record<string, string> = {
     pix: 'PIX',
     boleto: 'BOLETO',
     credit_card: 'CREDIT_CARD',
   };
-  
+
   const paymentData: Record<string, unknown> = {
     customer: customerId,
     billingType: billingTypeMap[paymentMethod] || 'PIX',
     value: amount,
     dueDate: dueDate.toISOString().split('T')[0],
     externalReference,
-    description: `Cobrança automática - ${externalReference}`,
+    description: extras.description?.trim() || `Cobrança automática - ${externalReference}`,
   };
-  
+
+  if (paymentMethod === 'credit_card' && extras.installmentCount && extras.installmentCount > 1) {
+    paymentData.installmentCount = extras.installmentCount;
+    paymentData.installmentValue = Number((amount / extras.installmentCount).toFixed(2));
+  }
+  if (extras.discountValue && extras.discountValue > 0) {
+    paymentData.discount = {
+      value: extras.discountValue,
+      dueDateLimitDays: extras.discountDueDays ?? 0,
+    };
+  }
+  if (extras.finePercent && extras.finePercent > 0) {
+    paymentData.fine = { value: extras.finePercent };
+  }
+  if (extras.interestPercent && extras.interestPercent > 0) {
+    paymentData.interest = { value: extras.interestPercent };
+  }
+
   const response = await fetch(`${baseUrl}/payments`, {
     method: 'POST',
     headers: {
@@ -179,23 +204,23 @@ async function createAsaasCharge(
     },
     body: JSON.stringify(paymentData),
   });
-  
+
   const payment = await response.json();
   console.log('[Asaas] Payment created:', payment.id, payment.status);
-  
+
   // If PIX, get the QR code
   if (paymentMethod === 'pix' && payment.id) {
     const pixResponse = await fetch(`${baseUrl}/payments/${payment.id}/pixQrCode`, {
       headers: { 'access_token': apiKey },
     });
-    
+
     if (pixResponse.ok) {
       const pixData = await pixResponse.json();
       payment.pixCode = pixData.payload;
       payment.pixQrCodeUrl = pixData.encodedImage;
     }
   }
-  
+
   return payment;
 }
 
@@ -211,6 +236,39 @@ async function checkAsaasPayment(apiKey: string, baseUrl: string, chargeId: stri
   
   return payment;
 }
+
+// Best-effort update of Deal UF_CRM_ASAAS_* fields. Only acts when target is a Deal.
+async function updateDealAsaasFields(
+  apiEndpoint: string,
+  accessToken: string,
+  entityType: string,
+  entityId: number,
+  fields: Record<string, unknown>
+) {
+  if (entityType !== 'deal' || !entityId || !apiEndpoint || !accessToken) return;
+  const cleaned: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(fields)) {
+    if (v === undefined || v === null) continue;
+    if (typeof v === 'string' && v.trim() === '') continue;
+    cleaned[k] = v;
+  }
+  if (Object.keys(cleaned).length === 0) return;
+  try {
+    const res = await callBitrixApi(apiEndpoint, 'crm.deal.update', {
+      id: entityId,
+      fields: cleaned,
+    }, accessToken);
+    if (res.error) {
+      console.error('[updateDealAsaasFields] error:', res.error, res.error_description);
+    } else {
+      console.log('[updateDealAsaasFields] Deal', entityId, 'updated with', Object.keys(cleaned).join(', '));
+    }
+  } catch (e) {
+    console.error('[updateDealAsaasFields] exception:', e);
+  }
+}
+
+
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -395,7 +453,7 @@ serve(async (req) => {
     // Process based on robot code
     switch (robotData.code) {
       case 'asaas_create_charge': {
-        const { payment_method, amount, customer_name, customer_email, customer_document, due_days } = robotData.properties;
+        const { payment_method, amount, customer_name, customer_email, customer_document, due_days, description, external_reference, installment_count, interest_percent, fine_percent, discount_value, discount_due_days } = robotData.properties;
         console.log('[Robot] create_charge raw inputs:', { amount, customer_document, payment_method });
 
         const docDigits = stripDocument(customer_document);
@@ -435,8 +493,9 @@ serve(async (req) => {
         const ownerTypeIdMap: Record<string, number> = { lead: 1, deal: 2, contact: 3, company: 4 };
         const targetOwnerTypeId = ownerTypeIdMap[entityType] || 2;
         const targetId = entityIdNum || (robotData.document_id[2] || robotData.document_id[0] || 'unknown');
-        const externalReference = `bitrix_${robotData.auth.member_id}_${entityType}_${targetId}`;
-        
+        const externalReference = (String(external_reference || '').trim()) || `bitrix_${robotData.auth.member_id}_${entityType}_${targetId}`;
+        const dueDaysParsed = parseInt(String(due_days)) || 3;
+
         // Create charge
         const payment = await createAsaasCharge(
           asaasConfig.api_key,
@@ -444,8 +503,16 @@ serve(async (req) => {
           customer.id,
           payment_method || 'pix',
           parsedAmount,
-          parseInt(due_days) || 3,
-          externalReference
+          dueDaysParsed,
+          externalReference,
+          {
+            description: description ? String(description) : undefined,
+            installmentCount: installment_count ? parseInt(String(installment_count)) : undefined,
+            interestPercent: interest_percent ? parseFloat(String(interest_percent)) : undefined,
+            finePercent: fine_percent ? parseFloat(String(fine_percent)) : undefined,
+            discountValue: discount_value ? parseBRLAmount(discount_value) : undefined,
+            discountDueDays: discount_due_days ? parseInt(String(discount_due_days)) : undefined,
+          }
         );
         
         if (payment.errors) {
@@ -541,6 +608,21 @@ serve(async (req) => {
             `[B]✅ Asaas — cobrança criada com sucesso[/B]\nID: ${payment.id}\nMétodo: ${m}\nValor: ${amountFmt}\nStatus: ${payment.status}${link}`
           );
         }
+
+        // Update Deal UF_CRM_ASAAS_* fields (best-effort)
+        {
+          const billingTypeLabel: Record<string, string> = { pix: 'PIX', boleto: 'BOLETO', credit_card: 'CREDIT_CARD' };
+          await updateDealAsaasFields(apiEndpoint, robotData.auth.access_token, entityType, entityIdNum, {
+            UF_CRM_ASAAS_CHARGE_ID: payment.id,
+            UF_CRM_ASAAS_CHARGE_URL: payment.invoiceUrl,
+            UF_CRM_ASAAS_CHARGE_STATUS: payment.status,
+            UF_CRM_ASAAS_CHARGE_VALUE: parsedAmount,
+            UF_CRM_ASAAS_BILLING_TYPE: billingTypeLabel[payment_method] || payment_method,
+            UF_CRM_ASAAS_DUE_DATE: payment.dueDate,
+            UF_CRM_ASAAS_PIX_CODE: payment.pixCode,
+            UF_CRM_ASAAS_BOLETO_URL: payment.bankSlipUrl,
+          });
+        }
         break;
       }
       
@@ -568,11 +650,16 @@ serve(async (req) => {
           paid_value: payment.value || 0,
         };
         logMessage = `Status: ${payment.status}`;
+
+        await updateDealAsaasFields(apiEndpoint, robotData.auth.access_token, entityType, entityIdNum, {
+          UF_CRM_ASAAS_CHARGE_STATUS: payment.status,
+          UF_CRM_ASAAS_PAID_AT: payment.confirmedDate || payment.paymentDate || undefined,
+        });
         break;
       }
       
       case 'asaas_create_subscription': {
-        const { payment_method, amount, customer_name, customer_email, customer_document, cycle, first_due_days } = robotData.properties;
+        const { payment_method, amount, customer_name, customer_email, customer_document, cycle, first_due_days, description: subDescription, end_date, max_payments } = robotData.properties;
         console.log('[Robot] create_subscription raw inputs:', { amount, customer_document, cycle });
 
         const docDigits = stripDocument(customer_document);
@@ -620,31 +707,40 @@ serve(async (req) => {
         // Create subscription in Asaas — use resolved target entity (override or workflow)
         const docId = entityIdNum ? String(entityIdNum) : (robotData.document_id[2] || robotData.document_id[0] || 'unknown');
         
+        const subPayload: Record<string, unknown> = {
+          customer: customer.id,
+          billingType: billingTypeMap[payment_method] || 'PIX',
+          value: parsedAmount,
+          cycle: cycle.toUpperCase(),
+          nextDueDate: nextDueDate.toISOString().split('T')[0],
+          description: (subDescription ? String(subDescription).trim() : '') || `Assinatura - Bitrix ${docId}`,
+          externalReference: `bitrix_${robotData.auth.member_id}_${entityType}_${docId}`,
+        };
+        if (end_date && String(end_date).trim()) {
+          subPayload.endDate = String(end_date).trim();
+        }
+        if (max_payments && parseInt(String(max_payments)) > 0) {
+          subPayload.maxPayments = parseInt(String(max_payments));
+        }
+
         const subscriptionResponse = await fetch(`${baseUrl}/subscriptions`, {
           method: 'POST',
           headers: {
             'access_token': asaasConfig.api_key,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            customer: customer.id,
-            billingType: billingTypeMap[payment_method] || 'PIX',
-            value: parsedAmount,
-            cycle: cycle.toUpperCase(),
-            nextDueDate: nextDueDate.toISOString().split('T')[0],
-            description: `Assinatura - Bitrix ${docId}`,
-          }),
+          body: JSON.stringify(subPayload),
         });
-        
+
         const subscription = await subscriptionResponse.json();
         console.log('[Asaas] Subscription created:', subscription.id, subscription.status);
-        
+
         if (subscription.errors) {
           returnValues = { error: subscription.errors[0]?.description || 'Erro ao criar assinatura' };
           logMessage = `Erro: ${subscription.errors[0]?.description}`;
           break;
         }
-        
+
         // Save subscription to database
         if (installation.tenant_id) {
           await supabase.from('subscriptions').insert({
@@ -659,12 +755,12 @@ serve(async (req) => {
             cycle: cycle.toUpperCase(),
             next_due_date: subscription.nextDueDate,
             status: 'active',
-            description: `Assinatura - Bitrix ${docId}`,
+            description: String(subPayload.description),
             bitrix_entity_id: docId,
             bitrix_entity_type: entityType,
           });
         }
-        
+
         returnValues = {
           subscription_id: subscription.id,
           subscription_status: subscription.status,
@@ -672,6 +768,16 @@ serve(async (req) => {
           customer_id: customer.id,
         };
         logMessage = `Assinatura criada: ${subscription.id} - R$ ${parsedAmount}/${cycle}`;
+
+        await updateDealAsaasFields(apiEndpoint, robotData.auth.access_token, entityType, entityIdNum, {
+          UF_CRM_ASAAS_SUBSCRIPTION_ID: subscription.id,
+          UF_CRM_ASAAS_SUBSCRIPTION_URL: `https://www.asaas.com/subscriptions/show/${subscription.id}`,
+          UF_CRM_ASAAS_SUBSCRIPTION_STATUS: subscription.status,
+          UF_CRM_ASAAS_SUBSCRIPTION_VALUE: parsedAmount,
+          UF_CRM_ASAAS_NEXT_DUE: subscription.nextDueDate,
+          UF_CRM_ASAAS_CYCLE: cycle.toUpperCase(),
+          UF_CRM_ASAAS_BILLING_TYPE: billingTypeMap[payment_method] || payment_method,
+        });
         break;
       }
       
@@ -702,6 +808,10 @@ serve(async (req) => {
             status: 'canceled',
           };
           logMessage = `Assinatura cancelada: ${subscription_id}`;
+
+          await updateDealAsaasFields(apiEndpoint, robotData.auth.access_token, entityType, entityIdNum, {
+            UF_CRM_ASAAS_SUBSCRIPTION_STATUS: 'canceled',
+          });
         } else {
           const errorData = await cancelResponse.json();
           returnValues = { error: errorData.errors?.[0]?.description || 'Erro ao cancelar assinatura' };
@@ -798,6 +908,13 @@ serve(async (req) => {
           invoice_url: invoice.invoiceUrl || '',
         };
         logMessage = `Nota Fiscal criada: ${invoice.id}`;
+
+        await updateDealAsaasFields(apiEndpoint, robotData.auth.access_token, entityType, entityIdNum, {
+          UF_CRM_ASAAS_INVOICE_ID: invoice.id,
+          UF_CRM_ASAAS_INVOICE_NUMBER: invoice.number,
+          UF_CRM_ASAAS_INVOICE_PDF: invoice.invoiceUrl,
+          UF_CRM_ASAAS_INVOICE_STATUS: invoice.status,
+        });
         break;
       }
       
