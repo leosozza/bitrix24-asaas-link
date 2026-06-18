@@ -4409,7 +4409,7 @@ const ENTITY_ID = ${JSON.stringify(entityId)};
 const MEMBER_ID = ${JSON.stringify(safeMember)};
 const API_URL = window.location.origin + window.location.pathname;
 
-let state = { customer: null, dealValue: 0 };
+let state = { customer: null, customerData: null, dealValue: 0 };
 
 function showAlert(type, msg, timeout) {
   const box = document.getElementById('alertBox');
