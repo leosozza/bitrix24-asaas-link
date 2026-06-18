@@ -3577,84 +3577,6 @@ async function generateDashboardPage(
       return String(str || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
     
-    function renderWebhookBlock(webhook, environment) {
-      if (!webhook) return '';
-      const configured = !!webhook.configured;
-      const url = webhook.url || '';
-      const secret = webhook.secret || '';
-      const events = webhook.events || [];
-      const envLabel = environment === 'production' ? 'Produção' : (environment === 'sandbox' ? 'Sandbox' : '—');
-      let html = '<div class="card" style="margin-bottom:24px;">';
-      html += '<div class="card-header"><h3>Webhook Asaas</h3></div>';
-      html += '<div style="padding:20px;">';
-      
-      // Badges API version + ambiente
-      html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">';
-      html += '<span style="background:#dcfce7;color:#166534;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;">API Asaas v3</span>';
-      html += '<span style="background:#e0f2fe;color:#075985;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;">Ambiente: ' + envLabel + '</span>';
-      html += '<span style="background:' + (configured ? '#dcfce7' : '#fef3c7') + ';color:' + (configured ? '#166534' : '#92400e') + ';padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;">' + (configured ? '✓ Registrado automaticamente' : '⚠ Registrar manualmente') + '</span>';
-      html += '</div>';
-      
-      html += '<div class="form-group"><label>URL do Webhook</label>';
-      html += '<div style="display:flex;gap:8px;">';
-      html += '<input type="text" id="wh-url" readonly value="' + escapeHtml(url) + '" style="flex:1;font-family:monospace;font-size:12px;">';
-      html += '<button class="btn btn-secondary btn-sm" onclick="copyToClipboard(\\'wh-url\\', this)">Copiar</button>';
-      html += '</div></div>';
-      
-      html += '<div class="form-group"><label>Token salvo (header <code>asaas-access-token</code>)</label>';
-      html += '<div style="display:flex;gap:8px;">';
-      html += '<input type="text" id="wh-secret" readonly value="' + escapeHtml(secret || '— não configurado —') + '" style="flex:1;font-family:monospace;font-size:12px;">';
-      if (secret) html += '<button class="btn btn-secondary btn-sm" onclick="copyToClipboard(\\'wh-secret\\', this)">Copiar</button>';
-      html += '</div></div>';
-
-      // Manual override — caso o usuário tenha cadastrado o webhook no Asaas e queira usar o token gerado lá
-      html += '<div class="form-group" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px;">';
-      html += '<label style="font-weight:600;">Colar token gerado pelo Asaas</label>';
-      html += '<p style="margin:4px 0 8px;font-size:12px;color:#64748b;">Se você cadastrou o webhook manualmente no painel do Asaas e definiu um token próprio, cole-o aqui para que possamos validar as chamadas.</p>';
-      html += '<div style="display:flex;gap:8px;">';
-      html += '<input type="text" id="wh-manual-secret" placeholder="Cole o token do Asaas aqui" style="flex:1;font-family:monospace;font-size:12px;">';
-      html += '<button class="btn btn-primary btn-sm" onclick="saveManualWebhookSecret()">Salvar token</button>';
-      html += '</div></div>';
-      
-      html += '<div class="form-group"><label>Eventos a habilitar</label>';
-      html += '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
-      events.forEach((ev) => {
-        html += '<span style="background:#f3f4f6;padding:4px 8px;border-radius:6px;font-size:11px;font-family:monospace;">' + escapeHtml(ev) + '</span>';
-      });
-      html += '</div></div>';
-      
-      // Passo a passo (visível)
-      html += '<div style="margin-top:16px;padding:16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">';
-      html += '<h4 style="margin:0 0 12px;font-size:14px;color:#0f172a;">📘 Como configurar o webhook no painel Asaas (passo a passo)</h4>';
-      html += '<ol style="font-size:13px;color:#334155;margin:0;padding-left:22px;line-height:1.7;">';
-      html += '<li>Acesse <a href="https://www.asaas.com/login" target="_blank" rel="noopener" style="color:#0369a1;">https://www.asaas.com/login</a> e entre na sua conta.</li>';
-      html += '<li>No menu lateral, vá em <strong>Integrações</strong> → aba <strong>Webhooks</strong> (em contas antigas: <em>Configurações → Notificações via Webhook</em>).</li>';
-      html += '<li>Clique em <strong>+ Novo Webhook</strong>.</li>';
-      html += '<li>Em <strong>Nome</strong>, digite algo como <em>"Bitrix24 Asaas Connector"</em>.</li>';
-      html += '<li>No campo <strong>URL</strong>, cole a URL acima (botão Copiar).</li>';
-      html += '<li>No campo <strong>Token de autenticação</strong> (header <code>asaas-access-token</code>), cole o Token acima (botão Copiar).</li>';
-      html += '<li>Preencha as configurações obrigatórias:';
-      html += '<ul style="margin:4px 0;padding-left:18px;">';
-      html += '<li><strong>E-mail para notificação de falhas</strong>: o mesmo cadastrado em "Dados da Empresa" acima.</li>';
-      html += '<li><strong>Versão da API</strong>: <strong>v3</strong> (obrigatório — o conector só envia compatível com v3).</li>';
-      html += '<li><strong>Envio</strong>: <strong>Sequencial</strong> (recomendado).</li>';
-      html += '<li><strong>Status</strong>: <strong>Ativo / Habilitado</strong>.</li>';
-      html += '</ul></li>';
-      html += '<li>Em <strong>Eventos</strong>, marque <strong>todos</strong> os eventos listados acima (pagamentos, assinaturas e notas fiscais).</li>';
-      html += '<li>Clique em <strong>Salvar</strong>.</li>';
-      html += '</ol>';
-      html += '<p style="margin:12px 0 0;font-size:12px;color:#64748b;">📖 Documentação oficial: <a href="https://docs.asaas.com/docs/webhooks" target="_blank" rel="noopener" style="color:#0369a1;">docs.asaas.com/docs/webhooks</a></p>';
-      html += '<p style="margin:6px 0 0;font-size:12px;color:#64748b;">💡 Após salvar, gere uma cobrança de teste para validar a entrega. O status aparece na aba <strong>Integrações</strong>.</p>';
-      html += '</div>';
-      
-      html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">';
-      html += '<button class="btn btn-warning" onclick="repairWebhookFromSettings()">Tentar registrar automaticamente novamente</button>';
-      html += '<button class="btn btn-primary" onclick="repairIntegrationFromSettings()">Reparar Integração Bitrix (robôs + campos)</button>';
-      html += '</div>';
-      html += '</div></div>';
-      return html;
-    }
-    
     function copyToClipboard(id, btn) {
       const el = document.getElementById(id);
       if (!el) return;
@@ -3669,6 +3591,22 @@ async function generateDashboardPage(
       setTimeout(() => { btn.textContent = orig; }, 1500);
     }
     
+    // ===== Settings state =====
+    let settingsData = null;
+    
+    function buildWebhookEventsList(events) {
+      return (events || []).map((ev) => '<span style="background:#f3f4f6;padding:4px 8px;border-radius:6px;font-size:11px;font-family:monospace;">' + escapeHtml(ev) + '</span>').join('');
+    }
+    
+    function openModal(id) {
+      const el = document.getElementById(id);
+      if (el) el.classList.add('show');
+    }
+    function closeModal(id) {
+      const el = document.getElementById(id);
+      if (el) el.classList.remove('show');
+    }
+    
     async function loadSettings() {
       const result = await apiCall('get_config');
       
@@ -3676,61 +3614,60 @@ async function generateDashboardPage(
         document.getElementById('settings-content').innerHTML = '<div class="empty-state"><p>' + (result?.error || 'Erro ao carregar configurações') + '</p></div>';
         return;
       }
+      settingsData = result;
+      
+      const p = result.profile || {};
+      const a = result.asaas || {};
+      const wh = result.webhook || {};
+      const envLabel = a.environment === 'production' ? 'Produção' : (a.environment === 'sandbox' ? 'Sandbox' : '—');
       
       let html = '';
       
-      // Empresa (usado para registro do webhook e cobranças)
-      const p = result.profile || {};
-      html += '<div class="card" style="margin-bottom:24px;">';
-      html += '<div class="card-header"><h3>Dados da Empresa</h3></div>';
-      html += '<div style="padding:20px;">';
-      html += '<p style="margin:0 0 16px;color:#64748b;font-size:13px;">Esses dados são usados no registro do webhook no Asaas e nas notificações de cobrança. Um e-mail real é obrigatório.</p>';
-      html += '<div class="form-group"><label>Nome da Empresa *</label><input type="text" id="cfg-company" value="' + (p.company_name || '').replace(/"/g, '&quot;') + '" placeholder="Minha Empresa LTDA"></div>';
-      html += '<div class="form-group"><label>E-mail *</label><input type="email" id="cfg-email" value="' + (p.email || '').replace(/"/g, '&quot;') + '" placeholder="contato@minhaempresa.com"></div>';
-      html += '<div class="form-group"><label>Telefone</label><input type="text" id="cfg-phone" value="' + (p.phone || '').replace(/"/g, '&quot;') + '" placeholder="(11) 99999-9999"></div>';
-      html += '<button class="btn btn-primary" onclick="saveProfile()">Salvar Empresa</button>';
-      html += '</div></div>';
-      
-      // Asaas Config
-      html += '<div class="card" style="margin-bottom:24px;">';
-      html += '<div class="card-header"><h3>Configuração Asaas</h3></div>';
-      html += '<div style="padding:20px;">';
-      
-      html += '<div class="form-group">';
-      html += '<label>Ambiente</label>';
-      html += '<select class="filter-select" id="cfg-environment" style="width:100%;">';
-      html += '<option value="sandbox"' + (result.asaas?.environment === 'sandbox' ? ' selected' : '') + '>Sandbox (Testes)</option>';
-      html += '<option value="production"' + (result.asaas?.environment === 'production' ? ' selected' : '') + '>Produção</option>';
-      html += '</select></div>';
-      
-      html += '<div class="form-group">';
-      html += '<label>Chave API</label>';
-      html += '<input type="password" id="cfg-apikey" placeholder="' + (result.asaas?.api_key_masked || 'Insira a chave API') + '">';
-      html += '<small>Deixe em branco para manter a atual</small></div>';
-      
-      html += '<button class="btn btn-primary" onclick="saveAsaasConfig()">Salvar Configuração</button>';
-      html += '</div></div>';
-      
-      // Webhook block (always rendered)
-      html += renderWebhookBlock(result.webhook, result.asaas?.environment);
-      
-      // Teste de Integração Asaas
-      html += '<div class="card" style="margin-bottom:24px;">';
-      html += '<div class="card-header"><h3>⚡ Teste de Integração Asaas</h3></div>';
-      html += '<div style="padding:20px;">';
-      html += '<p style="margin:0 0 16px;color:#64748b;font-size:13px;">Valida sua API key e cria uma cobrança real de R$ 5,00 no Asaas. Use o ambiente Sandbox para testes.</p>';
-      html += '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">';
-      html += '<label style="margin:0;font-size:13px;color:#334155;">Tipo:</label>';
-      html += '<select id="test-billing-type" class="filter-select" style="width:auto;"><option value="PIX">PIX</option><option value="BOLETO">Boleto</option><option value="CREDIT_CARD">Cartão</option></select>';
-      html += '<button class="btn btn-primary" id="test-charge-btn" onclick="runTestCharge()">Executar teste</button>';
+      // Top action: Atualizar Integração
+      html += '<div style="display:flex;justify-content:flex-end;margin-bottom:16px;">';
+      html += '<button class="btn btn-primary" onclick="openUpdateIntegrationModal()" title="Sincroniza campos, robôs e placements do Bitrix">↻ Atualizar Integração</button>';
       html += '</div>';
-      html += '<div id="test-charge-result"></div>';
+      
+      // Cabeçalho: Dados da Empresa
+      html += '<div class="card" style="margin-bottom:24px;">';
+      html += '<div style="padding:20px;display:flex;align-items:flex-start;gap:16px;">';
+      html += '<div style="flex:1;">';
+      html += '<div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;font-weight:600;margin-bottom:6px;">Dados da Empresa</div>';
+      html += '<div style="font-size:20px;font-weight:700;color:#0f172a;margin-bottom:8px;">' + escapeHtml(p.company_name || '—') + '</div>';
+      const metaParts = [];
+      if (p.email) metaParts.push('<span>📧 ' + escapeHtml(p.email) + '</span>');
+      if (p.phone) metaParts.push('<span>📱 ' + escapeHtml(p.phone) + '</span>');
+      if (p.address) metaParts.push('<span>📍 ' + escapeHtml(p.address) + '</span>');
+      html += '<div style="display:flex;flex-wrap:wrap;gap:14px;color:#64748b;font-size:13px;">' + (metaParts.join('') || '<span style="color:#94a3b8;">Sem dados de contato — clique no lápis para preencher.</span>') + '</div>';
+      html += '</div>';
+      html += '<button class="btn btn-secondary btn-sm" onclick="openCompanyModal()" title="Editar dados da empresa" style="display:flex;align-items:center;gap:6px;">✏️ Editar</button>';
       html += '</div></div>';
       
-      // Fiscal Config
-      html += '<div class="card">';
-      html += '<div class="card-header"><h3>Configuração Fiscal</h3></div>';
-      html += '<div style="padding:20px;">';
+      // Card Asaas resumido
+      html += '<div class="card" style="margin-bottom:24px;">';
+      html += '<div style="padding:20px;display:flex;align-items:flex-start;gap:16px;">';
+      html += '<div style="flex:1;">';
+      html += '<div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;font-weight:600;margin-bottom:6px;">Conta Asaas</div>';
+      const connected = a.has_api_key;
+      html += '<div style="font-size:18px;font-weight:600;color:#0f172a;margin-bottom:10px;">' + (connected ? '🟢 Asaas Conectado · ' + envLabel : '⚠ Não configurado') + '</div>';
+      html += '<div style="display:flex;flex-wrap:wrap;gap:8px;">';
+      html += '<span style="background:#dcfce7;color:#166534;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;">API Asaas v3</span>';
+      html += '<span style="background:#e0f2fe;color:#075985;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;">Ambiente: ' + envLabel + '</span>';
+      html += '<span style="background:' + (wh.configured ? '#dcfce7' : '#fef3c7') + ';color:' + (wh.configured ? '#166534' : '#92400e') + ';padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;">' + (wh.configured ? '✓ Registrado automaticamente' : '⚠ Webhook pendente') + '</span>';
+      html += '</div></div>';
+      html += '<div style="display:flex;flex-direction:column;gap:6px;">';
+      html += '<button class="btn btn-secondary btn-sm" onclick="openAsaasModal()" title="Editar configuração Asaas">✏️ Editar</button>';
+      html += '<button class="btn btn-secondary btn-sm" onclick="openWebhookHelpModal()" title="Como configurar o webhook">ℹ️ Como configurar</button>';
+      html += '</div>';
+      html += '</div></div>';
+      
+      // Configuração Fiscal — colapsável (fechado por padrão)
+      html += '<div class="card" style="margin-bottom:24px;">';
+      html += '<div class="card-header" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;" onclick="toggleFiscalCard()">';
+      html += '<h3>⚙️ Configuração Fiscal</h3>';
+      html += '<span id="fiscal-caret" style="color:#64748b;font-size:14px;">▼</span>';
+      html += '</div>';
+      html += '<div id="fiscal-body" style="display:none;padding:20px;">';
       
       const fsid = (result.fiscal?.municipal_service_id || '').replace(/"/g, '&quot;');
       const fscode = (result.fiscal?.municipal_service_code || '').replace(/"/g, '&quot;');
@@ -3746,36 +3683,198 @@ async function generateDashboardPage(
       html += '<div id="cfg-service-selected" style="margin-top:8px;padding:10px;background:#f1f5f9;border-radius:6px;font-size:13px;' + (fscode ? '' : 'display:none;') + '"><strong>Selecionado:</strong> <span id="cfg-service-label">' + (fscode ? fscode + ' - ' + fsname : '') + '</span></div>';
       html += '</div>';
       
-      html += '<div class="form-group">';
-      html += '<label>ISS (%)</label>';
-      html += '<input type="number" id="cfg-iss" step="0.01" value="' + (result.fiscal?.default_iss || 0) + '"></div>';
-      
-      html += '<div class="form-group">';
-      html += '<label>Template de Observações</label>';
-      html += '<textarea id="cfg-observations" rows="3" placeholder="Template para observações das notas">' + (result.fiscal?.observations_template || '') + '</textarea></div>';
-      
+      html += '<div class="form-group"><label>ISS (%)</label><input type="number" id="cfg-iss" step="0.01" value="' + (result.fiscal?.default_iss || 0) + '"></div>';
+      html += '<div class="form-group"><label>Template de Observações</label><textarea id="cfg-observations" rows="3" placeholder="Template para observações das notas">' + (result.fiscal?.observations_template || '') + '</textarea></div>';
       html += '<div class="form-group" style="display:flex;align-items:center;gap:12px;">';
       html += '<button class="toggle ' + (result.fiscal?.auto_emit_on_payment ? 'on' : '') + '" id="cfg-auto-emit" onclick="this.classList.toggle(\\'on\\')"></button>';
       html += '<label style="margin:0;">Emitir NF automaticamente ao receber pagamento</label></div>';
-      
       html += '<button class="btn btn-primary" style="margin-top:16px;" onclick="saveFiscalConfig()">Salvar Config Fiscal</button>';
+      html += '</div></div>';
       
+      // ===== Modais =====
+      // Modal: Editar Empresa
+      html += '<div class="modal-overlay" id="company-modal" onclick="if(event.target===this)closeModal(\\'company-modal\\')">';
+      html += '<div class="modal"><div class="modal-header"><h3>Editar Dados da Empresa</h3><button class="modal-close" onclick="closeModal(\\'company-modal\\')">×</button></div>';
+      html += '<div class="modal-body">';
+      html += '<p style="margin:0 0 16px;color:#64748b;font-size:13px;">Esses dados são usados no registro do webhook no Asaas e nas notificações de cobrança. Um e-mail real é obrigatório.</p>';
+      html += '<div class="form-group"><label>Nome da Empresa *</label><input type="text" id="cfg-company" value="' + escapeHtml(p.company_name || '') + '" placeholder="Minha Empresa LTDA"></div>';
+      html += '<div class="form-group"><label>E-mail *</label><input type="email" id="cfg-email" value="' + escapeHtml(p.email || '') + '" placeholder="contato@minhaempresa.com"></div>';
+      html += '<div class="form-group"><label>Telefone</label><input type="text" id="cfg-phone" value="' + escapeHtml(p.phone || '') + '" placeholder="(11) 99999-9999"></div>';
+      html += '<div class="form-group"><label>Endereço</label><input type="text" id="cfg-address" value="' + escapeHtml(p.address || '') + '" placeholder="Rua, número, bairro, cidade"></div>';
+      html += '</div>';
+      html += '<div class="modal-footer"><button class="btn btn-secondary" onclick="closeModal(\\'company-modal\\')">Cancelar</button><button class="btn btn-primary" onclick="saveProfile()">Salvar Empresa</button></div>';
+      html += '</div></div>';
+      
+      // Modal: Editar Asaas (Chave + Webhook)
+      html += '<div class="modal-overlay" id="asaas-modal" onclick="if(event.target===this)closeModal(\\'asaas-modal\\')">';
+      html += '<div class="modal" style="max-width:680px;"><div class="modal-header"><h3>Configuração Asaas</h3><button class="modal-close" onclick="closeModal(\\'asaas-modal\\')">×</button></div>';
+      html += '<div class="modal-body">';
+      html += '<div class="form-group"><label>Ambiente</label>';
+      html += '<select class="filter-select" id="cfg-environment" style="width:100%;">';
+      html += '<option value="sandbox"' + (a.environment === 'sandbox' ? ' selected' : '') + '>Sandbox (Testes)</option>';
+      html += '<option value="production"' + (a.environment === 'production' ? ' selected' : '') + '>Produção</option>';
+      html += '</select></div>';
+      html += '<div class="form-group"><label>Chave API</label>';
+      html += '<input type="password" id="cfg-apikey" placeholder="' + (a.api_key_masked || 'Insira a chave API') + '">';
+      html += '<small>Deixe em branco para manter a atual</small></div>';
+      html += '<button class="btn btn-primary" onclick="saveAsaasConfig()">Salvar Configuração</button>';
+      
+      // Bloco Webhook
+      html += '<div style="margin-top:24px;padding-top:20px;border-top:1px solid #e5e7eb;">';
+      html += '<h4 style="margin:0 0 12px;font-size:15px;color:#0f172a;">Webhook Asaas</h4>';
+      html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">';
+      html += '<span style="background:' + (wh.configured ? '#dcfce7' : '#fef3c7') + ';color:' + (wh.configured ? '#166534' : '#92400e') + ';padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;">' + (wh.configured ? '✓ Registrado automaticamente' : '⚠ Registrar manualmente') + '</span>';
+      html += '</div>';
+      html += '<div class="form-group"><label>URL do Webhook</label><div style="display:flex;gap:8px;">';
+      html += '<input type="text" id="wh-url" readonly value="' + escapeHtml(wh.url || '') + '" style="flex:1;font-family:monospace;font-size:12px;">';
+      html += '<button class="btn btn-secondary btn-sm" onclick="copyToClipboard(\\'wh-url\\', this)">Copiar</button></div></div>';
+      html += '<div class="form-group"><label>Token salvo (header <code>asaas-access-token</code>)</label><div style="display:flex;gap:8px;">';
+      html += '<input type="text" id="wh-secret" readonly value="' + escapeHtml(wh.secret || '— não configurado —') + '" style="flex:1;font-family:monospace;font-size:12px;">';
+      if (wh.secret) html += '<button class="btn btn-secondary btn-sm" onclick="copyToClipboard(\\'wh-secret\\', this)">Copiar</button>';
+      html += '</div></div>';
+      html += '<div class="form-group" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px;">';
+      html += '<label style="font-weight:600;">Colar token gerado pelo Asaas</label>';
+      html += '<p style="margin:4px 0 8px;font-size:12px;color:#64748b;">Se você cadastrou o webhook manualmente no painel do Asaas, cole o token aqui.</p>';
+      html += '<div style="display:flex;gap:8px;">';
+      html += '<input type="text" id="wh-manual-secret" placeholder="Cole o token do Asaas aqui" style="flex:1;font-family:monospace;font-size:12px;">';
+      html += '<button class="btn btn-primary btn-sm" onclick="saveManualWebhookSecret()">Salvar token</button></div></div>';
+      html += '<div class="form-group"><label>Eventos a habilitar</label><div style="display:flex;flex-wrap:wrap;gap:6px;">' + buildWebhookEventsList(wh.events) + '</div></div>';
+      html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">';
+      html += '<button class="btn btn-warning btn-sm" onclick="repairWebhookFromSettings()">Tentar registrar automaticamente novamente</button>';
+      html += '</div>';
+      html += '</div>';
+      html += '</div>';
+      html += '<div class="modal-footer"><button class="btn btn-secondary" onclick="closeModal(\\'asaas-modal\\')">Fechar</button></div>';
+      html += '</div></div>';
+      
+      // Modal: Webhook Help (passo a passo)
+      html += '<div class="modal-overlay" id="webhook-help-modal" onclick="if(event.target===this)closeModal(\\'webhook-help-modal\\')">';
+      html += '<div class="modal" style="max-width:640px;"><div class="modal-header"><h3>📘 Como configurar o webhook no Asaas</h3><button class="modal-close" onclick="closeModal(\\'webhook-help-modal\\')">×</button></div>';
+      html += '<div class="modal-body">';
+      html += '<ol style="font-size:13px;color:#334155;margin:0;padding-left:22px;line-height:1.7;">';
+      html += '<li>Acesse <a href="https://www.asaas.com/login" target="_blank" rel="noopener" style="color:#0369a1;">https://www.asaas.com/login</a> e entre na sua conta.</li>';
+      html += '<li>No menu lateral, vá em <strong>Integrações</strong> → aba <strong>Webhooks</strong> (em contas antigas: <em>Configurações → Notificações via Webhook</em>).</li>';
+      html += '<li>Clique em <strong>+ Novo Webhook</strong>.</li>';
+      html += '<li>Em <strong>Nome</strong>, digite <em>"Bitrix24 Asaas Connector"</em>.</li>';
+      html += '<li>Em <strong>URL</strong>, cole a URL do webhook (botão Copiar em Editar Asaas).</li>';
+      html += '<li>Em <strong>Token de autenticação</strong>, cole o Token salvo (botão Copiar em Editar Asaas).</li>';
+      html += '<li>Preencha: <strong>E-mail</strong> de notificação, <strong>API v3</strong>, envio <strong>Sequencial</strong>, status <strong>Ativo</strong>.</li>';
+      html += '<li>Em <strong>Eventos</strong>, marque <strong>todos</strong> os eventos listados.</li>';
+      html += '<li>Clique em <strong>Salvar</strong>.</li>';
+      html += '</ol>';
+      html += '<p style="margin:14px 0 0;font-size:12px;color:#64748b;">📖 <a href="https://docs.asaas.com/docs/webhooks" target="_blank" rel="noopener" style="color:#0369a1;">docs.asaas.com/docs/webhooks</a></p>';
+      html += '</div>';
+      html += '<div class="modal-footer"><button class="btn btn-primary" onclick="closeModal(\\'webhook-help-modal\\')">Entendi</button></div>';
+      html += '</div></div>';
+      
+      // Modal: Atualizar Integração
+      html += '<div class="modal-overlay" id="update-modal" onclick="if(event.target===this&&!window.__updateRunning)closeModal(\\'update-modal\\')">';
+      html += '<div class="modal" style="max-width:520px;"><div class="modal-header"><h3>↻ Atualizar Integração</h3><button class="modal-close" id="update-close-btn" onclick="closeModal(\\'update-modal\\')">×</button></div>';
+      html += '<div class="modal-body">';
+      html += '<p style="margin:0 0 16px;color:#64748b;font-size:13px;">Verificando campos, robôs, placements e pay system no Bitrix24…</p>';
+      html += '<ul id="update-steps" style="list-style:none;padding:0;margin:0;font-size:14px;color:#0f172a;line-height:2;"></ul>';
+      html += '<div id="update-summary" style="display:none;margin-top:16px;padding:14px;border-radius:10px;background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;font-size:13px;"></div>';
+      html += '</div>';
+      html += '<div class="modal-footer"><button class="btn btn-primary" id="update-done-btn" onclick="closeModal(\\'update-modal\\')" style="display:none;">Concluir</button></div>';
       html += '</div></div>';
       
       document.getElementById('settings-content').innerHTML = html;
+    }
+    
+    function toggleFiscalCard() {
+      const body = document.getElementById('fiscal-body');
+      const caret = document.getElementById('fiscal-caret');
+      if (!body) return;
+      const isOpen = body.style.display !== 'none';
+      body.style.display = isOpen ? 'none' : 'block';
+      if (caret) caret.textContent = isOpen ? '▼' : '▲';
+    }
+    
+    function openCompanyModal() { openModal('company-modal'); }
+    function openAsaasModal() { openModal('asaas-modal'); }
+    function openWebhookHelpModal() { openModal('webhook-help-modal'); }
+    
+    async function openUpdateIntegrationModal() {
+      const steps = [
+        { id: 's1', label: 'Verificando campos do Deal' },
+        { id: 's2', label: 'Criando campos faltantes (UF_CRM_ASAAS_*)' },
+        { id: 's3', label: 'Verificando robôs de automação' },
+        { id: 's4', label: 'Verificando placements (abas CRM)' },
+        { id: 's5', label: 'Sincronizando Pay System' },
+      ];
+      const list = document.getElementById('update-steps');
+      const summary = document.getElementById('update-summary');
+      const doneBtn = document.getElementById('update-done-btn');
+      const closeBtn = document.getElementById('update-close-btn');
+      summary.style.display = 'none';
+      summary.innerHTML = '';
+      doneBtn.style.display = 'none';
+      closeBtn.style.display = 'none';
+      window.__updateRunning = true;
+      list.innerHTML = steps.map(s => '<li id="' + s.id + '"><span style="display:inline-block;width:20px;">·</span> ' + s.label + '</li>').join('');
+      openModal('update-modal');
+      
+      // Animate steps client-side while the backend runs
+      let stepIdx = 0;
+      const tick = setInterval(() => {
+        if (stepIdx < steps.length - 1) {
+          const li = document.getElementById(steps[stepIdx].id);
+          if (li) li.innerHTML = '<span style="display:inline-block;width:20px;color:#10b981;">✓</span> ' + steps[stepIdx].label;
+          stepIdx++;
+          const next = document.getElementById(steps[stepIdx].id);
+          if (next) next.innerHTML = '<span style="display:inline-block;width:20px;">⏳</span> ' + steps[stepIdx].label;
+        }
+      }, 700);
+      // Mark first step in progress
+      const first = document.getElementById(steps[0].id);
+      if (first) first.innerHTML = '<span style="display:inline-block;width:20px;">⏳</span> ' + steps[0].label;
+      
+      try {
+        const result = await apiCall('repair_integration');
+        clearInterval(tick);
+        // Mark all done
+        steps.forEach(s => {
+          const li = document.getElementById(s.id);
+          if (li) li.innerHTML = '<span style="display:inline-block;width:20px;color:#10b981;">✓</span> ' + s.label;
+        });
+        summary.style.display = 'block';
+        if (result && result.success) {
+          summary.innerHTML = '✅ <strong>Concluído!</strong><br>' + escapeHtml(result.message || 'Integração atualizada com sucesso.');
+        } else {
+          summary.style.background = '#fef2f2';
+          summary.style.borderColor = '#fecaca';
+          summary.style.color = '#991b1b';
+          summary.innerHTML = '✗ ' + escapeHtml((result && result.error) || 'Falha ao atualizar integração');
+        }
+      } catch (e) {
+        clearInterval(tick);
+        summary.style.display = 'block';
+        summary.style.background = '#fef2f2';
+        summary.style.borderColor = '#fecaca';
+        summary.style.color = '#991b1b';
+        summary.innerHTML = '✗ ' + escapeHtml(String(e && e.message || e));
+      } finally {
+        window.__updateRunning = false;
+        doneBtn.style.display = 'inline-flex';
+        closeBtn.style.display = 'flex';
+        tabLoaded['settings'] = false;
+        tabLoaded['integrations'] = false;
+      }
     }
     
     async function saveProfile() {
       const company_name = document.getElementById('cfg-company').value.trim();
       const email = document.getElementById('cfg-email').value.trim();
       const phone = document.getElementById('cfg-phone').value.trim();
+      const address = document.getElementById('cfg-address').value.trim();
       
       if (!company_name) { showToast('Informe o nome da empresa', 'error'); return; }
       if (!email) { showToast('Informe um e-mail válido', 'error'); return; }
       
-      const result = await apiCall('save_profile', { data: { company_name, email, phone } });
+      const result = await apiCall('save_profile', { data: { company_name, email, phone, address } });
       if (result.success) {
         showToast(result.message);
+        closeModal('company-modal');
         tabLoaded['settings'] = false;
         loadSettings();
       } else {
