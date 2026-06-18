@@ -908,6 +908,13 @@ serve(async (req) => {
           invoice_url: invoice.invoiceUrl || '',
         };
         logMessage = `Nota Fiscal criada: ${invoice.id}`;
+
+        await updateDealAsaasFields(apiEndpoint, robotData.auth.access_token, entityType, entityIdNum, {
+          UF_CRM_ASAAS_INVOICE_ID: invoice.id,
+          UF_CRM_ASAAS_INVOICE_NUMBER: invoice.number,
+          UF_CRM_ASAAS_INVOICE_PDF: invoice.invoiceUrl,
+          UF_CRM_ASAAS_INVOICE_STATUS: invoice.status,
+        });
         break;
       }
       
