@@ -59,6 +59,7 @@ export default function DashboardSettings() {
   const [webhookConfigured, setWebhookConfigured] = useState(false);
   const [manualSecret, setManualSecret] = useState('');
   const [isRepairingWebhook, setIsRepairingWebhook] = useState(false);
+  const [isRepairingIntegration, setIsRepairingIntegration] = useState(false);
   const [isSavingSecret, setIsSavingSecret] = useState(false);
 
   const loadWebhookInfo = async () => {
