@@ -1901,6 +1901,13 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
       });
     }
     
+    case 'crm_tab_load': return await handleCrmTabLoad(body, supabase, inst);
+    case 'crm_tab_create': return await handleCrmTabCreate(body, supabase, inst);
+    case 'crm_tab_cancel_charge': return await handleCrmTabCancelCharge(body, supabase, inst);
+    case 'crm_tab_cancel_subscription': return await handleCrmTabCancelSub(body, supabase, inst);
+    
+
+    
     
     
     case 'get_config': {
