@@ -493,8 +493,9 @@ serve(async (req) => {
         const ownerTypeIdMap: Record<string, number> = { lead: 1, deal: 2, contact: 3, company: 4 };
         const targetOwnerTypeId = ownerTypeIdMap[entityType] || 2;
         const targetId = entityIdNum || (robotData.document_id[2] || robotData.document_id[0] || 'unknown');
-        const externalReference = `bitrix_${robotData.auth.member_id}_${entityType}_${targetId}`;
-        
+        const externalReference = (String(external_reference || '').trim()) || `bitrix_${robotData.auth.member_id}_${entityType}_${targetId}`;
+        const dueDaysParsed = parseInt(String(due_days)) || 3;
+
         // Create charge
         const payment = await createAsaasCharge(
           asaasConfig.api_key,
@@ -502,8 +503,16 @@ serve(async (req) => {
           customer.id,
           payment_method || 'pix',
           parsedAmount,
-          parseInt(due_days) || 3,
-          externalReference
+          dueDaysParsed,
+          externalReference,
+          {
+            description: description ? String(description) : undefined,
+            installmentCount: installment_count ? parseInt(String(installment_count)) : undefined,
+            interestPercent: interest_percent ? parseFloat(String(interest_percent)) : undefined,
+            finePercent: fine_percent ? parseFloat(String(fine_percent)) : undefined,
+            discountValue: discount_value ? parseBRLAmount(discount_value) : undefined,
+            discountDueDays: discount_due_days ? parseInt(String(discount_due_days)) : undefined,
+          }
         );
         
         if (payment.errors) {
