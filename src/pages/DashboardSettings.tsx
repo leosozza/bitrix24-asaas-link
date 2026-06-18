@@ -115,6 +115,31 @@ export default function DashboardSettings() {
     }
   };
 
+  const handleRepairIntegration = async () => {
+    if (!user) return;
+    setIsRepairingIntegration(true);
+    try {
+      const { data: install } = await supabase
+        .from('bitrix_installations')
+        .select('member_id')
+        .eq('tenant_id', user.id)
+        .maybeSingle();
+      if (!install?.member_id) {
+        toast.error('Instalação Bitrix não encontrada');
+        return;
+      }
+      const { data, error } = await supabase.functions.invoke('bitrix-payment-iframe', {
+        body: { memberId: install.member_id, action: 'repair_integration' },
+      });
+      if (error) throw error;
+      toast.success(data?.message || 'Integração marcada para reparo. Reabra o app no Bitrix24.');
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro ao reparar integração');
+    } finally {
+      setIsRepairingIntegration(false);
+    }
+  };
+
   const handleSaveManualSecret = async () => {
     if (!user || !manualSecret.trim()) return;
     setIsSavingSecret(true);
