@@ -72,4 +72,6 @@ export const adminApi = {
   createAsaasSubscription: (tenant_id: string, cpf_cnpj: string, billing_type: string) =>
     call('create_asaas_subscription', { tenant_id, cpf_cnpj, billing_type }),
   registerWebhook: () => call('register_webhook'),
+  testWebhook: () => call('test_webhook'),
+  listWebhooks: () => call('list_webhooks'),
 };

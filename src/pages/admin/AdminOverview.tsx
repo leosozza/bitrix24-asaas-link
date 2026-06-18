@@ -2,7 +2,7 @@ import { AdminLayout } from './AdminLayout';
 import { useAdminTenants, adminApi } from '@/hooks/useAdminTenants';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Users, Sparkles, CheckCircle2, AlertCircle, XCircle, DollarSign, Webhook } from 'lucide-react';
+import { Users, Sparkles, CheckCircle2, AlertCircle, XCircle, DollarSign, Webhook, Send } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useState } from 'react';
 import { toast } from 'sonner';
