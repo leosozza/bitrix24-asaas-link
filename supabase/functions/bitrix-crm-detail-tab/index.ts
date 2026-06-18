@@ -295,7 +295,8 @@ function html(ctx: {
 <script src="//api.bitrix24.com/api/v1/"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f8fafc;padding:16px;color:#1e293b;font-size:13px}
+html,body{height:100%;min-height:100vh}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f8fafc;padding:16px;color:#1e293b;font-size:13px;overflow-x:hidden}
 .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
 .metric{background:#fff;border-radius:12px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
 .metric .lbl{font-size:11px;color:#64748b;margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px}
@@ -339,9 +340,9 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
 .radio-row{display:flex;gap:8px;flex-wrap:wrap}
 .radio-pill{flex:1;min-width:120px;border:1.5px solid #e2e8f0;border-radius:8px;padding:10px 12px;cursor:pointer;font-size:12px;font-weight:600;color:#475569;text-align:center;background:#fff;transition:.15s}
 .radio-pill.active{border-color:#0066cc;background:#eff6ff;color:#0066cc}
-.modal{display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:1000;align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto}
+.modal{display:none;position:fixed;inset:0;width:100vw;height:100vh;background:rgba(15,23,42,.55);z-index:1000;align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto}
 .modal.open{display:flex}
-.modal-box{background:#fff;border-radius:14px;padding:22px;width:100%;max-width:760px;margin:auto}
+.modal-box{background:#fff;border-radius:14px;padding:22px;width:100%;max-width:760px;margin:auto;max-height:90vh;overflow-y:auto}
 .modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
 .modal-head h3{font-size:16px}
 .summary-line{display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-bottom:1px dashed #e2e8f0}
@@ -883,6 +884,20 @@ function refreshPreviewOnly(){
 }
 
 
+function fitFrame(openModal){
+  if (typeof BX24 === 'undefined') return;
+  try {
+    if (openModal) {
+      var box = document.querySelector('.modal-box');
+      var h = box ? box.scrollHeight + 80 : document.body.scrollHeight;
+      var desired = Math.max(h, window.innerHeight, document.body.scrollHeight);
+      BX24.resizeWindow(Math.max(window.innerWidth, 320), desired);
+    } else {
+      BX24.fitWindow();
+    }
+  } catch(e){}
+}
+
 function openWizard(){
   var c = CTX.customer || {}, p = CTX.contractPlan;
   document.getElementById('w_name').value = (p && p.customer_name) || c.name || '';
@@ -904,9 +919,13 @@ function openWizard(){
   syncEntryType();
   recalc();
   document.getElementById('wizardModal').classList.add('open');
+  setTimeout(function(){ fitFrame(true); }, 60);
 }
 
-function closeWizard(){ document.getElementById('wizardModal').classList.remove('open'); }
+function closeWizard(){
+  document.getElementById('wizardModal').classList.remove('open');
+  setTimeout(function(){ fitFrame(false); }, 60);
+}
 
 async function submitWizard(){
   var btn = document.getElementById('w_submit'), msg = document.getElementById('w_msg');
@@ -996,6 +1015,7 @@ function copyText(t){ navigator.clipboard.writeText(t).then(function(){alert('Li
 onCycleChange();
 onEndModeChange();
 syncEntryType();
+if (typeof BX24 !== 'undefined') { BX24.init(function(){ try { BX24.fitWindow(); } catch(e){} }); }
 </script>
 </body></html>`;
 }
