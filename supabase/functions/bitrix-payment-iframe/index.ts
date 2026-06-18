@@ -4475,6 +4475,9 @@ function updateForm() {
   document.getElementById('fEnd').disabled = (t === 'ONCE');
   document.getElementById('fPeriod').disabled = (t === 'ONCE');
   if (t === 'ONCE') document.getElementById('fInstallments').value = 1;
+  // Toggle required asterisks based on type
+  document.getElementById('fInstStar').style.display = (t === 'INSTALLMENT') ? 'inline' : 'none';
+  document.getElementById('fEndStar').style.display = (t === 'SUBSCRIPTION') ? 'inline' : 'none';
   recalc();
 }
 
