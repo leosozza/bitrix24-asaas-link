@@ -3983,6 +3983,20 @@ serve(async (req) => {
                   .eq('id', installation.id);
               }
             }
+
+            // 5. Lazy Deal custom fields registration (UF_CRM_ASAAS_*)
+            if (!installation.deal_fields_registered || forceRepair) {
+              console.log('Ensuring Deal Asaas custom fields...');
+              const dealFieldsResult = await ensureDealAsaasFields(clientEndpoint, tokenForRegistration);
+              console.log('Deal fields result:', dealFieldsResult);
+              if (dealFieldsResult.success) {
+                await supabase
+                  .from('bitrix_installations')
+                  .update({ deal_fields_registered: true, updated_at: new Date().toISOString() })
+                  .eq('id', installation.id);
+              }
+            }
+            
             
             // Update domain if we got a valid one
             if (portalDomain && portalDomain.includes('.')) {
