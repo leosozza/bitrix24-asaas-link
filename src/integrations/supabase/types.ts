@@ -456,6 +456,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          address: string | null
           bitrix_domain: string | null
           company_name: string
           created_at: string
@@ -465,6 +466,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          address?: string | null
           bitrix_domain?: string | null
           company_name: string
           created_at?: string
@@ -474,6 +476,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          address?: string | null
           bitrix_domain?: string | null
           company_name?: string
           created_at?: string
