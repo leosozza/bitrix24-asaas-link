@@ -866,7 +866,9 @@ async function submitWizard(){
       start: start,
       end: computedEnd,
       method: pillVal('w_recMethod') || 'PIX',
+      entryItems: (entry > 0) ? window.ENTRY_OVERRIDES : [],
     };
+
 
     var r = await fetch(CTX.supabaseUrl + '/functions/v1/bitrix-crm-detail-tab', {
       method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload),
