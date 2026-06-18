@@ -446,12 +446,16 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
 
 <script>
 var CTX = {
-  entityType: '${ctx.entityType}', entityId: '${ctx.entityId}', ownerTypeId: ${ctx.ownerTypeId},
-  memberId: '${ctx.memberId}', domain: '${ctx.domain}', accessToken: '${ctx.accessToken}',
-  supabaseUrl: '${SUPABASE_URL}',
-  customer: ${JSON.stringify(customer)},
-  dealFields: ${JSON.stringify(dealFields)},
-  contractPlan: ${JSON.stringify(contractPlan)},
+  entityType: ${safeJson(ctx.entityType)},
+  entityId: ${safeJson(ctx.entityId)},
+  ownerTypeId: ${Number(ctx.ownerTypeId) || 2},
+  memberId: ${safeJson(ctx.memberId)},
+  domain: ${safeJson(ctx.domain)},
+  accessToken: ${safeJson(ctx.accessToken)},
+  supabaseUrl: ${safeJson(SUPABASE_URL)},
+  customer: ${safeJson(customer)},
+  dealFields: ${safeJson(dealFields)},
+  contractPlan: ${safeJson(contractPlan)},
 };
 
 // Tab navigation
