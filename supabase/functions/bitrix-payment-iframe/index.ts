@@ -4699,13 +4699,32 @@ async function createPayment() {
       installments: parseInt(document.getElementById('fInstallments').value) || 1,
       description: document.getElementById('fDesc').value,
     };
-    if (!payload.total || payload.total <= 0) throw new Error('Informe o valor total.');
-    if (!payload.startDate) throw new Error('Informe a data de início.');
+    // Client-side required validation
+    const missing = [];
+    const cd = state.customerData || {};
+    if (!cd.cpfCnpj || String(cd.cpfCnpj).length < 11) missing.push('CPF/CNPJ do contato');
+    if (!cd.email && !cd.phone) missing.push('E-mail ou telefone do contato');
+    if (!payload.total || payload.total <= 0) missing.push('Valor total');
+    if (!payload.billingType) missing.push('Forma de pagamento');
+    if (!payload.startDate) missing.push('Data de início');
+    if (payload.type === 'SUBSCRIPTION' && !payload.endDate) missing.push('Data de fim (recorrente)');
+    if (payload.type === 'INSTALLMENT' && !(payload.installments > 0)) missing.push('Nº de parcelas');
+    if (payload.entryValue > 0 && document.getElementById('fSplitEntry').checked) {
+      const ei = payload.entryInstallments || [];
+      if (ei.some(it => !it.dueDate)) missing.push('Vencimento de cada parcela da entrada');
+    }
+    if (missing.length > 0) {
+      throw new Error('Campos obrigatórios faltando:\\n- ' + missing.join('\\n- '));
+    }
     const r = await apiCall('crm_tab_create', { payload: payload });
-    showAlert('success', 'Cobranças geradas com sucesso! ' + (r.created || 0) + ' item(ns) criado(s).', 4000);
+    if (r.errorCount && r.errorCount > 0) {
+      showAlert('error', '⚠️ ' + (r.successCount || 0) + ' cobrança(s) criada(s), ' + r.errorCount + ' com erro. Veja o timeline do registro.', 8000);
+    } else {
+      showAlert('success', '✅ Cobranças geradas com sucesso! ' + (r.created || 0) + ' item(ns) criado(s).', 4000);
+    }
     await loadCharges();
   } catch (e) {
-    showAlert('error', 'Erro: ' + e.message, 6000);
+    showAlert('error', String(e.message).replace(/\\n/g, '<br>'), 8000);
   } finally {
     btn.disabled = false;
     btn.textContent = '+ Gerar Cobranças';
