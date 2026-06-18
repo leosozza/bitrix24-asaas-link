@@ -157,6 +157,23 @@ function getEntityInfo(placement: string): { type: string; ownerTypeId: number }
   return null;
 }
 
+// ============ HTML helpers ============
+function escHtml(v: any): string {
+  return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function escAttr(v: any): string {
+  return String(v ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, ' ');
+}
+// JSON safe for inline <script>: escape '<' and line separators that break parsing
+function safeJson(v: any): string {
+  return JSON.stringify(v ?? null)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
 // ============ HTML ============
 function html(ctx: {
   entityType: string; entityId: string; ownerTypeId: number;
