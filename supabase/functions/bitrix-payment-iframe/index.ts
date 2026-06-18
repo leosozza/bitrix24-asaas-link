@@ -3903,7 +3903,7 @@ async function generateDashboardPage(
       
       // Modal: Atualizar Integração
       html += '<div class="modal-overlay" id="update-modal" onclick="if(event.target===this&&!window.__updateRunning)closeModal(\\'update-modal\\')">';
-      html += '<div class="modal" style="max-width:520px;"><div class="modal-header"><h3>↻ Atualizar Integração</h3><button class="modal-close" id="update-close-btn" onclick="closeModal(\\'update-modal\\')">×</button></div>';
+      html += '<div class="modal" style="max-width:520px;"><div class="modal-header"><h3 style="display:inline-flex;align-items:center;gap:8px;margin:0;">' + icn('refresh', 18) + ' Atualizar Integração</h3><button class="modal-close" id="update-close-btn" onclick="closeModal(\\'update-modal\\')">×</button></div>';
       html += '<div class="modal-body">';
       html += '<p style="margin:0 0 16px;color:#64748b;font-size:13px;">Verificando campos, robôs, placements e pay system no Bitrix24…</p>';
       html += '<ul id="update-steps" style="list-style:none;padding:0;margin:0;font-size:14px;color:#0f172a;line-height:2;"></ul>';
