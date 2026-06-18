@@ -1085,22 +1085,45 @@ function formatAsaasErrors(errors: any): string {
 }
 
 async function handleCrmTabCreate(body: any, supabase: any, inst: any): Promise<Response> {
+  const { entityType, entityId, payload } = body;
+  const ep0 = await getClientEndpointForInst(inst, supabase);
   try {
-    const { entityType, entityId, payload } = body;
     if (!payload) return jsonError('payload obrigatório');
     const ctx = await loadInstallationContext(supabase, inst);
-    const ep = await getClientEndpointForInst(inst, supabase);
+    const ep = ep0;
     if (!ep) return jsonError('Instalação Bitrix sem token de acesso');
     
     const ec = await getEntityContact(ep.endpoint, ep.token, entityType, entityId);
-    const customer = await findOrCreateAsaasCustomerSimple(ctx.apiKey, ctx.baseUrl, ec.customerData);
-    
-    const type = payload.type as 'ONCE' | 'INSTALLMENT' | 'SUBSCRIPTION';
-    const billingType = payload.billingType || 'BOLETO';
-    const period = payload.period || 'MONTHLY';
+
+    // === Server-side required-field validation ===
+    const missing: string[] = [];
+    if (!ec.customerData.cpfCnpj || ec.customerData.cpfCnpj.length < 11) missing.push('CPF/CNPJ do contato');
+    if (!ec.customerData.email && !ec.customerData.phone) missing.push('E-mail ou telefone do contato');
     const total = Number(payload.total) || 0;
-    const entry = Number(payload.entryValue) || 0;
+    if (!(total > 0)) missing.push('Valor total');
+    if (!payload.billingType) missing.push('Forma de pagamento');
+    if (!payload.startDate) missing.push('Data de início');
+    const type = payload.type as 'ONCE' | 'INSTALLMENT' | 'SUBSCRIPTION';
+    const period = payload.period || 'MONTHLY';
     const installments = Math.max(1, parseInt(payload.installments) || 1);
+    if (type === 'SUBSCRIPTION') {
+      if (!period) missing.push('Ciclo (período)');
+    }
+    if (type === 'INSTALLMENT') {
+      if (!period) missing.push('Ciclo (período)');
+      if (!(installments > 0)) missing.push('Nº de parcelas');
+    }
+    if (missing.length > 0) {
+      const msg = 'Campos obrigatórios faltando:\n' + missing.map(m => '- ' + m).join('\n');
+      await addTimelineComment(ep.endpoint, ep.token, entityType, entityId,
+        '❌ Cobrança Asaas não enviada\n\n' + msg);
+      return jsonError(msg);
+    }
+
+    const customer = await findOrCreateAsaasCustomerSimple(ctx.apiKey, ctx.baseUrl, ec.customerData);
+
+    const billingType = payload.billingType || 'BOLETO';
+    const entry = Number(payload.entryValue) || 0;
     const description = (payload.description || '').toString();
     const startDate = new Date(payload.startDate + 'T12:00:00Z');
     if (isNaN(startDate.getTime())) throw new Error('Data de início inválida');
@@ -1108,13 +1131,12 @@ async function handleCrmTabCreate(body: any, supabase: any, inst: any): Promise<
     const externalRef = `bitrix-${entityType}-${entityId}`;
     const created: any[] = [];
     const installmentsList: any[] = [];
+    const successList: Array<{ label: string; id: string; value: number; dueDate: string; url?: string }> = [];
+    const errorList: Array<{ label: string; errors: any; payload: any }> = [];
     let firstCharge: any = null;
     let subscriptionRec: any = null;
     let entryCharge: any = null;
     
-    // Entry: support single charge or multiple installments
-    // payload.entryInstallments = [{ value, dueDate }, ...] (preferred)
-    // fallback: single charge with payload.entryValue at startDate
     let entryItems: Array<{ value: number; dueDate: string }> = [];
     if (Array.isArray(payload.entryInstallments) && payload.entryInstallments.length > 0) {
       entryItems = payload.entryInstallments
@@ -1136,9 +1158,13 @@ async function handleCrmTabCreate(body: any, supabase: any, inst: any): Promise<
         externalReference: externalRef + '-entry-' + (i + 1),
       };
       const r = await asaasFetch(ctx.apiKey, ctx.baseUrl, `/payments`, { method: 'POST', body: JSON.stringify(entryPayload) });
-      if (r.errors) throw new Error(`Asaas (${label.toLowerCase()}): ` + JSON.stringify(r.errors));
+      if (r.errors) {
+        errorList.push({ label, errors: r.errors, payload: entryPayload });
+        continue;
+      }
       if (!entryCharge) entryCharge = r;
       created.push(r);
+      successList.push({ label, id: r.id, value: r.value, dueDate: r.dueDate, url: r.invoiceUrl });
       installmentsList.push({ type: 'entry', n: i + 1, label, id: r.id, value: r.value, dueDate: r.dueDate, url: r.invoiceUrl });
     }
     
@@ -1152,27 +1178,35 @@ async function handleCrmTabCreate(body: any, supabase: any, inst: any): Promise<
         externalReference: externalRef,
       };
       const r = await asaasFetch(ctx.apiKey, ctx.baseUrl, `/payments`, { method: 'POST', body: JSON.stringify(p) });
-      if (r.errors) throw new Error('Asaas: ' + JSON.stringify(r.errors));
-      firstCharge = entryCharge || r;
-      created.push(r);
-      installmentsList.push({ type: 'balance', n: 1, id: r.id, value: r.value, dueDate: r.dueDate, url: r.invoiceUrl });
+      if (r.errors) {
+        errorList.push({ label: 'Cobrança única', errors: r.errors, payload: p });
+      } else {
+        firstCharge = entryCharge || r;
+        created.push(r);
+        successList.push({ label: 'Cobrança única', id: r.id, value: r.value, dueDate: r.dueDate, url: r.invoiceUrl });
+        installmentsList.push({ type: 'balance', n: 1, id: r.id, value: r.value, dueDate: r.dueDate, url: r.invoiceUrl });
+      }
     } else if (type === 'INSTALLMENT') {
       const values = splitInstallmentValues(saldo, installments);
-      // First installment dueDate = startDate if no entry, else startDate + 1 period
       const baseDate = entry > 0 ? addPeriod(startDate, period, 1) : startDate;
       for (let i = 0; i < installments; i++) {
         const dueDate = addPeriod(baseDate, period, i);
+        const label = `Parcela ${i + 1}/${installments}`;
         const p: any = {
           customer: customer.id, billingType,
           value: values[i],
           dueDate: toISODate(dueDate),
-          description: (description ? description + ' - ' : '') + `Parcela ${i + 1}/${installments}`,
+          description: (description ? description + ' - ' : '') + label,
           externalReference: externalRef + `-p${i + 1}`,
         };
         const r = await asaasFetch(ctx.apiKey, ctx.baseUrl, `/payments`, { method: 'POST', body: JSON.stringify(p) });
-        if (r.errors) throw new Error(`Asaas (parcela ${i + 1}): ` + JSON.stringify(r.errors));
+        if (r.errors) {
+          errorList.push({ label, errors: r.errors, payload: p });
+          continue;
+        }
         if (!firstCharge) firstCharge = entryCharge || r;
         created.push(r);
+        successList.push({ label, id: r.id, value: r.value, dueDate: r.dueDate, url: r.invoiceUrl });
         installmentsList.push({ type: 'balance', n: i + 1, id: r.id, value: r.value, dueDate: r.dueDate, url: r.invoiceUrl });
       }
     } else if (type === 'SUBSCRIPTION') {
@@ -1187,9 +1221,13 @@ async function handleCrmTabCreate(body: any, supabase: any, inst: any): Promise<
       };
       if (payload.endDate) subPayload.endDate = payload.endDate;
       const r = await asaasFetch(ctx.apiKey, ctx.baseUrl, `/subscriptions`, { method: 'POST', body: JSON.stringify(subPayload) });
-      if (r.errors) throw new Error('Asaas (assinatura): ' + JSON.stringify(r.errors));
-      subscriptionRec = r;
-      if (!firstCharge) firstCharge = entryCharge;
+      if (r.errors) {
+        errorList.push({ label: 'Assinatura recorrente', errors: r.errors, payload: subPayload });
+      } else {
+        subscriptionRec = r;
+        successList.push({ label: 'Assinatura recorrente', id: r.id, value: r.value || (saldo || total), dueDate: r.nextDueDate });
+        if (!firstCharge) firstCharge = entryCharge;
+      }
     }
     
     // Update Deal UF_CRM_ASAAS_* fields (best-effort)
@@ -1215,28 +1253,74 @@ async function handleCrmTabCreate(body: any, supabase: any, inst: any): Promise<
       if (installmentsList.length > 0) {
         uf.UF_CRM_ASAAS_INSTALLMENTS_JSON = JSON.stringify(installmentsList);
       }
-      // Contract fields (always persisted)
       uf.UF_CRM_ASAAS_CONTRACT_START = payload.startDate || '';
       if (payload.endDate) uf.UF_CRM_ASAAS_CONTRACT_END = payload.endDate;
       uf.UF_CRM_ASAAS_ENTRY_INSTALLMENTS = entryItems.length || 0;
       uf.UF_CRM_ASAAS_CYCLE = period;
-      if (type === 'INSTALLMENT') {
-        uf.UF_CRM_ASAAS_RECURRING_INSTALLMENTS = installments;
-      } else if (type === 'SUBSCRIPTION') {
-        uf.UF_CRM_ASAAS_RECURRING_INSTALLMENTS = 0;
-      } else {
-        uf.UF_CRM_ASAAS_RECURRING_INSTALLMENTS = 1;
-      }
+      if (type === 'INSTALLMENT') uf.UF_CRM_ASAAS_RECURRING_INSTALLMENTS = installments;
+      else if (type === 'SUBSCRIPTION') uf.UF_CRM_ASAAS_RECURRING_INSTALLMENTS = 0;
+      else uf.UF_CRM_ASAAS_RECURRING_INSTALLMENTS = 1;
       if (Object.keys(uf).length > 0) {
         await updateDealUfFields(ep.endpoint, ep.token, entityType, entityId, uf);
       }
     } catch (e: any) {
       console.error('[CrmTabCreate] UF update failed:', e.message);
     }
-    
-    return jsonSuccess({ created: created.length + (subscriptionRec ? 1 : 0), charges: created, subscription: subscriptionRec });
+
+    // === Timeline comment with success / error summary ===
+    try {
+      const lines: string[] = [];
+      const hasErr = errorList.length > 0;
+      const hasOk = successList.length > 0 || !!subscriptionRec;
+      if (hasErr && !hasOk) {
+        lines.push('❌ Falha ao criar cobrança Asaas');
+      } else if (hasErr && hasOk) {
+        lines.push('⚠️ Cobrança Asaas criada com erros');
+      } else {
+        lines.push('✅ Cobrança Asaas criada com sucesso');
+      }
+      lines.push('');
+      lines.push('Valor total: ' + (total).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }));
+      lines.push('Forma: ' + billingType + ' · Tipo: ' + type + (type !== 'ONCE' ? ' · Ciclo: ' + period : ''));
+      lines.push('Sucesso: ' + successList.length + ' · Erros: ' + errorList.length);
+      if (successList.length > 0) {
+        lines.push('');
+        lines.push('Cobranças criadas:');
+        for (const s of successList) {
+          const v = (Number(s.value) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+          lines.push('- ' + s.label + ' · ' + v + ' · venc. ' + (s.dueDate || '-') + ' · ID ' + s.id + (s.url ? ' · ' + s.url : ''));
+        }
+      }
+      if (errorList.length > 0) {
+        lines.push('');
+        lines.push('Erros retornados pelo Asaas:');
+        for (const er of errorList) {
+          lines.push('• ' + er.label);
+          lines.push(formatAsaasErrors(er.errors));
+        }
+      }
+      await addTimelineComment(ep.endpoint, ep.token, entityType, entityId, lines.join('\n'));
+    } catch (e: any) {
+      console.error('[CrmTabCreate] timeline comment failed:', e.message);
+    }
+
+    if (errorList.length > 0 && successList.length === 0 && !subscriptionRec) {
+      return jsonError('Asaas: ' + formatAsaasErrors(errorList[0].errors));
+    }
+    return jsonSuccess({
+      created: created.length + (subscriptionRec ? 1 : 0),
+      charges: created,
+      subscription: subscriptionRec,
+      successCount: successList.length,
+      errorCount: errorList.length,
+      errors: errorList,
+    });
   } catch (e: any) {
     console.error('[CrmTabCreate] error:', e);
+    if (ep0) {
+      try { await addTimelineComment(ep0.endpoint, ep0.token, entityType, entityId,
+        '❌ Erro ao processar envio Asaas\n\n' + (e?.message || String(e))); } catch { /* ignore */ }
+    }
     return jsonError(e.message);
   }
 }
