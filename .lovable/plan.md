@@ -1,122 +1,127 @@
 ## Objetivo
 
-Estender o conector para que **todos os robôs Asaas** (cobrança avulsa, assinatura, NFSe) usem o payload correto da API do Asaas e que o conector **crie e preencha automaticamente** todos os campos personalizados (`UF_CRM_*`) no Deal do Bitrix — sem o usuário precisar criar nada.
+Transformar a aba **Pagamentos Asaas** (hoje vazia) numa tela operacional dentro do Deal/Lead do Bitrix24, replicando o fluxo do BomControle:
 
-## 1. Robôs — alinhar campos ao payload Asaas
+1. **Criar cobranças** sem sair do CRM: À vista, Parcelado, Recorrente — com suporte a **Entrada + Saldo Parcelado** e cálculo automático de quantidade de parcelas por período.
+2. **Listar todas as cobranças** do cliente Asaas (vinculado pelo CPF/email do Contact do Deal).
+3. **Preencher automaticamente** os campos `UF_CRM_ASAAS_*` do Deal.
+4. **Pré-carregar** os campos do Deal quando já houver cobrança vinculada.
 
-`supabase/functions/bitrix-install/index.ts` e `supabase/functions/bitrix-payment-iframe/index.ts` (definições espelhadas):
+## UI da aba
 
-### `asaas_create_charge` (cobrança avulsa — `POST /payments`)
-Adicionar campos opcionais:
-- `description` — string, "Descrição da Cobrança"
-- `external_reference` — string, "Referência Externa" (default: ID do Deal)
-- `installment_count` — int, "Nº de Parcelas (cartão)" (default vazio)
-- `interest_percent` — double, "Juros ao mês (%)" (default 0)
-- `fine_percent` — double, "Multa por atraso (%)" (default 0)
-- `discount_value` — double, "Desconto (R$)" (default 0)
-- `discount_due_days` — int, "Validade do desconto (dias antes do venc.)" (default 0)
-Renomear label `amount` → "Valor da Cobrança (R$)".
-
-### `asaas_create_subscription` (`POST /subscriptions`)
-- Adicionar `description` (string, "Descrição da Assinatura").
-- Adicionar `end_date` (string ISO, "Data Final — opcional").
-- Adicionar `max_payments` (int, "Máx. cobranças — opcional").
-- Renomear `amount` → "Valor da Assinatura (R$)".
-
-### `asaas_create_invoice` (NFSe)
-Já cobre; sem mudança nesta fase.
-
-## 2. Handler — enviar payload Asaas correto
-
-`supabase/functions/bitrix-robot-handler/index.ts`:
-
-### `asaas_create_charge` — `POST /payments` com:
 ```text
-customer, billingType, value, dueDate,
-description, externalReference,
-installmentCount (se cartão e >1),
-discount: { value, dueDateLimitDays } (se discount_value > 0),
-fine: { value: fine_percent } (se > 0),
-interest: { value: interest_percent } (se > 0)
+┌─ Pagamento do Contrato ─────────────────────────────────────────────┐
+│ Tipo Pagamento │ Período  │ Forma Pgto │ Início    │ Fim (opc.)    │
+│ [Parcelado ▾]  │ [Sem. ▾] │ [Boleto ▾] │ [25/06]   │ [25/09]       │
+│                                                                     │
+│ Valor Total: [R$ 2.000]   Entrada: [R$ 500]  → Saldo: R$ 1.500      │
+│ Nº Parcelas: [auto 13]  (calculado: 13 semanas entre 25/06 e 25/09) │
+│                                                                     │
+│ Descrição: [_________________________________________________]      │
+│ [+ Gerar Cobranças]                                                 │
+├─────────────────────────────────────────────────────────────────────┤
+│ Cobranças do cliente (Asaas)                                        │
+│ # │ Tipo │ Vencimento │ Valor │ Status │ Link │ Ações                │
+│ 1   PIX    25/06/26    500,00  PAGO     [↗]   [✕]                   │
+│ 2   Boleto 02/07/26    115,38  PENDENTE [↗]   [✕]                   │
+│ ... (13 parcelas semanais nas próximas quartas)                     │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-### `asaas_create_subscription` — `POST /subscriptions` com:
+### Comportamento dos campos
+
+- **Tipo Pagamento**: À vista / Parcelado / Recorrente (Assinatura)
+- **Período** (default **Semanal**): Semanal, Quinzenal, Mensal, Trimestral, Semestral, Anual
+- **Forma Pgto**: Boleto, PIX, Cartão, Não definido (cliente escolhe)
+- **Início** (1ª cobrança): a data escolhida vira o "dia fixo" da recorrência (ex.: 25/06 = quarta → toda quarta seguinte)
+- **Fim** (opcional): se preenchido com Parcelado/Recorrente, calcula `Nº Parcelas` automaticamente pelo período
+- **Entrada** (opcional): cria 1 cobrança separada no valor da entrada com vencimento na data de Início; o restante (`Total - Entrada`) vira o "Saldo a Parcelar" dividido pelo `Nº Parcelas`
+- **Nº Parcelas**: editável manualmente OU calculado quando `Fim` estiver preenchido
+
+## Regras de cálculo
+
 ```text
-customer, billingType, value, cycle, nextDueDate,
-description, endDate, maxPayments, externalReference
+saldo = valorTotal - entrada
+valorParcela = round(saldo / numParcelas, 2)
+ultimaParcela = saldo - (valorParcela * (numParcelas - 1))   // ajuste de centavos
+
+// Quando "Fim" preenchido + período Semanal:
+numParcelas = floor((dataFim - dataInicio) / 7 dias) + 1
+// Demais períodos: análogo (14, 30, 90, 180, 365 dias)
+
+// Vencimentos:
+// Entrada → dataInicio
+// Parcela 1 → dataInicio + 1 período (ou dataInicio se sem entrada)
+// Parcela N → dataInicio + N * período (mantém o mesmo dia da semana)
 ```
 
-Persistir `description` em `transactions.description` e `subscriptions.description`.
+## Comportamento por Tipo de Pagamento
 
-## 3. Auto-criar campos UF_CRM no Deal
+| Tipo | Chamadas Asaas | Saída |
+|---|---|---|
+| À vista | `POST /payments` × 1 | 1 cobrança no valor total |
+| Parcelado | `POST /payments` em loop (datas calculadas) + opcional 1 cobrança de entrada | N (+1 se entrada) cobranças individuais |
+| Recorrente | opcional `POST /payments` (entrada) + `POST /subscriptions` com `cycle` do período e `nextDueDate` = data Início + 1 período | 1 assinatura (Asaas gera as cobranças automaticamente) |
 
-Nova função `ensureDealAsaasFields(clientEndpoint, accessToken)` em `bitrix-payment-iframe/index.ts`, executada uma vez (flag nova `deal_fields_registered` em `bitrix_installations`), idempotente (ignora `ERROR_USERFIELD_ALREADY_EXISTS`).
+> **Decisão confirmada:** Parcelado gera N pagamentos individuais com `dueDate` calculado — não usa `/installments` do Asaas (que só suporta mensal).
+> **Default:** Período = Semanal.
 
-Cria via `crm.deal.userfield.add`:
+## Carregamento da listagem
 
-**Cobrança / pagamento avulso**
-| FIELD_NAME                       | USER_TYPE_ID | LABEL                        |
-| -------------------------------- | ------------ | ---------------------------- |
-| `UF_CRM_ASAAS_CHARGE_ID`         | string       | ID Cobrança Asaas            |
-| `UF_CRM_ASAAS_CHARGE_URL`        | string       | Link de Pagamento            |
-| `UF_CRM_ASAAS_CHARGE_STATUS`     | string       | Status Cobrança              |
-| `UF_CRM_ASAAS_CHARGE_VALUE`      | double       | Valor da Cobrança            |
-| `UF_CRM_ASAAS_BILLING_TYPE`      | string       | Forma de Pagamento           |
-| `UF_CRM_ASAAS_DUE_DATE`          | date         | Data de Vencimento           |
-| `UF_CRM_ASAAS_PAID_AT`           | date         | Data do Pagamento            |
-| `UF_CRM_ASAAS_PIX_CODE`          | string       | PIX Copia-Cola               |
-| `UF_CRM_ASAAS_BOLETO_URL`        | string       | URL do Boleto                |
-| `UF_CRM_ASAAS_INVOICE_URL`       | string       | Fatura Asaas                 |
+Ao abrir a aba:
 
-**Assinatura**
-| FIELD_NAME                          | USER_TYPE_ID | LABEL                  |
-| ----------------------------------- | ------------ | ---------------------- |
-| `UF_CRM_ASAAS_SUBSCRIPTION_ID`      | string       | ID Assinatura Asaas    |
-| `UF_CRM_ASAAS_SUBSCRIPTION_URL`     | string       | URL Assinatura         |
-| `UF_CRM_ASAAS_SUBSCRIPTION_STATUS`  | string       | Status Assinatura      |
-| `UF_CRM_ASAAS_SUBSCRIPTION_VALUE`   | double       | Valor Assinatura       |
-| `UF_CRM_ASAAS_NEXT_DUE`             | date         | Próximo Vencimento     |
-| `UF_CRM_ASAAS_CYCLE`                | string       | Ciclo                  |
+1. Pega `entityType` (`deal`/`lead`) e `entityId` via `PLACEMENT_OPTIONS`.
+2. Lê o Deal/Lead via `crm.deal.get` → obtém Contact vinculado → `crm.contact.get` → CPF/CNPJ + email.
+3. Resolve `customerId` no Asaas via `GET /customers?cpfCnpj=...` (ou cria se não existir).
+4. Lista `GET /payments?customer=<id>&limit=50` + `GET /subscriptions?customer=<id>`.
+5. Renderiza tabela ordenada por vencimento.
+6. Pré-preenche o formulário com valor do campo `OPPORTUNITY` do Deal.
 
-**NFSe**
-| FIELD_NAME                       | USER_TYPE_ID | LABEL                      |
-| -------------------------------- | ------------ | -------------------------- |
-| `UF_CRM_ASAAS_INVOICE_ID`        | string       | ID NFSe                    |
-| `UF_CRM_ASAAS_INVOICE_NUMBER`    | string       | Número da NFSe             |
-| `UF_CRM_ASAAS_INVOICE_PDF`       | string       | PDF da NFSe                |
-| `UF_CRM_ASAAS_INVOICE_STATUS`    | string       | Status NFSe                |
+## Preenchimento automático no Bitrix após criar
 
-Migração:
-```sql
-ALTER TABLE public.bitrix_installations
-  ADD COLUMN IF NOT EXISTS deal_fields_registered boolean NOT NULL DEFAULT false;
-```
+`crm.deal.update` grava:
 
-`bitrix-install` e o Repair Tool resetam essa flag (junto com `pay_systems_registered` / `robots_registered`).
+- **À vista:** `UF_CRM_ASAAS_CHARGE_ID`, `_CHARGE_URL`, `_CHARGE_STATUS`, `_CHARGE_VALUE`, `_BILLING_TYPE`, `_DUE_DATE`, `_BOLETO_URL`/`_PIX_CODE`
+- **Parcelado:** grava a **primeira parcela** nos campos `_CHARGE_*` + JSON completo com todas as parcelas em `UF_CRM_ASAAS_INSTALLMENTS_JSON` (campo novo)
+- **Recorrente:** `UF_CRM_ASAAS_SUBSCRIPTION_ID`, `_SUBSCRIPTION_URL`, `_SUBSCRIPTION_STATUS`, `_SUBSCRIPTION_VALUE`, `_NEXT_DUE`, `_CYCLE` (+ campos da entrada nos `_CHARGE_*` se houver)
 
-## 4. Preencher os campos no Deal após cada robô
+## Mudanças técnicas
 
-No handler, quando `targetEntityType === 'deal'` e `targetEntityId` existir, chamar `crm.deal.update` (best-effort, erro só loga):
+### 1. `supabase/functions/bitrix-payment-iframe/index.ts`
+- Detectar query/POST `PLACEMENT=CRM_DEAL_DETAIL_TAB` (já chega) e renderizar `renderCrmPaymentTab(entityType, entityId, memberId)`.
+- HTML+JS vanilla (mesmo padrão do arquivo) com Tailwind via CDN já carregado.
+- Novos handlers (chamadas JSON do front da aba para a própria edge):
+  - `crm_tab_load` → `{ customer, charges[], subscriptions[], dealFields, dealValue }`
+  - `crm_tab_create` → recebe payload completo `{ type, billingType, period, startDate, endDate, total, entryValue, installments, description }` e executa a lógica acima
+  - `crm_tab_cancel_charge` → `DELETE /payments/{id}`
+  - `crm_tab_cancel_subscription` → `DELETE /subscriptions/{id}`
 
-- **`asaas_create_charge`** → `UF_CRM_ASAAS_CHARGE_ID`, `_URL`, `_STATUS`, `_VALUE`, `_BILLING_TYPE`, `_DUE_DATE`, `_PIX_CODE`, `_BOLETO_URL`, `_INVOICE_URL`.
-- **`asaas_check_payment`** → atualiza `_STATUS` e `_PAID_AT`.
-- **`asaas_create_subscription`** → todos os `UF_CRM_ASAAS_SUBSCRIPTION_*` + `_NEXT_DUE` + `_CYCLE` + `_BILLING_TYPE` + `_VALUE`.
-- **`asaas_cancel_subscription`** → atualiza `_SUBSCRIPTION_STATUS = canceled`.
-- **`asaas_create_invoice`** → `UF_CRM_ASAAS_INVOICE_ID`, `_NUMBER`, `_PDF`, `_STATUS`.
+### 2. Helpers novos no edge
+- `addPeriod(date, period)` — soma 7/14/30/90/180/365 dias
+- `calcInstallmentsBetween(start, end, period)` — calcula N
+- `splitInstallmentValues(saldo, n)` — divisão com ajuste de centavos na última parcela
+- `resolveOrCreateAsaasCustomer(contact)` — reutiliza helper existente
 
-Para Lead/Contact: por enquanto continua só timeline + activity, sem criar UF (escopo confirmado: só Deal).
+### 3. Novo campo customizado no Deal
+- `UF_CRM_ASAAS_INSTALLMENTS_JSON` (string long) — adicionado ao array de `ensureDealAsaasFields`.
 
-## 5. Webhook sincroniza status
+### 4. Sem mudanças de schema do banco
+- Cobranças criadas pela aba seguem o mesmo caminho dos robôs Bizproc → registram em `transactions`/`subscriptions` automaticamente.
 
-`supabase/functions/asaas-webhook/index.ts`: nos eventos `PAYMENT_RECEIVED/CONFIRMED/OVERDUE/REFUNDED` e `SUBSCRIPTION_*`, se a `transaction` tiver `bitrix_entity_type='deal'` + `bitrix_entity_id`, chamar `crm.deal.update` atualizando os campos de status correspondentes — usando o `access_token` da `bitrix_installations` (refresh se necessário, reutilizando lógica existente).
+## Como o usuário acessa
 
-## Resultado
+1. Abrir um Negócio no Bitrix24 → aba **Pagamentos Asaas**.
+2. Aba carrega cobranças existentes do cliente.
+3. Preenche formulário → "Gerar Cobranças" → parcelas aparecem na lista e Deal fica com os campos `UF_CRM_ASAAS_*` preenchidos.
 
-- Cada robô envia ao Asaas exatamente os campos que a API espera, com descrição, juros, multa, desconto, parcelas, etc. configuráveis no designer.
-- No primeiro uso (ou após Repair), todos os ~20 campos `UF_CRM_ASAAS_*` aparecem no Deal automaticamente.
-- Após cada execução de robô e a cada evento do webhook, o Deal alvo fica com os dados da cobrança/assinatura/NFSe preenchidos sem trabalho manual.
+## Validação após implementação
 
-## Não incluído
+- Rodar **Reparar Integração** uma vez (cria o novo campo `UF_CRM_ASAAS_INSTALLMENTS_JSON`).
+- Abrir um Deal com Contact que tem CPF → conferir que a tabela de cobranças carrega.
+- Testar 3 cenários: À vista (R$ 500), Parcelado 4x semanal com entrada de R$ 200 (Total R$ 1.000), Recorrente semanal sem fim.
 
-- UF_CRM para Lead/Contact/Company (só Deal).
-- UI no dashboard para customizar quais campos são criados.
+## Fora do escopo
+
+- Edição/reagendamento de parcela individual (ícone lápis do BomControle) — segunda iteração.
+- Etiquetas/observação por parcela — só descrição global.
+- Recálculo automático ao mudar valor após gerar (precisaria cancelar + recriar manualmente).
