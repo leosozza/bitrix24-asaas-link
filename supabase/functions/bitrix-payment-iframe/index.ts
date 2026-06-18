@@ -4518,6 +4518,7 @@ async function createPayment() {
       endDate: document.getElementById('fEnd').value,
       total: parseFloat(document.getElementById('fTotal').value) || 0,
       entryValue: parseFloat(document.getElementById('fEntry').value) || 0,
+      entryInstallments: collectEntryInstallments(),
       installments: parseInt(document.getElementById('fInstallments').value) || 1,
       description: document.getElementById('fDesc').value,
     };
