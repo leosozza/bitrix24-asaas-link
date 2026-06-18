@@ -143,34 +143,59 @@ function stripDocument(raw: unknown): string {
 
 
 async function createAsaasCharge(
-  apiKey: string, 
-  baseUrl: string, 
-  customerId: string, 
-  paymentMethod: string, 
-  amount: number, 
+  apiKey: string,
+  baseUrl: string,
+  customerId: string,
+  paymentMethod: string,
+  amount: number,
   dueDays: number,
-  externalReference: string
+  externalReference: string,
+  extras: {
+    description?: string;
+    installmentCount?: number;
+    interestPercent?: number;
+    finePercent?: number;
+    discountValue?: number;
+    discountDueDays?: number;
+  } = {}
 ) {
-  console.log('[Asaas] Creating charge:', { paymentMethod, amount, dueDays });
-  
+  console.log('[Asaas] Creating charge:', { paymentMethod, amount, dueDays, extras });
+
   const dueDate = new Date();
   dueDate.setDate(dueDate.getDate() + dueDays);
-  
+
   const billingTypeMap: Record<string, string> = {
     pix: 'PIX',
     boleto: 'BOLETO',
     credit_card: 'CREDIT_CARD',
   };
-  
+
   const paymentData: Record<string, unknown> = {
     customer: customerId,
     billingType: billingTypeMap[paymentMethod] || 'PIX',
     value: amount,
     dueDate: dueDate.toISOString().split('T')[0],
     externalReference,
-    description: `Cobrança automática - ${externalReference}`,
+    description: extras.description?.trim() || `Cobrança automática - ${externalReference}`,
   };
-  
+
+  if (paymentMethod === 'credit_card' && extras.installmentCount && extras.installmentCount > 1) {
+    paymentData.installmentCount = extras.installmentCount;
+    paymentData.installmentValue = Number((amount / extras.installmentCount).toFixed(2));
+  }
+  if (extras.discountValue && extras.discountValue > 0) {
+    paymentData.discount = {
+      value: extras.discountValue,
+      dueDateLimitDays: extras.discountDueDays ?? 0,
+    };
+  }
+  if (extras.finePercent && extras.finePercent > 0) {
+    paymentData.fine = { value: extras.finePercent };
+  }
+  if (extras.interestPercent && extras.interestPercent > 0) {
+    paymentData.interest = { value: extras.interestPercent };
+  }
+
   const response = await fetch(`${baseUrl}/payments`, {
     method: 'POST',
     headers: {
@@ -179,23 +204,23 @@ async function createAsaasCharge(
     },
     body: JSON.stringify(paymentData),
   });
-  
+
   const payment = await response.json();
   console.log('[Asaas] Payment created:', payment.id, payment.status);
-  
+
   // If PIX, get the QR code
   if (paymentMethod === 'pix' && payment.id) {
     const pixResponse = await fetch(`${baseUrl}/payments/${payment.id}/pixQrCode`, {
       headers: { 'access_token': apiKey },
     });
-    
+
     if (pixResponse.ok) {
       const pixData = await pixResponse.json();
       payment.pixCode = pixData.payload;
       payment.pixQrCodeUrl = pixData.encodedImage;
     }
   }
-  
+
   return payment;
 }
 
