@@ -528,12 +528,15 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
       </div>
 
       <div class="section">
-        <h4><span class="num">5</span> Cronograma</h4>
+        <h4><span class="num">5</span> Cronograma <span id="w_cycleLabel" style="font-weight:400;font-size:12px;color:#666;margin-left:8px"></span></h4>
         <table class="preview-table">
           <thead><tr><th>#</th><th>Tipo</th><th>Vencimento</th><th>Valor</th><th>Método</th></tr></thead>
           <tbody id="w_preview"><tr><td colspan="5" class="empty">Preencha os dados acima.</td></tr></tbody>
         </table>
+        <div id="w_totals" style="margin-top:8px;font-size:12px;color:#444"></div>
       </div>
+
+      <div id="w_warn" style="display:none;margin-top:10px;padding:10px 12px;border-radius:8px;font-size:13px;line-height:1.5"></div>
 
       <div style="display:flex;gap:8px;margin-top:12px">
         <button type="button" class="btn-sec" style="flex:1" onclick="closeWizard()">Cancelar</button>
