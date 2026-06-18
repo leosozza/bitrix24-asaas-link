@@ -8,32 +8,57 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Progress } from '@/components/ui/progress';
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Loader2, Save, Building2, Bell, CreditCard, Shield, FileText, Search, Zap, CheckCircle2, XCircle, ExternalLink, Webhook, Copy, RefreshCw } from 'lucide-react';
+import {
+  Loader2, Save, Building2, Bell, CreditCard, Shield, FileText, Search, Pencil,
+  Webhook, Copy, RefreshCw, Info, ChevronDown, Plus, CheckCircle2, Circle, Mail, Phone, MapPin,
+} from 'lucide-react';
 
-interface MunicipalService {
-  id: string;
-  code: string;
-  description: string;
-}
+interface MunicipalService { id: string; code: string; description: string; }
+
+type StepStatus = 'pending' | 'running' | 'done' | 'error';
+interface UpdateStep { key: string; label: string; status: StepStatus; }
 
 export default function DashboardSettings() {
   const { user } = useAuth();
-  const [isLoading, setIsLoading] = useState(false);
-  const [isSavingFiscal, setIsSavingFiscal] = useState(false);
-  
-  // Form state
+
+  // ===== Company =====
   const [companyName, setCompanyName] = useState('Minha Empresa');
   const [phone, setPhone] = useState('');
-  
-  // Notification preferences
-  const [emailNotifications, setEmailNotifications] = useState(true);
-  const [paymentAlerts, setPaymentAlerts] = useState(true);
-  const [weeklyReports, setWeeklyReports] = useState(false);
+  const [address, setAddress] = useState('');
+  const [showCompanyDialog, setShowCompanyDialog] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editAddress, setEditAddress] = useState('');
+  const [savingCompany, setSavingCompany] = useState(false);
 
-  // Fiscal configuration state
+  // ===== Asaas =====
+  const [asaasApiKey, setAsaasApiKey] = useState('');
+  const [asaasEnv, setAsaasEnv] = useState<'sandbox' | 'production'>('production');
+  const [asaasConnected, setAsaasConnected] = useState(false);
+  const [showAsaasDialog, setShowAsaasDialog] = useState(false);
+  const [showWebhookHelp, setShowWebhookHelp] = useState(false);
+  const [editApiKey, setEditApiKey] = useState('');
+  const [editEnv, setEditEnv] = useState<'sandbox' | 'production'>('production');
+  const [savingAsaas, setSavingAsaas] = useState(false);
+
+  // ===== Webhook =====
+  const [webhookUrl, setWebhookUrl] = useState('');
+  const [webhookSecret, setWebhookSecret] = useState('');
+  const [webhookConfigured, setWebhookConfigured] = useState(false);
+  const [manualSecret, setManualSecret] = useState('');
+  const [isSavingSecret, setIsSavingSecret] = useState(false);
+  const [isRepairingWebhook, setIsRepairingWebhook] = useState(false);
+
+  // ===== Fiscal =====
+  const [fiscalOpen, setFiscalOpen] = useState(false);
   const [fiscalConfigId, setFiscalConfigId] = useState<string | null>(null);
   const [municipalServiceId, setMunicipalServiceId] = useState('');
   const [municipalServiceCode, setMunicipalServiceCode] = useState('');
@@ -41,248 +66,250 @@ export default function DashboardSettings() {
   const [defaultIss, setDefaultIss] = useState('');
   const [autoEmitOnPayment, setAutoEmitOnPayment] = useState(false);
   const [observationsTemplate, setObservationsTemplate] = useState('');
-  
-  // Municipal service search
+  const [isSavingFiscal, setIsSavingFiscal] = useState(false);
   const [serviceSearch, setServiceSearch] = useState('');
   const [services, setServices] = useState<MunicipalService[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showServiceDropdown, setShowServiceDropdown] = useState(false);
 
-  // Test charge state
-  const [isTestingCharge, setIsTestingCharge] = useState(false);
-  const [testBillingType, setTestBillingType] = useState<'PIX' | 'BOLETO' | 'CREDIT_CARD'>('PIX');
-  const [testResult, setTestResult] = useState<any>(null);
+  // ===== Atualizar Integração (stepper) =====
+  const [showUpdateDialog, setShowUpdateDialog] = useState(false);
+  const [updateSteps, setUpdateSteps] = useState<UpdateStep[]>([]);
+  const [updateRunning, setUpdateRunning] = useState(false);
+  const [updateSummary, setUpdateSummary] = useState<string | null>(null);
+  const [updateError, setUpdateError] = useState<string | null>(null);
 
-  // Webhook state
-  const [webhookUrl, setWebhookUrl] = useState('');
-  const [webhookSecret, setWebhookSecret] = useState('');
-  const [webhookConfigured, setWebhookConfigured] = useState(false);
-  const [manualSecret, setManualSecret] = useState('');
-  const [isRepairingWebhook, setIsRepairingWebhook] = useState(false);
-  const [isRepairingIntegration, setIsRepairingIntegration] = useState(false);
-  const [isSavingSecret, setIsSavingSecret] = useState(false);
+  // ===== Plano / Notificações / Segurança =====
+  const [planCurrent, setPlanCurrent] = useState<any>(null);
+  const [notifPrefs, setNotifPrefs] = useState({ email_transactions: true, payment_alerts: true, weekly_reports: false });
+  const [savingNotif, setSavingNotif] = useState(false);
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [pwdCurrent, setPwdCurrent] = useState('');
+  const [pwdNew, setPwdNew] = useState('');
+  const [pwdConfirm, setPwdConfirm] = useState('');
+  const [savingPwd, setSavingPwd] = useState(false);
+  const [delConfirm, setDelConfirm] = useState('');
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
-  const loadWebhookInfo = async () => {
+  // ============= LOAD =============
+  useEffect(() => {
     if (!user) return;
-    const supaUrl = (import.meta as any).env.VITE_SUPABASE_URL || '';
-    setWebhookUrl(`${supaUrl}/functions/v1/asaas-webhook`);
-    const { data } = await supabase
-      .from('asaas_configurations')
-      .select('webhook_secret, webhook_configured')
-      .eq('tenant_id', user.id)
-      .eq('is_active', true)
-      .maybeSingle();
-    if (data) {
-      setWebhookSecret(data.webhook_secret || '');
-      setWebhookConfigured(!!data.webhook_configured);
-    }
-  };
+    (async () => {
+      // Profile
+      const { data: prof } = await supabase
+        .from('profiles')
+        .select('company_name, phone, address')
+        .eq('id', user.id)
+        .maybeSingle();
+      if (prof) {
+        setCompanyName(prof.company_name || 'Minha Empresa');
+        setPhone(prof.phone || '');
+        setAddress(prof.address || '');
+      }
+      // Asaas + Webhook
+      const supaUrl = (import.meta as any).env.VITE_SUPABASE_URL || '';
+      setWebhookUrl(`${supaUrl}/functions/v1/asaas-webhook`);
+      const { data: cfg } = await supabase
+        .from('asaas_configurations')
+        .select('api_key, environment, is_active, webhook_secret, webhook_configured')
+        .eq('tenant_id', user.id)
+        .eq('is_active', true)
+        .maybeSingle();
+      if (cfg) {
+        setAsaasApiKey(cfg.api_key || '');
+        setAsaasEnv((cfg.environment as 'sandbox' | 'production') || 'production');
+        setAsaasConnected(!!cfg.is_active);
+        setWebhookSecret(cfg.webhook_secret || '');
+        setWebhookConfigured(!!cfg.webhook_configured);
+      }
+      // Fiscal
+      const { data: fc } = await supabase
+        .from('fiscal_configurations')
+        .select('*')
+        .eq('tenant_id', user.id)
+        .maybeSingle();
+      if (fc) {
+        setFiscalConfigId(fc.id);
+        setMunicipalServiceId(fc.municipal_service_id || '');
+        setMunicipalServiceCode(fc.municipal_service_code || '');
+        setMunicipalServiceName(fc.municipal_service_name || '');
+        setDefaultIss(fc.default_iss?.toString() || '');
+        setAutoEmitOnPayment(fc.auto_emit_on_payment);
+        setObservationsTemplate(fc.observations_template || '');
+      }
+      // Plan
+      const { data: sub } = await supabase
+        .from('tenant_subscriptions')
+        .select('plan_id, status, current_period_end, transactions_used, subscription_plans(name, transaction_limit)')
+        .eq('tenant_id', user.id)
+        .maybeSingle();
+      if (sub) {
+        setPlanCurrent({
+          plan_name: (sub as any).subscription_plans?.name,
+          status: sub.status,
+          period_end: sub.current_period_end,
+          used: sub.transactions_used || 0,
+          limit: (sub as any).subscription_plans?.transaction_limit ?? 0,
+        });
+      }
+      // Notifications
+      const { data: np } = await supabase
+        .from('notification_preferences')
+        .select('email_transactions, payment_alerts, weekly_reports')
+        .eq('tenant_id', user.id)
+        .maybeSingle();
+      if (np) setNotifPrefs(np);
+    })();
+  }, [user]);
 
-  useEffect(() => { loadWebhookInfo(); }, [user]);
-
+  // ============= HANDLERS =============
   const copyToClipboard = async (text: string, label: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      toast.success(`${label} copiado!`);
-    } catch {
-      toast.error('Não foi possível copiar');
-    }
+    try { await navigator.clipboard.writeText(text); toast.success(`${label} copiado!`); }
+    catch { toast.error('Não foi possível copiar'); }
   };
 
-  const handleRepairWebhook = async () => {
+  const openCompanyDialog = () => {
+    setEditName(companyName); setEditPhone(phone); setEditAddress(address);
+    setShowCompanyDialog(true);
+  };
+  const saveCompany = async () => {
+    if (!user) return;
+    setSavingCompany(true);
+    const { error } = await supabase
+      .from('profiles')
+      .update({ company_name: editName, phone: editPhone, address: editAddress })
+      .eq('id', user.id);
+    setSavingCompany(false);
+    if (error) return toast.error('Erro: ' + error.message);
+    setCompanyName(editName); setPhone(editPhone); setAddress(editAddress);
+    setShowCompanyDialog(false);
+    toast.success('Dados da empresa salvos');
+  };
+
+  const openAsaasDialog = () => {
+    setEditApiKey(asaasApiKey); setEditEnv(asaasEnv);
+    setShowAsaasDialog(true);
+  };
+  const saveAsaas = async () => {
+    if (!user) return;
+    if (!editApiKey.trim()) return toast.error('Informe a API Key');
+    setSavingAsaas(true);
+    const { error } = await supabase
+      .from('asaas_configurations')
+      .upsert(
+        { tenant_id: user.id, api_key: editApiKey.trim(), environment: editEnv, is_active: true },
+        { onConflict: 'tenant_id' }
+      );
+    setSavingAsaas(false);
+    if (error) return toast.error('Erro: ' + error.message);
+    setAsaasApiKey(editApiKey.trim()); setAsaasEnv(editEnv); setAsaasConnected(true);
+    setShowAsaasDialog(false);
+    toast.success('Configuração Asaas salva');
+  };
+
+  const saveManualSecret = async () => {
+    if (!user || !manualSecret.trim()) return;
+    setIsSavingSecret(true);
+    const { error } = await supabase
+      .from('asaas_configurations')
+      .update({ webhook_secret: manualSecret.trim(), webhook_configured: true })
+      .eq('tenant_id', user.id)
+      .eq('is_active', true);
+    setIsSavingSecret(false);
+    if (error) return toast.error(error.message);
+    setWebhookSecret(manualSecret.trim()); setWebhookConfigured(true); setManualSecret('');
+    toast.success('Token salvo');
+  };
+
+  const repairWebhook = async () => {
     if (!user) return;
     setIsRepairingWebhook(true);
     try {
       const { data: install } = await supabase
-        .from('bitrix_installations')
-        .select('member_id')
-        .eq('tenant_id', user.id)
-        .maybeSingle();
-      if (!install?.member_id) {
-        toast.error('Instalação Bitrix não encontrada');
-        return;
-      }
+        .from('bitrix_installations').select('member_id').eq('tenant_id', user.id).maybeSingle();
+      if (!install?.member_id) { toast.error('Instalação Bitrix não encontrada'); return; }
       const { data, error } = await supabase.functions.invoke('bitrix-config', {
         body: { memberId: install.member_id, action: 'repair_webhook' },
       });
       if (error) throw error;
       toast.success(data?.message || 'Webhook atualizado');
-      await loadWebhookInfo();
+      setWebhookConfigured(true);
     } catch (e: any) {
-      toast.error(e?.message || 'Erro ao reparar webhook');
-    } finally {
-      setIsRepairingWebhook(false);
-    }
+      toast.error(e?.message || 'Erro');
+    } finally { setIsRepairingWebhook(false); }
   };
 
-  const handleRepairIntegration = async () => {
+  // ===== Atualizar Integração =====
+  const STEPS_DEF: { key: string; label: string }[] = [
+    { key: 'fields', label: 'Verificando campos do Deal' },
+    { key: 'create_fields', label: 'Criando campos faltantes (UF_CRM_ASAAS_*)' },
+    { key: 'robots', label: 'Verificando robôs de automação' },
+    { key: 'placements', label: 'Verificando placements (abas CRM)' },
+    { key: 'paysys', label: 'Sincronizando Pay System' },
+  ];
+  const openUpdateIntegration = async () => {
     if (!user) return;
-    setIsRepairingIntegration(true);
+    setUpdateSteps(STEPS_DEF.map(s => ({ ...s, status: 'pending' as StepStatus })));
+    setUpdateSummary(null); setUpdateError(null); setUpdateRunning(true);
+    setShowUpdateDialog(true);
+    // Start animated stepper
+    const tick = (idx: number, status: StepStatus) =>
+      setUpdateSteps(prev => prev.map((s, i) => i === idx ? { ...s, status } : s));
+    const stepInterval = 700;
+    let animIdx = 0;
+    const anim = setInterval(() => {
+      if (animIdx > 0) tick(animIdx - 1, 'done');
+      if (animIdx < STEPS_DEF.length) tick(animIdx, 'running');
+      animIdx++;
+      if (animIdx > STEPS_DEF.length) clearInterval(anim);
+    }, stepInterval);
     try {
       const { data: install } = await supabase
-        .from('bitrix_installations')
-        .select('member_id')
-        .eq('tenant_id', user.id)
-        .maybeSingle();
-      if (!install?.member_id) {
-        toast.error('Instalação Bitrix não encontrada');
-        return;
-      }
+        .from('bitrix_installations').select('member_id').eq('tenant_id', user.id).maybeSingle();
+      if (!install?.member_id) throw new Error('Instalação Bitrix não encontrada');
       const { data, error } = await supabase.functions.invoke('bitrix-payment-iframe', {
         body: { memberId: install.member_id, action: 'repair_integration' },
       });
       if (error) throw error;
-      toast.success(data?.message || 'Integração marcada para reparo. Reabra o app no Bitrix24.');
+      // wait until animation finishes
+      await new Promise(r => setTimeout(r, stepInterval * STEPS_DEF.length + 200));
+      clearInterval(anim);
+      setUpdateSteps(prev => prev.map(s => ({ ...s, status: 'done' as StepStatus })));
+      setUpdateSummary(data?.message || 'Integração atualizada com sucesso.');
     } catch (e: any) {
-      toast.error(e?.message || 'Erro ao reparar integração');
-    } finally {
-      setIsRepairingIntegration(false);
-    }
+      clearInterval(anim);
+      setUpdateSteps(prev => prev.map(s => s.status === 'running' ? { ...s, status: 'error' as StepStatus } : s));
+      setUpdateError(e?.message || 'Falha ao atualizar integração');
+    } finally { setUpdateRunning(false); }
   };
 
-  const handleSaveManualSecret = async () => {
-    if (!user || !manualSecret.trim()) return;
-    setIsSavingSecret(true);
-    try {
-      const { error } = await supabase
-        .from('asaas_configurations')
-        .update({ webhook_secret: manualSecret.trim(), webhook_configured: true })
-        .eq('tenant_id', user.id)
-        .eq('is_active', true);
-      if (error) throw error;
-      toast.success('Token do webhook salvo!');
-      setManualSecret('');
-      await loadWebhookInfo();
-    } catch (e: any) {
-      toast.error(e?.message || 'Erro ao salvar token');
-    } finally {
-      setIsSavingSecret(false);
-    }
-  };
-
-  const handleTestCharge = async () => {
-    if (!user) return;
-    setIsTestingCharge(true);
-    setTestResult(null);
-    try {
-      const { data, error } = await supabase.functions.invoke('asaas-test-charge', {
-        body: { tenant_id: user.id, billing_type: testBillingType },
-      });
-      if (error) throw error;
-      setTestResult(data);
-      if (data?.success) {
-        toast.success('Cobrança de teste criada com sucesso!');
-      } else {
-        toast.error(data?.error || 'Falha no teste');
-      }
-    } catch (e: any) {
-      setTestResult({ success: false, error: e?.message || String(e) });
-      toast.error('Erro ao executar teste');
-    } finally {
-      setIsTestingCharge(false);
-    }
-  };
-
-  // Mock subscription data
-  const subscription = {
-    plan: 'Starter',
-    status: 'trial' as const,
-    transactionsUsed: 23,
-    transactionLimit: 100,
-    periodEnd: '2024-02-10',
-  };
-
-  // Load fiscal configuration on mount
-  useEffect(() => {
-    const loadFiscalConfig = async () => {
-      if (!user) return;
-      
-      const { data, error } = await supabase
-        .from('fiscal_configurations')
-        .select('*')
-        .eq('tenant_id', user.id)
-        .maybeSingle();
-      
-      if (data) {
-        setFiscalConfigId(data.id);
-        setMunicipalServiceId(data.municipal_service_id || '');
-        setMunicipalServiceCode(data.municipal_service_code || '');
-        setMunicipalServiceName(data.municipal_service_name || '');
-        setDefaultIss(data.default_iss?.toString() || '');
-        setAutoEmitOnPayment(data.auto_emit_on_payment);
-        setObservationsTemplate(data.observations_template || '');
-      }
-    };
-    
-    loadFiscalConfig();
-  }, [user]);
-
-  // Search municipal services
+  // ===== Fiscal =====
   const searchMunicipalServices = async (query: string) => {
-    if (query.length < 3) {
-      setServices([]);
-      return;
-    }
-    
+    if (query.length < 3) { setServices([]); return; }
     setIsSearching(true);
     try {
-      const { data: asaasConfig } = await supabase
-        .from('asaas_configurations')
-        .select('id')
-        .eq('tenant_id', user?.id)
-        .eq('is_active', true)
-        .maybeSingle();
-      
-      if (!asaasConfig) {
-        toast.error('Configure a integração Asaas primeiro');
-        return;
-      }
-      
+      const { data: cfg } = await supabase.from('asaas_configurations').select('id').eq('tenant_id', user?.id).eq('is_active', true).maybeSingle();
+      if (!cfg) { toast.error('Configure a integração Asaas primeiro'); return; }
       const response = await supabase.functions.invoke('asaas-invoice-process', {
-        body: {
-          action: 'list_municipal_services',
-          tenantId: user?.id,
-          description: query
-        }
+        body: { action: 'list_municipal_services', tenantId: user?.id, description: query },
       });
-      
       if (response.error) throw response.error;
-      
-      const serviceList = response.data?.data || [];
-      setServices(serviceList.map((s: any) => ({
-        id: s.id,
-        code: s.code || s.serviceCode,
-        description: s.description
-      })));
+      const list = response.data?.data || [];
+      setServices(list.map((s: any) => ({ id: s.id, code: s.code || s.serviceCode, description: s.description })));
       setShowServiceDropdown(true);
-    } catch (error) {
-      console.error('Erro ao buscar serviços:', error);
-    } finally {
-      setIsSearching(false);
-    }
+    } catch (e) { console.error(e); }
+    finally { setIsSearching(false); }
   };
-
-  const selectService = (service: MunicipalService) => {
-    setMunicipalServiceId(service.id);
-    setMunicipalServiceCode(service.code);
-    setMunicipalServiceName(service.description);
-    setServiceSearch('');
-    setShowServiceDropdown(false);
+  const selectService = (s: MunicipalService) => {
+    setMunicipalServiceId(s.id); setMunicipalServiceCode(s.code); setMunicipalServiceName(s.description);
+    setServiceSearch(''); setShowServiceDropdown(false);
   };
-
-  const handleSaveProfile = async () => {
-    setIsLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setIsLoading(false);
-    toast.success('Configurações salvas com sucesso!');
-  };
-
-  const handleSaveFiscalConfig = async () => {
+  const saveFiscal = async () => {
     if (!user) return;
-    
     setIsSavingFiscal(true);
     try {
-      const fiscalData = {
+      const payload = {
         tenant_id: user.id,
         municipal_service_id: municipalServiceId || null,
         municipal_service_code: municipalServiceCode || null,
@@ -290,417 +317,240 @@ export default function DashboardSettings() {
         default_iss: defaultIss ? parseFloat(defaultIss) : null,
         auto_emit_on_payment: autoEmitOnPayment,
         observations_template: observationsTemplate || null,
-        is_active: true
+        is_active: true,
       };
-      
       if (fiscalConfigId) {
-        const { error } = await supabase
-          .from('fiscal_configurations')
-          .update(fiscalData)
-          .eq('id', fiscalConfigId);
-        
+        const { error } = await supabase.from('fiscal_configurations').update(payload).eq('id', fiscalConfigId);
         if (error) throw error;
       } else {
-        const { data, error } = await supabase
-          .from('fiscal_configurations')
-          .insert(fiscalData)
-          .select()
-          .single();
-        
+        const { data, error } = await supabase.from('fiscal_configurations').insert(payload).select().single();
         if (error) throw error;
         setFiscalConfigId(data.id);
       }
-      
-      toast.success('Configurações fiscais salvas com sucesso!');
-    } catch (error) {
-      console.error('Erro ao salvar configurações fiscais:', error);
-      toast.error('Erro ao salvar configurações fiscais');
-    } finally {
-      setIsSavingFiscal(false);
-    }
+      toast.success('Configurações fiscais salvas');
+    } catch (e: any) { toast.error(e?.message || 'Erro'); }
+    finally { setIsSavingFiscal(false); }
   };
 
-  const usagePercentage = (subscription.transactionsUsed / subscription.transactionLimit) * 100;
+  // ===== Notifications =====
+  const updateNotif = async (key: keyof typeof notifPrefs, value: boolean) => {
+    if (!user) return;
+    const next = { ...notifPrefs, [key]: value };
+    setNotifPrefs(next);
+    setSavingNotif(true);
+    await supabase.from('notification_preferences').upsert(
+      { tenant_id: user.id, ...next },
+      { onConflict: 'tenant_id' }
+    );
+    setSavingNotif(false);
+  };
+
+  // ===== Security =====
+  const submitChangePassword = async () => {
+    if (!pwdCurrent || pwdNew.length < 8) return toast.error('Senha inválida');
+    if (pwdNew !== pwdConfirm) return toast.error('As senhas não conferem');
+    setSavingPwd(true);
+    // Re-verify current password
+    const { error: signErr } = await supabase.auth.signInWithPassword({ email: user!.email!, password: pwdCurrent });
+    if (signErr) { setSavingPwd(false); return toast.error('Senha atual incorreta'); }
+    const { error: upErr } = await supabase.auth.updateUser({ password: pwdNew });
+    setSavingPwd(false);
+    if (upErr) return toast.error(upErr.message);
+    toast.success('Senha alterada com sucesso');
+    setShowPasswordDialog(false);
+    setPwdCurrent(''); setPwdNew(''); setPwdConfirm('');
+  };
+  const submitDeleteAccount = async () => {
+    if (delConfirm !== 'EXCLUIR') return toast.error('Digite EXCLUIR para confirmar');
+    setDeletingAccount(true);
+    try {
+      const { error } = await supabase.functions.invoke('bitrix-payment-iframe', {
+        body: {
+          memberId: (await supabase.from('bitrix_installations').select('member_id').eq('tenant_id', user!.id).maybeSingle()).data?.member_id,
+          action: 'delete_account',
+          data: { password: pwdCurrent },
+        },
+      });
+      if (error) throw error;
+      await supabase.auth.signOut();
+      window.location.href = '/';
+    } catch (e: any) { toast.error(e?.message || 'Erro ao excluir'); }
+    finally { setDeletingAccount(false); }
+  };
+
+  const usagePct = planCurrent && planCurrent.limit > 0
+    ? Math.min(100, Math.round((planCurrent.used / planCurrent.limit) * 100)) : 0;
+  const envLabel = asaasEnv === 'production' ? 'Produção' : 'Sandbox';
 
   return (
     <>
-      <Helmet>
-        <title>Configurações | ConnectPay</title>
-      </Helmet>
-
+      <Helmet><title>Configurações | ConnectPay</title></Helmet>
       <DashboardLayout title="Configurações" description="Gerencie sua conta e preferências">
         <div className="space-y-6 max-w-4xl">
-          {/* Company Profile */}
+          {/* Top action */}
+          <div className="flex justify-end">
+            <Button onClick={openUpdateIntegration} disabled={updateRunning}>
+              <RefreshCw className={`mr-2 h-4 w-4 ${updateRunning ? 'animate-spin' : ''}`} />
+              ↻ Atualizar Integração
+            </Button>
+          </div>
+
+          {/* ============= COMPANY HEADER ============= */}
           <Card className="border-border/50">
-            <CardHeader>
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+            <CardContent className="pt-6">
+              <div className="flex items-start gap-4">
+                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                   <Building2 className="h-5 w-5 text-primary" />
                 </div>
-                <div>
-                  <CardTitle>Dados da Empresa</CardTitle>
-                  <CardDescription>Informações básicas da sua conta</CardDescription>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[11px] uppercase tracking-wide font-semibold text-muted-foreground mb-1">Dados da Empresa</div>
+                  <div className="text-xl font-bold mb-2 truncate">{companyName || '—'}</div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                    {user?.email && (<span className="flex items-center gap-1"><Mail className="h-3.5 w-3.5" />{user.email}</span>)}
+                    {phone && (<span className="flex items-center gap-1"><Phone className="h-3.5 w-3.5" />{phone}</span>)}
+                    {address && (<span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{address}</span>)}
+                    {!phone && !address && (<span className="text-muted-foreground/70">Clique no lápis para preencher contato e endereço.</span>)}
+                  </div>
                 </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="company">Nome da Empresa</Label>
-                  <Input
-                    id="company"
-                    value={companyName}
-                    onChange={(e) => setCompanyName(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    value={user?.email || ''}
-                    disabled
-                    className="bg-muted"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Telefone</Label>
-                  <Input
-                    id="phone"
-                    placeholder="(11) 99999-9999"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="flex justify-end">
-                <Button onClick={handleSaveProfile} disabled={isLoading}>
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Salvando...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="mr-2 h-4 w-4" />
-                      Salvar Alterações
-                    </>
-                  )}
+                <Button variant="outline" size="icon" onClick={openCompanyDialog} title="Editar empresa">
+                  <Pencil className="h-4 w-4" />
                 </Button>
               </div>
             </CardContent>
           </Card>
 
-          {/* Fiscal Configuration */}
+          {/* ============= ASAAS CARD ============= */}
           <Card className="border-border/50">
-            <CardHeader>
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <FileText className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <CardTitle>Configurações Fiscais</CardTitle>
-                  <CardDescription>Configure a emissão de notas fiscais</CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Municipal Service Search */}
-              <div className="space-y-2">
-                <Label>Serviço Municipal</Label>
-                <div className="relative">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Buscar serviço municipal (mín. 3 caracteres)"
-                      value={serviceSearch}
-                      onChange={(e) => {
-                        setServiceSearch(e.target.value);
-                        searchMunicipalServices(e.target.value);
-                      }}
-                      className="pl-9"
-                    />
-                    {isSearching && (
-                      <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin" />
-                    )}
-                  </div>
-                  
-                  {showServiceDropdown && services.length > 0 && (
-                    <div className="absolute z-10 mt-1 w-full bg-popover border border-border rounded-md shadow-lg max-h-60 overflow-auto">
-                      {services.map((service) => (
-                        <button
-                          key={service.id}
-                          type="button"
-                          className="w-full px-4 py-2 text-left hover:bg-accent text-sm"
-                          onClick={() => selectService(service)}
-                        >
-                          <span className="font-medium">{service.code}</span>
-                          <span className="text-muted-foreground ml-2">{service.description}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                
-                {municipalServiceName && (
-                  <div className="mt-2 p-3 bg-muted/50 rounded-lg">
-                    <p className="text-sm font-medium">Serviço selecionado:</p>
-                    <p className="text-sm text-muted-foreground">
-                      {municipalServiceCode} - {municipalServiceName}
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="iss">Alíquota ISS (%)</Label>
-                  <Input
-                    id="iss"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    max="100"
-                    placeholder="Ex: 5.00"
-                    value={defaultIss}
-                    onChange={(e) => setDefaultIss(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="observations">Template de Observações</Label>
-                <Input
-                  id="observations"
-                  placeholder="Observações padrão para as notas fiscais"
-                  value={observationsTemplate}
-                  onChange={(e) => setObservationsTemplate(e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Este texto será adicionado automaticamente em todas as notas fiscais emitidas
-                </p>
-              </div>
-
-              <Separator />
-
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium">Emissão automática de NF</p>
-                  <p className="text-sm text-muted-foreground">
-                    Emitir nota fiscal automaticamente quando um pagamento for confirmado
-                  </p>
-                </div>
-                <Switch
-                  checked={autoEmitOnPayment}
-                  onCheckedChange={setAutoEmitOnPayment}
-                />
-              </div>
-
-              <div className="flex justify-end">
-                <Button onClick={handleSaveFiscalConfig} disabled={isSavingFiscal}>
-                  {isSavingFiscal ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Salvando...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="mr-2 h-4 w-4" />
-                      Salvar Configurações Fiscais
-                    </>
-                  )}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Webhook Asaas */}
-          <Card className="border-border/50">
-            <CardHeader>
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+            <CardContent className="pt-6">
+              <div className="flex items-start gap-4">
+                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                   <Webhook className="h-5 w-5 text-primary" />
                 </div>
                 <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <CardTitle>Webhook Asaas</CardTitle>
-                    <StatusBadge status={webhookConfigured ? 'active' : 'expired'} />
-                  </div>
-                  <CardDescription>
-                    URL e token de autenticação do webhook (cabeçalho <code>asaas-access-token</code>)
-                  </CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>URL do Webhook</Label>
-                <div className="flex gap-2">
-                  <Input value={webhookUrl} readOnly className="font-mono text-xs" />
-                  <Button type="button" variant="outline" size="icon" onClick={() => copyToClipboard(webhookUrl, 'URL')}>
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Token (authToken) salvo</Label>
-                <div className="flex gap-2">
-                  <Input value={webhookSecret || '— não configurado —'} readOnly className="font-mono text-xs" />
-                  {webhookSecret && (
-                    <Button type="button" variant="outline" size="icon" onClick={() => copyToClipboard(webhookSecret, 'Token')}>
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Este é o token usado para validar as notificações recebidas do Asaas.
-                </p>
-              </div>
-
-              <Separator />
-
-              <div className="space-y-2">
-                <Label>Colar token gerado pelo Asaas</Label>
-                <p className="text-xs text-muted-foreground">
-                  Se você cadastrou o webhook manualmente no painel do Asaas e definiu um token próprio, cole-o aqui para que possamos validar as chamadas.
-                </p>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Cole o token do Asaas aqui"
-                    value={manualSecret}
-                    onChange={(e) => setManualSecret(e.target.value)}
-                    className="font-mono text-xs"
-                  />
-                  <Button onClick={handleSaveManualSecret} disabled={isSavingSecret || !manualSecret.trim()}>
-                    {isSavingSecret ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                  </Button>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap justify-end gap-2">
-                <Button variant="outline" onClick={handleRepairWebhook} disabled={isRepairingWebhook}>
-                  {isRepairingWebhook ? (
-                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Reparando...</>
-                  ) : (
-                    <><RefreshCw className="mr-2 h-4 w-4" />Registrar/Reparar webhook no Asaas</>
-                  )}
-                </Button>
-                <Button onClick={handleRepairIntegration} disabled={isRepairingIntegration}>
-                  {isRepairingIntegration ? (
-                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Reparando...</>
-                  ) : (
-                    <><RefreshCw className="mr-2 h-4 w-4" />Reparar Integração Bitrix (robôs + campos)</>
-                  )}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Asaas Test Charge */}
-          <Card className="border-border/50">
-            <CardHeader>
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <Zap className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <CardTitle>Teste de Integração Asaas</CardTitle>
-                  <CardDescription>
-                    Valida sua API key e cria uma cobrança de R$ 5,00 de teste no Asaas
-                  </CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex flex-wrap items-end gap-3">
-                <div className="space-y-2">
-                  <Label>Tipo de cobrança</Label>
-                  <div className="flex gap-2">
-                    {(['PIX', 'BOLETO', 'CREDIT_CARD'] as const).map((t) => (
-                      <Button
-                        key={t}
-                        type="button"
-                        variant={testBillingType === t ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => setTestBillingType(t)}
-                      >
-                        {t === 'CREDIT_CARD' ? 'Cartão' : t === 'BOLETO' ? 'Boleto' : 'PIX'}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-                <Button onClick={handleTestCharge} disabled={isTestingCharge}>
-                  {isTestingCharge ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Testando...
-                    </>
-                  ) : (
-                    <>
-                      <Zap className="mr-2 h-4 w-4" />
-                      Executar teste
-                    </>
-                  )}
-                </Button>
-              </div>
-
-              {testResult && (
-                <div className={`rounded-lg border p-4 space-y-3 ${testResult.success ? 'border-green-500/30 bg-green-500/5' : 'border-destructive/30 bg-destructive/5'}`}>
-                  <div className="flex items-center gap-2 font-medium">
-                    {testResult.success ? (
-                      <>
-                        <CheckCircle2 className="h-5 w-5 text-green-500" />
-                        <span>Teste concluído com sucesso</span>
-                      </>
-                    ) : (
-                      <>
-                        <XCircle className="h-5 w-5 text-destructive" />
-                        <span>Falha no teste</span>
-                      </>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="font-semibold text-base">Asaas {asaasConnected ? 'Conectado' : 'Não configurado'}</span>
+                    {asaasConnected && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 text-xs font-medium">
+                        <CheckCircle2 className="h-3 w-3" />{envLabel}
+                      </span>
                     )}
                   </div>
-
-                  {Array.isArray(testResult.log) && testResult.log.length > 0 && (
-                    <pre className="text-xs bg-muted/50 rounded p-3 overflow-auto whitespace-pre-wrap">
-{testResult.log.join('\n')}
-                    </pre>
-                  )}
-
-                  {testResult.success && testResult.payment && (
-                    <div className="grid gap-2 text-sm md:grid-cols-2">
-                      <div><span className="text-muted-foreground">Ambiente:</span> <span className="font-mono">{testResult.environment}</span></div>
-                      <div><span className="text-muted-foreground">Conta:</span> {testResult.account?.name || testResult.account?.email}</div>
-                      <div><span className="text-muted-foreground">Cobrança ID:</span> <span className="font-mono">{testResult.payment.id}</span></div>
-                      <div><span className="text-muted-foreground">Status:</span> {testResult.payment.status}</div>
-                      <div><span className="text-muted-foreground">Valor:</span> R$ {Number(testResult.payment.value).toFixed(2)}</div>
-                      <div><span className="text-muted-foreground">Vencimento:</span> {testResult.payment.dueDate}</div>
-                      {testResult.payment.invoiceUrl && (
-                        <a
-                          href={testResult.payment.invoiceUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="col-span-full inline-flex items-center gap-1 text-primary hover:underline"
-                        >
-                          Abrir cobrança no Asaas <ExternalLink className="h-3 w-3" />
-                        </a>
-                      )}
-                    </div>
-                  )}
-
-                  {!testResult.success && testResult.error && (
-                    <p className="text-sm text-destructive">{testResult.error}</p>
-                  )}
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-muted-foreground">
+                    <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs">🟢 API Asaas v3</span>
+                    <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs">Ambiente: {envLabel}</span>
+                    {webhookConfigured && (
+                      <span className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
+                        <CheckCircle2 className="h-3 w-3" />Webhook registrado
+                      </span>
+                    )}
+                    <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => setShowWebhookHelp(true)}>
+                      <Info className="h-3.5 w-3.5 mr-1" />Como configurar
+                    </Button>
+                  </div>
                 </div>
-              )}
-
-              <p className="text-xs text-muted-foreground">
-                Dica: use o ambiente Sandbox para testes. A cobrança é real no ambiente configurado — exclua-a no painel Asaas se necessário.
-              </p>
+                <Button variant="outline" size="sm" onClick={openAsaasDialog}>
+                  <Pencil className="h-3.5 w-3.5 mr-1" />Editar
+                </Button>
+              </div>
             </CardContent>
           </Card>
 
-          {/* Subscription */}
+          {/* ============= FISCAL (collapsible) ============= */}
+          <Collapsible open={fiscalOpen} onOpenChange={setFiscalOpen}>
+            <Card className="border-border/50">
+              <CollapsibleTrigger asChild>
+                <button className="w-full text-left">
+                  <CardHeader className="cursor-pointer hover:bg-muted/30 transition-colors rounded-t-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                        <FileText className="h-5 w-5 text-primary" />
+                      </div>
+                      <div className="flex-1">
+                        <CardTitle className="flex items-center gap-2">⚙️ Configuração Fiscal</CardTitle>
+                        <CardDescription>Emissão de notas fiscais (NFSe)</CardDescription>
+                      </div>
+                      <ChevronDown className={`h-5 w-5 text-muted-foreground transition-transform ${fiscalOpen ? 'rotate-180' : ''}`} />
+                    </div>
+                  </CardHeader>
+                </button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <CardContent className="space-y-6 pt-0">
+                  <div className="space-y-2">
+                    <Label>Serviço Municipal</Label>
+                    <div className="relative">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          placeholder="Buscar serviço municipal (mín. 3 caracteres)"
+                          value={serviceSearch}
+                          onChange={(e) => { setServiceSearch(e.target.value); searchMunicipalServices(e.target.value); }}
+                          className="pl-9"
+                        />
+                        {isSearching && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin" />}
+                      </div>
+                      {showServiceDropdown && services.length > 0 && (
+                        <div className="absolute z-10 mt-1 w-full bg-popover border border-border rounded-md shadow-lg max-h-60 overflow-auto">
+                          {services.map(s => (
+                            <button key={s.id} type="button" className="w-full px-4 py-2 text-left hover:bg-accent text-sm" onClick={() => selectService(s)}>
+                              <span className="font-medium">{s.code}</span>
+                              <span className="text-muted-foreground ml-2">{s.description}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    {municipalServiceName && (
+                      <div className="mt-2 p-3 bg-muted/50 rounded-lg">
+                        <p className="text-sm font-medium">Serviço selecionado:</p>
+                        <p className="text-sm text-muted-foreground">{municipalServiceCode} - {municipalServiceName}</p>
+                      </div>
+                    )}
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="iss">Alíquota ISS (%)</Label>
+                      <Input id="iss" type="number" step="0.01" min="0" max="100" placeholder="Ex: 5.00" value={defaultIss} onChange={(e) => setDefaultIss(e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="observations">Template de Observações</Label>
+                    <Input id="observations" placeholder="Observações padrão" value={observationsTemplate} onChange={(e) => setObservationsTemplate(e.target.value)} />
+                  </div>
+                  <Separator />
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">Emissão automática de NF</p>
+                      <p className="text-sm text-muted-foreground">Emitir nota fiscal automaticamente quando um pagamento for confirmado</p>
+                    </div>
+                    <Switch checked={autoEmitOnPayment} onCheckedChange={setAutoEmitOnPayment} />
+                  </div>
+                  <div className="flex justify-end">
+                    <Button onClick={saveFiscal} disabled={isSavingFiscal}>
+                      {isSavingFiscal ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Salvando...</> : <><Save className="mr-2 h-4 w-4" />Salvar Configurações Fiscais</>}
+                    </Button>
+                  </div>
+                </CardContent>
+              </CollapsibleContent>
+            </Card>
+          </Collapsible>
 
+          {/* ============= SPLIT ============= */}
+          <Card className="border-border/50">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Split de Pagamento</CardTitle>
+                  <CardDescription>Configure divisões automáticas de pagamento entre contas Asaas</CardDescription>
+                </div>
+                <Button asChild>
+                  <a href="/dashboard/splits"><Plus className="mr-2 h-4 w-4" />Gerenciar Splits</a>
+                </Button>
+              </div>
+            </CardHeader>
+          </Card>
+
+          {/* ============= PLANO ============= */}
           <Card className="border-border/50">
             <CardHeader>
               <div className="flex items-center gap-3">
@@ -710,39 +560,40 @@ export default function DashboardSettings() {
                 <div className="flex-1">
                   <div className="flex items-center justify-between">
                     <CardTitle>Plano e Uso</CardTitle>
-                    <StatusBadge status={subscription.status} />
+                    {planCurrent && <StatusBadge status={planCurrent.status} />}
                   </div>
                   <CardDescription>Seu plano atual e consumo de transações</CardDescription>
                 </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
-                <div>
-                  <p className="font-medium text-lg">Plano {subscription.plan}</p>
-                  <p className="text-sm text-muted-foreground">
-                    Trial até {new Date(subscription.periodEnd).toLocaleDateString('pt-BR')}
-                  </p>
-                </div>
-                <Button>Fazer Upgrade</Button>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Transações utilizadas</span>
-                  <span className="font-medium">
-                    {subscription.transactionsUsed} / {subscription.transactionLimit}
-                  </span>
-                </div>
-                <Progress value={usagePercentage} className="h-2" />
-                <p className="text-xs text-muted-foreground">
-                  {subscription.transactionLimit - subscription.transactionsUsed} transações restantes neste período
-                </p>
-              </div>
+              {planCurrent ? (
+                <>
+                  <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
+                    <div>
+                      <p className="font-medium text-lg">Plano {planCurrent.plan_name || '—'}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {planCurrent.status === 'trial' ? 'Trial até ' : 'Válido até '}
+                        {planCurrent.period_end ? new Date(planCurrent.period_end).toLocaleDateString('pt-BR') : '—'}
+                      </p>
+                    </div>
+                    <Button>Fazer Upgrade</Button>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Transações utilizadas</span>
+                      <span className="font-medium">{planCurrent.used} / {planCurrent.limit === -1 ? 'Ilimitado' : planCurrent.limit}</span>
+                    </div>
+                    <Progress value={usagePct} className="h-2" />
+                  </div>
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">Nenhum plano ativo.</p>
+              )}
             </CardContent>
           </Card>
 
-          {/* Notifications */}
+          {/* ============= NOTIFICAÇÕES ============= */}
           <Card className="border-border/50">
             <CardHeader>
               <div className="flex items-center gap-3">
@@ -756,48 +607,23 @@ export default function DashboardSettings() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium">Notificações por email</p>
-                  <p className="text-sm text-muted-foreground">
-                    Receba atualizações sobre suas transações
-                  </p>
+              {[
+                { k: 'email_transactions' as const, t: 'Notificações por email', d: 'Receba atualizações sobre suas transações' },
+                { k: 'payment_alerts' as const, t: 'Alertas de pagamento', d: 'Notificações quando um pagamento for confirmado' },
+                { k: 'weekly_reports' as const, t: 'Relatórios semanais', d: 'Resumo semanal de transações e métricas' },
+              ].map((r, i) => (
+                <div key={r.k}>
+                  {i > 0 && <Separator className="mb-4" />}
+                  <div className="flex items-center justify-between">
+                    <div><p className="font-medium">{r.t}</p><p className="text-sm text-muted-foreground">{r.d}</p></div>
+                    <Switch checked={notifPrefs[r.k]} onCheckedChange={(v) => updateNotif(r.k, v)} disabled={savingNotif} />
+                  </div>
                 </div>
-                <Switch
-                  checked={emailNotifications}
-                  onCheckedChange={setEmailNotifications}
-                />
-              </div>
-              <Separator />
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium">Alertas de pagamento</p>
-                  <p className="text-sm text-muted-foreground">
-                    Notificações quando um pagamento for confirmado
-                  </p>
-                </div>
-                <Switch
-                  checked={paymentAlerts}
-                  onCheckedChange={setPaymentAlerts}
-                />
-              </div>
-              <Separator />
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium">Relatórios semanais</p>
-                  <p className="text-sm text-muted-foreground">
-                    Resumo semanal de transações e métricas
-                  </p>
-                </div>
-                <Switch
-                  checked={weeklyReports}
-                  onCheckedChange={setWeeklyReports}
-                />
-              </div>
+              ))}
             </CardContent>
           </Card>
 
-          {/* Security */}
+          {/* ============= SEGURANÇA ============= */}
           <Card className="border-border/50">
             <CardHeader>
               <div className="flex items-center gap-3">
@@ -812,27 +638,207 @@ export default function DashboardSettings() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium">Alterar senha</p>
-                  <p className="text-sm text-muted-foreground">
-                    Atualize sua senha de acesso
-                  </p>
-                </div>
-                <Button variant="outline">Alterar</Button>
+                <div><p className="font-medium">Alterar senha</p><p className="text-sm text-muted-foreground">Atualize sua senha de acesso</p></div>
+                <Button variant="outline" onClick={() => setShowPasswordDialog(true)}>Alterar</Button>
               </div>
               <Separator />
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-destructive">Excluir conta</p>
-                  <p className="text-sm text-muted-foreground">
-                    Remove permanentemente sua conta e todos os dados
-                  </p>
-                </div>
-                <Button variant="destructive">Excluir</Button>
+                <div><p className="font-medium text-destructive">Excluir conta</p><p className="text-sm text-muted-foreground">Remove permanentemente sua conta e todos os dados</p></div>
+                <Button variant="destructive" onClick={() => setShowDeleteDialog(true)}>Excluir</Button>
               </div>
             </CardContent>
           </Card>
         </div>
+
+        {/* ============================================================
+            MODAIS
+           ============================================================ */}
+
+        {/* Edit Company */}
+        <Dialog open={showCompanyDialog} onOpenChange={setShowCompanyDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Editar Dados da Empresa</DialogTitle>
+              <DialogDescription>Atualize nome, contato e endereço da empresa.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="space-y-2"><Label>Nome da Empresa</Label><Input value={editName} onChange={(e) => setEditName(e.target.value)} /></div>
+              <div className="space-y-2"><Label>Email</Label><Input value={user?.email || ''} disabled className="bg-muted" /></div>
+              <div className="space-y-2"><Label>Telefone</Label><Input placeholder="(11) 99999-9999" value={editPhone} onChange={(e) => setEditPhone(e.target.value)} /></div>
+              <div className="space-y-2"><Label>Endereço</Label><Input placeholder="Rua, número, bairro, cidade" value={editAddress} onChange={(e) => setEditAddress(e.target.value)} /></div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowCompanyDialog(false)}>Cancelar</Button>
+              <Button onClick={saveCompany} disabled={savingCompany}>
+                {savingCompany ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Salvando...</> : <><Save className="mr-2 h-4 w-4" />Salvar Empresa</>}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Asaas */}
+        <Dialog open={showAsaasDialog} onOpenChange={setShowAsaasDialog}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Configuração Asaas</DialogTitle>
+              <DialogDescription>Ambiente, chave API e webhook.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-5 py-2">
+              <div className="space-y-2">
+                <Label>Ambiente</Label>
+                <Select value={editEnv} onValueChange={(v: 'sandbox' | 'production') => setEditEnv(v)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="sandbox">Sandbox (Teste)</SelectItem>
+                    <SelectItem value="production">Produção</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Chave API</Label>
+                <Input type="password" placeholder="$aact_..." value={editApiKey} onChange={(e) => setEditApiKey(e.target.value)} />
+                <p className="text-xs text-muted-foreground">Em: Asaas → Configurações → Integrações</p>
+              </div>
+              <div className="flex justify-end">
+                <Button onClick={saveAsaas} disabled={savingAsaas}>
+                  {savingAsaas ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                  Salvar Configuração
+                </Button>
+              </div>
+              <Separator />
+              <div>
+                <h4 className="font-medium mb-3 flex items-center gap-2"><Webhook className="h-4 w-4" />Webhook</h4>
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">URL do Webhook</Label>
+                    <div className="flex gap-2">
+                      <Input value={webhookUrl} readOnly className="font-mono text-xs" />
+                      <Button type="button" variant="outline" size="icon" onClick={() => copyToClipboard(webhookUrl, 'URL')}><Copy className="h-4 w-4" /></Button>
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Token salvo</Label>
+                    <div className="flex gap-2">
+                      <Input value={webhookSecret || '— não configurado —'} readOnly className="font-mono text-xs" />
+                      {webhookSecret && <Button type="button" variant="outline" size="icon" onClick={() => copyToClipboard(webhookSecret, 'Token')}><Copy className="h-4 w-4" /></Button>}
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Colar token gerado pelo Asaas</Label>
+                    <div className="flex gap-2">
+                      <Input placeholder="Cole o token aqui" value={manualSecret} onChange={(e) => setManualSecret(e.target.value)} className="font-mono text-xs" />
+                      <Button onClick={saveManualSecret} disabled={isSavingSecret || !manualSecret.trim()}>
+                        {isSavingSecret ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Salvar Token'}
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="flex justify-end">
+                    <Button variant="outline" onClick={repairWebhook} disabled={isRepairingWebhook}>
+                      {isRepairingWebhook ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Tentando...</> : <><RefreshCw className="mr-2 h-4 w-4" />Tentar registrar novamente</>}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowAsaasDialog(false)}>Fechar</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Webhook help */}
+        <Dialog open={showWebhookHelp} onOpenChange={setShowWebhookHelp}>
+          <DialogContent className="max-w-xl">
+            <DialogHeader>
+              <DialogTitle>📘 Como configurar o webhook no Asaas</DialogTitle>
+            </DialogHeader>
+            <ol className="space-y-3 text-sm py-2 list-decimal list-inside">
+              <li>Acesse o painel do Asaas → <strong>Configurações → Integrações → Webhooks</strong>.</li>
+              <li>Clique em <strong>Novo webhook</strong>.</li>
+              <li>Cole a <strong>URL do Webhook</strong> exibida na configuração Asaas.</li>
+              <li>Defina um <strong>Token de autenticação</strong> (qualquer string forte).</li>
+              <li>Selecione os eventos: <code>PAYMENT_CREATED</code>, <code>PAYMENT_CONFIRMED</code>, <code>PAYMENT_RECEIVED</code>, <code>PAYMENT_OVERDUE</code>, <code>PAYMENT_DELETED</code>, <code>PAYMENT_REFUNDED</code>.</li>
+              <li>Salve e <strong>copie o token</strong> para colar no campo "Colar token gerado pelo Asaas".</li>
+            </ol>
+            <DialogFooter><Button onClick={() => setShowWebhookHelp(false)}>Entendi</Button></DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Atualizar Integração */}
+        <Dialog open={showUpdateDialog} onOpenChange={(o) => { if (!updateRunning) setShowUpdateDialog(o); }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>↻ Atualizar Integração</DialogTitle>
+              <DialogDescription>Sincronizando campos, robôs e placements do Bitrix24.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 py-2">
+              {updateSteps.map(s => (
+                <div key={s.key} className="flex items-center gap-3 text-sm">
+                  {s.status === 'done' && <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0" />}
+                  {s.status === 'running' && <Loader2 className="h-5 w-5 text-primary animate-spin shrink-0" />}
+                  {s.status === 'pending' && <Circle className="h-5 w-5 text-muted-foreground/40 shrink-0" />}
+                  {s.status === 'error' && <Circle className="h-5 w-5 text-destructive shrink-0" />}
+                  <span className={s.status === 'done' ? 'text-foreground' : s.status === 'running' ? 'text-foreground font-medium' : 'text-muted-foreground'}>
+                    {s.label}
+                  </span>
+                </div>
+              ))}
+              {updateSummary && (
+                <div className="mt-4 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 text-sm">
+                  ✅ <strong>Concluído!</strong><br />{updateSummary}
+                </div>
+              )}
+              {updateError && (
+                <div className="mt-4 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                  ✗ {updateError}
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button onClick={() => setShowUpdateDialog(false)} disabled={updateRunning}>
+                {updateRunning ? 'Aguarde...' : 'Concluir'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Change password */}
+        <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
+          <DialogContent>
+            <DialogHeader><DialogTitle>Alterar senha</DialogTitle></DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="space-y-2"><Label>Senha atual</Label><Input type="password" value={pwdCurrent} onChange={(e) => setPwdCurrent(e.target.value)} /></div>
+              <div className="space-y-2"><Label>Nova senha</Label><Input type="password" value={pwdNew} onChange={(e) => setPwdNew(e.target.value)} /></div>
+              <div className="space-y-2"><Label>Confirmar nova senha</Label><Input type="password" value={pwdConfirm} onChange={(e) => setPwdConfirm(e.target.value)} /></div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowPasswordDialog(false)}>Cancelar</Button>
+              <Button onClick={submitChangePassword} disabled={savingPwd}>
+                {savingPwd ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Salvando...</> : 'Alterar senha'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete account */}
+        <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="text-destructive">Excluir conta</DialogTitle>
+              <DialogDescription>Essa ação é permanente. Todos os dados serão removidos.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="space-y-2"><Label>Digite <strong>EXCLUIR</strong> para confirmar</Label><Input value={delConfirm} onChange={(e) => setDelConfirm(e.target.value)} /></div>
+              <div className="space-y-2"><Label>Sua senha</Label><Input type="password" value={pwdCurrent} onChange={(e) => setPwdCurrent(e.target.value)} /></div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>Cancelar</Button>
+              <Button variant="destructive" onClick={submitDeleteAccount} disabled={deletingAccount}>
+                {deletingAccount ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Excluindo...</> : 'Excluir conta permanentemente'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </DashboardLayout>
     </>
   );
