@@ -456,6 +456,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
 </div>
 
 <script>
+'use strict';
 var CTX = {
   entityType: ${safeJson(ctx.entityType)},
   entityId: ${safeJson(ctx.entityId)},
@@ -472,10 +473,13 @@ var CTX = {
 // Tab navigation
 document.querySelectorAll('.tab').forEach(function(t){
   t.addEventListener('click', function(){
-    document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active')});
-    document.querySelectorAll('.panel').forEach(function(x){x.classList.remove('active')});
-    t.classList.add('active');
-    document.getElementById('panel-' + t.dataset.tab).classList.add('active');
+    try {
+      document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active')});
+      document.querySelectorAll('.panel').forEach(function(x){x.classList.remove('active')});
+      t.classList.add('active');
+      var panel = document.getElementById('panel-' + t.dataset.tab);
+      if (panel) panel.classList.add('active');
+    } catch (e) { console.error('Falha ao alternar aba', e); }
   });
 });
 
@@ -576,7 +580,7 @@ async function submitPlan(){
       msg.className = 'msg ok'; msg.textContent = '✅ Planejamento enviado! ' + (data.summary || '');
       setTimeout(function(){ location.reload(); }, 1800);
     } else {
-      msg.className = 'msg err'; msg.textContent = '❌ ' + (data.error || 'Falha ao enviar') + (data.detail ? '\n' + JSON.stringify(data.detail, null, 2) : '');
+      msg.className = 'msg err'; msg.textContent = '❌ ' + (data.error || 'Falha ao enviar') + (data.detail ? '\\n' + JSON.stringify(data.detail, null, 2) : '');
     }
   } catch (e) {
     msg.className = 'msg err'; msg.textContent = '❌ ' + e.message;
