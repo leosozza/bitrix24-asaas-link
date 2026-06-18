@@ -1,83 +1,65 @@
-## Objetivo
+## Fase 1 — Adicionar 3 novas abas no iframe Bitrix
 
-Reorganizar a aba **Configurações** do iframe Bitrix (renderizada em `supabase/functions/bitrix-payment-iframe/index.ts`, ~linhas 3500–3760) para reduzir o ruído visual, deixando apenas o essencial visível e o resto em modais/colapsáveis.
+Hoje o dock tem: Overview · Transações · Assinaturas · Faturas · Integrações · Configurações. Vamos adicionar **Notificações**, **Segurança** e **Plano** entre Faturas e Integrações.
 
-## Novo layout da aba Configurações
+### Aba "Plano" 💳
 
-```text
-┌─────────────────────────────────────────────────────────────┐
-│  [↻ Atualizar Integração]                  (topo, direita)  │
-├─────────────────────────────────────────────────────────────┤
-│  CABEÇALHO — Dados da Empresa                       [✏️]    │
-│  Delivery Real                                              │
-│  deliveryreal@hotmail.com · 41996984530                     │
-│  Endereço: …                                                │
-├─────────────────────────────────────────────────────────────┤
-│  CARD — Asaas Conectado · Produção          [✏️ Editar]    │
-│  🟢 API Asaas v3   🔵 Ambiente: Produção                    │
-│  ✓ Webhook registrado automaticamente   [ℹ️ Como configurar]│
-├─────────────────────────────────────────────────────────────┤
-│  CARD colapsável — ⚙️ Configuração Fiscal           [▼]    │
-│     (fechado por padrão; abre para editar)                  │
-├─────────────────────────────────────────────────────────────┤
-│  CARD — Split de Pagamento              [+ Novo Split]      │
-└─────────────────────────────────────────────────────────────┘
-```
+Layout (espelha o que você mostrou):
+- Card "Plano e Uso" — plano atual, validade, badge `Trial`/`Ativo`, barra de transações usadas / limite (vem de `tenant_subscriptions` + `subscription_plans`).
+- Grid de planos disponíveis (`SELECT * FROM subscription_plans WHERE is_active = true`) com nome, preço, transações/mês, lista de `features`, e botão **Assinar / Fazer Upgrade / Plano atual**.
 
-O **Teste de Integração Asaas** sai daqui e vai para a aba **Integrações**.
+**Como funciona a contratação dentro do iframe:**
+Como o próprio app já é um conector Asaas e a plataforma (Thoth24) tem conta Asaas master, gera-se a cobrança da assinatura pela **conta Asaas da plataforma** (nova secret `PLATFORM_ASAAS_API_KEY` + `PLATFORM_ASAAS_ENV`) — não pela conta Asaas do tenant. Fluxo:
+1. Usuário clica "Assinar Pro" → modal escolhe forma de pagamento (PIX / Boleto / Cartão recorrente).
+2. Edge function `bitrix-plan-subscribe` cria customer + subscription mensal no Asaas da plataforma.
+3. Atualiza `tenant_subscriptions` para `pending_payment` com `plan_id` e `asaas_subscription_id` (nova coluna).
+4. Quando o webhook `asaas-webhook` recebe `PAYMENT_CONFIRMED` para a subscription da plataforma, marca `tenant_subscriptions.status = 'active'` e estende `current_period_end`.
+5. PIX/Boleto: modal mostra QR code / linha digitável; Cartão: redireciona para checkout do Asaas (link de pagamento), volta com sucesso.
 
-## Modais
+Novos campos:
+- `tenant_subscriptions`: `asaas_customer_id text`, `asaas_subscription_id text`, `payment_method text`, `last_payment_url text`.
+- Nova secret a pedir depois: `PLATFORM_ASAAS_API_KEY`, `PLATFORM_ASAAS_ENV`.
 
-1. **Editar Dados da Empresa** — formulário atual (nome, email, telefone) + novo campo **Endereço**. Botão Salvar Empresa fica dentro do modal.
-2. **Editar Configuração Asaas** — Ambiente + Chave API + bloco Webhook (URL, token salvo, colar token gerado pelo Asaas, lista de eventos). Botões Salvar Configuração / Salvar Token / Tentar registrar novamente ficam dentro.
-3. **Como configurar o webhook (passo a passo)** — conteúdo atual do bloco azul, aberto por botão `ℹ️ Como configurar` no card Asaas.
-4. **Atualizar Integração** — progresso da atualização (ver abaixo).
+### Aba "Notificações" 🔔
 
-## Botão "Atualizar Integração" no topo
+Toggles iguais ao mockup:
+- Notificações por email (transações)
+- Alertas de pagamento (pagamento confirmado)
+- Relatórios semanais
 
-Substitui o atual "Reparar Integração Bitrix (robôs + campos)". Ao clicar abre um modal com lista de passos e estado de cada um:
+Persistência em nova tabela `notification_preferences` (PK = `tenant_id`) com colunas `email_transactions bool`, `payment_alerts bool`, `weekly_reports bool`. GRANTs + RLS (`auth.uid() = tenant_id`).
 
-```text
-Atualizando integração…
-  ✓ Verificando campos do Deal
-  ✓ Criando campos faltantes (UF_CRM_ASAAS_*)
-  ⏳ Verificando robôs de automação
-  · Verificando placements (abas CRM)
-  · Sincronizando Pay System
-Concluído ✅
-```
+Wire-up real (envio dos e-mails) fica como step futuro — agora só salva as preferências e o backend já lê para decidir se notifica.
 
-O edge function `bitrix-payment-iframe` já tem `repair_integration` (chamado por `repairIntegration` / `repairIntegrationFromSettings`). Vamos:
-- Adicionar uma action `repair_integration_stream` (ou um novo `repair_integration_steps` que retorna `[{step, status, message}]` ao final) e, no front, exibir os passos com `setTimeout` progressivo enquanto o backend roda; ou
-- Implementação simples: backend continua síncrono retornando o resumo, mas o modal mostra um stepper animado client-side (passos pré-definidos marcados sequencialmente) até a resposta chegar, e no fim mostra o resumo real ("X campos criados, Y robôs registrados, Z placements ok").
+### Aba "Segurança" 🛡️
 
-Vamos pela versão simples (stepper client-side + resumo final) — sem mudar contrato do backend.
+- **Alterar senha** → modal com senha atual + nova + confirmação → `supabase.auth.updateUser({ password })` (no iframe não temos sessão Supabase nativa; vamos fazer via edge function `bitrix-security` que aceita `current_password`, valida com `signInWithPassword` e chama `admin.updateUserById`).
+- **Excluir conta** → modal de confirmação digitando o nome da empresa → edge function `bitrix-security` action `delete_account` (chama `auth.admin.deleteUser` + cascata pelas FKs).
 
-## Endereço da Empresa
+### Mudanças no edge function `bitrix-payment-iframe/index.ts`
 
-Hoje a tabela só guarda `name/email/phone`. Adicionar coluna `address text` em `bitrix_installations` (ou na tabela onde os dados da empresa são salvos — confirmar lendo `handleCompanySave`) via `supabase--migration`, incluir no payload do `company_save` e no `loadSettings`.
+- HTML: 3 novas `dock-tab` + 3 novos `<div id="tab-plan|notifications|security">`.
+- `switchTab`: cases novos chamando `loadPlan()`, `loadNotifications()`, `loadSecurity()`.
+- Novas actions no roteador: `get_plan`, `list_plans`, `subscribe_plan`, `get_notifications`, `save_notifications`, `change_password`, `delete_account`.
+- Modais de assinatura, alterar senha e excluir conta.
 
-## Arquivos a editar
+### Arquivos
 
-- `supabase/functions/bitrix-payment-iframe/index.ts`
-  - `generateSettingsTab` (HTML) — novo layout, cards colapsáveis, botões que abrem modais.
-  - Adicionar markup dos 4 modais + CSS de modal (já existe `.modal` no arquivo? verificar; se não, adicionar estilos simples).
-  - JS: `openCompanyModal()`, `openAsaasModal()`, `openWebhookHelpModal()`, `openUpdateIntegrationModal()` + stepper.
-  - Mover renderização de "Teste de Integração Asaas" para `generateIntegrationsTab`.
-  - `company_save`: aceitar e gravar `address`.
-- Migração SQL: `ALTER TABLE bitrix_installations ADD COLUMN IF NOT EXISTS company_address text;` (ou na tabela correta).
+- `supabase/functions/bitrix-payment-iframe/index.ts` (UI + actions).
+- Migração: tabela `notification_preferences` + colunas em `tenant_subscriptions`.
+- (Mais tarde, ao ativar pagamento da plataforma) edge function nova `bitrix-plan-subscribe` ou consolidada dentro do iframe.
 
-## Fora de escopo
+## Fase 2 (depois) — Aba "Admin" para `leonardo.zogbi@gmail.com`
 
-- Redesign visual além de cards/modais (sem mudar paleta).
-- Refatorar o teste de integração em si — só muda de aba.
-- Tornar o "Atualizar Integração" verdadeiramente streaming (SSE) — fica como melhoria futura; usaremos stepper client-side.
+- Aparece só para usuários com `user_roles.role = 'admin'`. Seed: garantir que o `user_id` cujo email é `leonardo.zogbi@gmail.com` tenha role admin.
+- Listagem de tenants (profiles + tenant_subscriptions + bitrix_installations + uso do mês).
+- Ações: mudar plano de um tenant, suspender/reativar assinatura, conceder trial estendido, ver últimas transações, ver logs.
+- Tudo via edge function `bitrix-admin` com `has_role(auth.uid(), 'admin')` em cada action.
 
-## Validação
+Fica fora do escopo agora; criamos o gancho de role admin já na Fase 1 (apenas a verificação, sem UI).
 
-1. Abrir aba Configurações dentro do Bitrix: ver cabeçalho com Delivery Real, card Asaas resumido, Fiscal colapsado, Split.
-2. Clicar no lápis de Empresa → modal abre com dados pré-preenchidos → salvar persiste endereço.
-3. Clicar em Editar no card Asaas → modal mostra Ambiente, Chave API e bloco Webhook.
-4. Clicar em "ℹ️ Como configurar" → modal com passo a passo.
-5. Clicar em "Atualizar Integração" no topo → modal com stepper anima, ao final mostra resumo de campos/robôs criados (toast + lista).
-6. Aba Integrações agora exibe o card "Teste de Integração Asaas".
+## Pergunta antes de implementar
+
+Para a aba Plano você quer que a cobrança da assinatura do plano seja feita **pela conta Asaas da plataforma Thoth24** (precisarei pedir as chaves Asaas master numa próxima mensagem), ou **por enquanto deixar como "Solicitar contato comercial"** (botão que abre WhatsApp/email e a ativação é manual no admin)?
+
+Aguardo essa resposta junto com a aprovação para construir.
