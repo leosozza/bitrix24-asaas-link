@@ -1875,6 +1875,30 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
       });
     }
     
+    case 'repair_integration': {
+      // Reset all lazy-registration flags so next iframe load re-registers everything:
+      // pay systems, robots, placements, badges, and Deal UF_CRM_ASAAS_* fields.
+      const { error: updErr } = await supabase
+        .from('bitrix_installations')
+        .update({
+          pay_systems_registered: false,
+          robots_registered: false,
+          placements_registered: false,
+          badges_registered: false,
+          deal_fields_registered: false,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', inst.id);
+      
+      if (updErr) return jsonError(updErr.message);
+      
+      return jsonSuccess({
+        message: 'Integração marcada para reparo. Abra o app no Bitrix24 para concluir a recriação automática de robôs, campos personalizados e meios de pagamento.',
+      });
+    }
+    
+    
+    
     case 'get_config': {
       const { data: asaasConf } = await supabase
         .from('asaas_configurations')
