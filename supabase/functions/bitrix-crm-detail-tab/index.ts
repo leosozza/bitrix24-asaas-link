@@ -1015,6 +1015,7 @@ function copyText(t){ navigator.clipboard.writeText(t).then(function(){alert('Li
 onCycleChange();
 onEndModeChange();
 syncEntryType();
+if (typeof BX24 !== 'undefined') { BX24.init(function(){ try { BX24.fitWindow(); } catch(e){} }); }
 </script>
 </body></html>`;
 }
