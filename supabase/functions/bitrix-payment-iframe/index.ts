@@ -1041,7 +1041,13 @@ async function handleCrmTabLoad(body: any, supabase: any, inst: any): Promise<Re
       console.error('[CrmTabLoad] contact/charge error:', e.message);
     }
     
-    return jsonSuccess({ customer, charges, subscriptions, dealValue, savedFields });
+    // Also surface raw contact data so the UI can validate required fields client-side
+    let customerData: any = null;
+    try {
+      const ec2 = await getEntityContact(ep.endpoint, ep.token, entityType, entityId);
+      customerData = ec2.customerData;
+    } catch { /* ignore */ }
+    return jsonSuccess({ customer, charges, subscriptions, dealValue, savedFields, customerData });
   } catch (e: any) {
     return jsonError(e.message);
   }
@@ -1050,6 +1056,32 @@ async function handleCrmTabLoad(body: any, supabase: any, inst: any): Promise<Re
 async function updateDealUfFields(clientEndpoint: string, accessToken: string, entityType: string, entityId: string, fields: Record<string, any>) {
   if (entityType !== 'deal') return; // Lead writes skipped for now
   await callBitrixApi(clientEndpoint, 'crm.deal.update', { id: entityId, fields }, accessToken);
+}
+
+// Post a comment on the Deal/Lead timeline
+async function addTimelineComment(clientEndpoint: string, accessToken: string, entityType: 'deal' | 'lead', entityId: string, comment: string): Promise<void> {
+  try {
+    const ENTITY_TYPE = entityType === 'deal' ? 'deal' : 'lead';
+    await callBitrixApi(clientEndpoint, 'crm.timeline.comment.add', {
+      fields: { ENTITY_ID: Number(entityId), ENTITY_TYPE, COMMENT: comment },
+    }, accessToken);
+  } catch (e: any) {
+    console.error('[Timeline] comment.add failed:', e?.message || e);
+  }
+}
+
+function formatAsaasErrors(errors: any): string {
+  if (!errors) return '';
+  if (Array.isArray(errors)) {
+    return errors.map((e: any) => {
+      const code = e.code ? '[' + e.code + '] ' : '';
+      const field = e.field ? '(' + e.field + ') ' : '';
+      const desc = e.description || e.message || JSON.stringify(e);
+      return '- ' + code + field + desc;
+    }).join('\n');
+  }
+  if (typeof errors === 'string') return '- ' + errors;
+  return '- ' + JSON.stringify(errors);
 }
 
 async function handleCrmTabCreate(body: any, supabase: any, inst: any): Promise<Response> {
