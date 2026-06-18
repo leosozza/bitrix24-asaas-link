@@ -31,30 +31,23 @@ async function addTimelineComment(clientEndpoint: string, token: string, entityT
   }
 }
 
-// Ensure UF_CRM_ASAAS_* custom fields exist on Deal
 async function ensureCustomFields(supabase: any, installationId: string, clientEndpoint: string, token: string) {
   const { data: inst } = await supabase.from('bitrix_installations').select('custom_fields_created').eq('id', installationId).maybeSingle();
   if (inst?.custom_fields_created) return;
-
   const fields = [
     { FIELD_NAME: 'UF_CRM_ASAAS_CONTRACT_START', USER_TYPE_ID: 'date', EDIT_FORM_LABEL: { br: 'Início do Contrato' }, LIST_COLUMN_LABEL: { br: 'Início do Contrato' } },
     { FIELD_NAME: 'UF_CRM_ASAAS_CONTRACT_END', USER_TYPE_ID: 'date', EDIT_FORM_LABEL: { br: 'Fim do Contrato' }, LIST_COLUMN_LABEL: { br: 'Fim do Contrato' } },
     { FIELD_NAME: 'UF_CRM_ASAAS_ENTRY_VALUE', USER_TYPE_ID: 'double', EDIT_FORM_LABEL: { br: 'Valor da Entrada' }, LIST_COLUMN_LABEL: { br: 'Valor da Entrada' } },
     { FIELD_NAME: 'UF_CRM_ASAAS_ENTRY_INSTALLMENTS', USER_TYPE_ID: 'integer', EDIT_FORM_LABEL: { br: 'Parcelas da Entrada' }, LIST_COLUMN_LABEL: { br: 'Parcelas da Entrada' } },
     { FIELD_NAME: 'UF_CRM_ASAAS_RECURRING_VALUE', USER_TYPE_ID: 'double', EDIT_FORM_LABEL: { br: 'Valor Recorrente' }, LIST_COLUMN_LABEL: { br: 'Valor Recorrente' } },
-    { FIELD_NAME: 'UF_CRM_ASAAS_CYCLE', USER_TYPE_ID: 'string', EDIT_FORM_LABEL: { br: 'Ciclo (WEEKLY/BIWEEKLY/MONTHLY)' }, LIST_COLUMN_LABEL: { br: 'Ciclo' } },
-    { FIELD_NAME: 'UF_CRM_ASAAS_WEEKDAY', USER_TYPE_ID: 'integer', EDIT_FORM_LABEL: { br: 'Dia da Semana (0=Dom)' }, LIST_COLUMN_LABEL: { br: 'Dia da Semana' } },
+    { FIELD_NAME: 'UF_CRM_ASAAS_CYCLE', USER_TYPE_ID: 'string', EDIT_FORM_LABEL: { br: 'Ciclo' }, LIST_COLUMN_LABEL: { br: 'Ciclo' } },
+    { FIELD_NAME: 'UF_CRM_ASAAS_WEEKDAY', USER_TYPE_ID: 'integer', EDIT_FORM_LABEL: { br: 'Dia da Semana' }, LIST_COLUMN_LABEL: { br: 'Dia da Semana' } },
     { FIELD_NAME: 'UF_CRM_ASAAS_PAYMENT_METHOD', USER_TYPE_ID: 'string', EDIT_FORM_LABEL: { br: 'Forma de Pagamento' }, LIST_COLUMN_LABEL: { br: 'Forma de Pagamento' } },
   ];
-
   for (const f of fields) {
-    try {
-      await callBitrixApi(clientEndpoint, 'crm.deal.userfield.add', { fields: f }, token);
-    } catch (e) {
-      console.log('[Custom fields] skip', f.FIELD_NAME, e);
-    }
+    try { await callBitrixApi(clientEndpoint, 'crm.deal.userfield.add', { fields: f }, token); }
+    catch (e) { console.log('[Custom fields] skip', f.FIELD_NAME, e); }
   }
-
   await supabase.from('bitrix_installations').update({ custom_fields_created: true }).eq('id', installationId);
 }
 
@@ -64,6 +57,16 @@ async function getDealFields(clientEndpoint: string, token: string, entityType: 
     const r = await callBitrixApi(clientEndpoint, 'crm.deal.get', { id: parseInt(entityId) }, token);
     return r.result || {};
   } catch { return {}; }
+}
+
+async function getDealProducts(clientEndpoint: string, token: string, entityType: string, entityId: string): Promise<{ rows: any[]; total: number }> {
+  if (entityType !== 'deal') return { rows: [], total: 0 };
+  try {
+    const r = await callBitrixApi(clientEndpoint, 'crm.deal.productrows.get', { id: parseInt(entityId) }, token);
+    const rows = r.result || [];
+    const total = rows.reduce((s: number, p: any) => s + (Number(p.PRICE) || 0) * (Number(p.QUANTITY) || 0), 0);
+    return { rows, total };
+  } catch { return { rows: [], total: 0 }; }
 }
 
 async function getCrmCustomer(clientEndpoint: string, token: string, entityType: string, entityId: string): Promise<any> {
@@ -115,35 +118,49 @@ async function findOrCreateAsaasCustomer(base: string, key: string, name: string
   return c.id;
 }
 
-// ============ Installment date calc ============
 function addDaysISO(date: Date, days: number): string {
   const d = new Date(date); d.setDate(d.getDate() + days);
   return d.toISOString().split('T')[0];
 }
 
-function calcInstallments(start: string, end: string, cycle: string, weekday: number, monthday: number) {
-  const startD = new Date(start + 'T12:00:00');
-  const endD = new Date(end + 'T12:00:00');
+// Server-side schedule generator. Returns ISO dates list.
+function generateSchedule(startISO: string, cycle: string, weekday: number, count: number): string[] {
   const dates: string[] = [];
+  const start = new Date(startISO + 'T12:00:00');
   if (cycle === 'WEEKLY' || cycle === 'BIWEEKLY') {
     const step = cycle === 'WEEKLY' ? 7 : 14;
-    const cur = new Date(startD);
-    // Advance to next matching weekday
+    const cur = new Date(start);
     while (cur.getDay() !== weekday) cur.setDate(cur.getDate() + 1);
-    while (cur <= endD) {
+    for (let i = 0; i < count; i++) {
       dates.push(cur.toISOString().split('T')[0]);
       cur.setDate(cur.getDate() + step);
     }
-  } else if (cycle === 'MONTHLY') {
-    const cur = new Date(startD);
-    cur.setDate(monthday || startD.getDate());
-    if (cur < startD) cur.setMonth(cur.getMonth() + 1);
-    while (cur <= endD) {
+  } else { // MONTHLY
+    const cur = new Date(start);
+    for (let i = 0; i < count; i++) {
       dates.push(cur.toISOString().split('T')[0]);
       cur.setMonth(cur.getMonth() + 1);
     }
   }
   return dates;
+}
+
+function countOccurrences(startISO: string, endISO: string, cycle: string, weekday: number): number {
+  const start = new Date(startISO + 'T12:00:00');
+  const end = new Date(endISO + 'T12:00:00');
+  if (cycle === 'WEEKLY' || cycle === 'BIWEEKLY') {
+    const step = cycle === 'WEEKLY' ? 7 : 14;
+    const cur = new Date(start);
+    while (cur.getDay() !== weekday) cur.setDate(cur.getDate() + 1);
+    let n = 0;
+    while (cur <= end) { n++; cur.setDate(cur.getDate() + step); }
+    return n;
+  }
+  // MONTHLY
+  const cur = new Date(start);
+  let n = 0;
+  while (cur <= end) { n++; cur.setMonth(cur.getMonth() + 1); }
+  return n;
 }
 
 // ============ Placement / entity ============
@@ -164,14 +181,10 @@ function escHtml(v: any): string {
 function escAttr(v: any): string {
   return String(v ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, ' ');
 }
-// JSON safe for inline <script>: escape '<' and line separators that break parsing
 function safeJson(v: any): string {
   return JSON.stringify(v ?? null)
-    .replace(/</g, '\\u003c')
-    .replace(/>/g, '\\u003e')
-    .replace(/&/g, '\\u0026')
-    .replace(/\u2028/g, '\\u2028')
-    .replace(/\u2029/g, '\\u2029');
+    .replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
 }
 
 // ============ HTML ============
@@ -179,9 +192,9 @@ function html(ctx: {
   entityType: string; entityId: string; ownerTypeId: number;
   transactions: any[]; subscriptions: any[]; invoices: any[]; splits: any[]; contractPlan: any | null;
   memberId: string; domain: string; accessToken: string;
-  customer: any; dealFields: any;
+  customer: any; dealFields: any; dealProducts: { rows: any[]; total: number };
 }): string {
-  const { transactions, subscriptions, invoices, splits, contractPlan, customer, dealFields } = ctx;
+  const { transactions, subscriptions, invoices, splits, contractPlan, customer, dealFields, dealProducts } = ctx;
   const totalCharged = transactions.reduce((s, t) => s + (Number(t.amount) || 0), 0);
   const totalReceived = transactions.filter(t => ['confirmed', 'received'].includes(t.status)).reduce((s, t) => s + (Number(t.amount) || 0), 0);
   const totalOpen = transactions.filter(t => ['pending', 'overdue'].includes(t.status)).reduce((s, t) => s + (Number(t.amount) || 0), 0);
@@ -200,15 +213,11 @@ function html(ctx: {
     plus: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
     check: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
     pause: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>',
+    contract: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z"/><polyline points="14 2 14 7 19 7"/><path d="M9 15l2 2 4-5"/></svg>',
     charges: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
-    plan: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>',
     subs: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>',
     nfse: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15h6"/><path d="M9 18h3"/></svg>',
     split: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="18" r="3"/><circle cx="18" cy="18" r="3"/><circle cx="12" cy="6" r="3"/><path d="M12 9v3l-4 3"/><path d="M12 12l4 3"/></svg>',
-    user: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="7" r="4"/></svg>',
-    contract: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z"/><polyline points="14 2 14 7 19 7"/><path d="M9 15l2 2 4-5"/></svg>',
-    wallet: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7H5a2 2 0 0 1 0-4h12"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1"/><path d="M16 14h.01"/></svg>',
-    calendar: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
   };
 
   const txRows = transactions.map(t => `
@@ -259,12 +268,25 @@ function html(ctx: {
     </tr>`).join('') || `<tr><td colspan="4" class="empty">Nenhum split configurado.</td></tr>`;
 
   const planSummary = contractPlan ? `
-    <div class="info-banner">
-      <b>Plano atual:</b> Entrada R$ ${Number(contractPlan.entry_value).toFixed(2)} em ${contractPlan.entry_installments}x +
-      recorrência ${contractPlan.cycle} de R$ ${Number(contractPlan.recurring_value).toFixed(2)}
-      (${new Date(contractPlan.contract_start).toLocaleDateString('pt-BR')} → ${new Date(contractPlan.contract_end).toLocaleDateString('pt-BR')}).
-      <span class="badge">${contractPlan.status}</span>
-    </div>` : '';
+    <div class="card">
+      <div class="card-row"><b>Cliente:</b> ${escHtml(contractPlan.customer_name)} (${escHtml(contractPlan.customer_email)})</div>
+      <div class="card-row"><b>CPF/CNPJ:</b> ${escHtml(contractPlan.customer_document)}</div>
+      <div class="card-row"><b>Valor total contrato:</b> R$ ${Number((contractPlan.entry_value||0) + (contractPlan.recurring_value||0) * 1).toFixed(2)}</div>
+      <div class="card-row"><b>Entrada:</b> R$ ${Number(contractPlan.entry_value||0).toFixed(2)} em ${contractPlan.entry_installments || 1}x</div>
+      <div class="card-row"><b>Recorrência:</b> ${contractPlan.cycle} de R$ ${Number(contractPlan.recurring_value||0).toFixed(2)}</div>
+      <div class="card-row"><b>Período:</b> ${new Date(contractPlan.contract_start).toLocaleDateString('pt-BR')} → ${contractPlan.contract_end ? new Date(contractPlan.contract_end).toLocaleDateString('pt-BR') : '—'}</div>
+      <div class="card-row"><b>Forma de pagamento:</b> ${methodLabels[contractPlan.payment_method] || contractPlan.payment_method}</div>
+      <div class="card-row"><b>Status:</b> <span class="badge">${contractPlan.status || 'success'}</span></div>
+      ${contractPlan.error_message ? `<div class="card-row" style="color:#991b1b"><b>Avisos:</b> ${escHtml(contractPlan.error_message)}</div>` : ''}
+    </div>` : `<div class="info-banner">Nenhum contrato planejado ainda. Clique em <b>Nova Cobrança</b> para criar o cronograma de cobranças e/ou assinatura.</div>`;
+
+  const productRowsHtml = (dealProducts.rows || []).map((p: any) => `
+    <tr>
+      <td>${escHtml(p.PRODUCT_NAME || p.NAME || '-')}</td>
+      <td style="text-align:right">${Number(p.QUANTITY || 0)}</td>
+      <td style="text-align:right">R$ ${(Number(p.PRICE) || 0).toFixed(2).replace('.', ',')}</td>
+      <td style="text-align:right"><b>R$ ${((Number(p.PRICE)||0) * (Number(p.QUANTITY)||0)).toFixed(2).replace('.', ',')}</b></td>
+    </tr>`).join('') || `<tr><td colspan="4" class="empty">Nenhum produto no negócio.</td></tr>`;
 
   return `<!DOCTYPE html>
 <html lang="pt-BR"><head>
@@ -279,7 +301,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .metric .lbl{font-size:11px;color:#64748b;margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px}
 .metric .val{font-size:20px;font-weight:700}
 .tabs{display:flex;gap:4px;background:#fff;border-radius:10px;padding:4px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.06);overflow-x:auto}
-.tab{flex:1;min-width:110px;padding:10px 12px;border:0;background:transparent;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;color:#64748b;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.tab{flex:1;min-width:120px;padding:10px 12px;border:0;background:transparent;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;color:#64748b;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;gap:6px}
 .tab.active{background:linear-gradient(135deg,#2FC6F6,#0066cc);color:#fff}
 .panel{display:none;background:#fff;border-radius:12px;padding:18px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
 .panel.active{display:block}
@@ -291,11 +313,10 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
 .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
 .head h3{font-size:15px}
 .btn{background:linear-gradient(135deg,#2FC6F6,#0066cc);color:#fff;border:0;padding:9px 16px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:4px}
-.ico{display:inline-flex;align-items:center;justify-content:center;color:#475569}
-.ico:hover{color:#0066cc;background:#f1f5f9;border-radius:6px}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 .btn-sec{background:#f1f5f9;color:#475569;border:0;padding:9px 16px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer}
-.ico{background:transparent;border:0;cursor:pointer;font-size:14px;padding:2px 6px;text-decoration:none}
+.ico{background:transparent;border:0;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;color:#475569;text-decoration:none}
+.ico:hover{color:#0066cc;background:#f1f5f9;border-radius:6px}
 .actions{white-space:nowrap}
 .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
 .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
@@ -304,13 +325,29 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
 .fg label .req{color:#ef4444}
 .fg input,.fg select,.fg textarea{width:100%;padding:9px 11px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;font-family:inherit}
 .fg input:focus,.fg select:focus{border-color:#0066cc;box-shadow:0 0 0 3px rgba(0,102,204,.1)}
+.fg input[readonly]{background:#f8fafc;color:#475569}
 .section{border:1px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:14px}
-.section h4{font-size:13px;margin-bottom:10px;color:#0f172a;display:flex;align-items:center;gap:7px}.section h4 svg{color:#0066cc}
+.section h4{font-size:13px;margin-bottom:10px;color:#0f172a;display:flex;align-items:center;gap:7px}
+.section h4 .num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,#2FC6F6,#0066cc);color:#fff;font-size:11px;font-weight:700}
 .info-banner{background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px}
 .msg{margin-top:10px;padding:10px;border-radius:8px;font-size:12px;display:none}
 .msg.ok{display:block;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}
 .msg.err{display:block;background:#fef2f2;color:#991b1b;border:1px solid #fecaca;white-space:pre-wrap}
 .preview-table th,.preview-table td{padding:6px 8px;font-size:12px}
+.card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:12px}
+.card-row{padding:4px 0;font-size:13px}
+.radio-row{display:flex;gap:8px;flex-wrap:wrap}
+.radio-pill{flex:1;min-width:120px;border:1.5px solid #e2e8f0;border-radius:8px;padding:10px 12px;cursor:pointer;font-size:12px;font-weight:600;color:#475569;text-align:center;background:#fff;transition:.15s}
+.radio-pill.active{border-color:#0066cc;background:#eff6ff;color:#0066cc}
+.modal{display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:1000;align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto}
+.modal.open{display:flex}
+.modal-box{background:#fff;border-radius:14px;padding:22px;width:100%;max-width:760px;margin:auto}
+.modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.modal-head h3{font-size:16px}
+.summary-line{display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-bottom:1px dashed #e2e8f0}
+.summary-line:last-child{border:0}
+.balance-box{background:linear-gradient(135deg,#eff6ff,#dbeafe);border:1px solid #bfdbfe;border-radius:10px;padding:14px;margin:10px 0;display:flex;justify-content:space-between;align-items:center;font-size:14px}
+.balance-box b{font-size:18px;color:#0066cc}
 @media(max-width:700px){.metrics{grid-template-columns:repeat(2,1fr)}.grid,.grid-3{grid-template-columns:1fr}}
 </style></head>
 <body>
@@ -322,91 +359,35 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
 </div>
 
 <div class="tabs">
-  <button class="tab active" data-tab="charges">${ICONS.charges}<span>Cobranças</span></button>
-  <button class="tab" data-tab="plan">${ICONS.plan}<span>Planejamento</span></button>
+  <button class="tab active" data-tab="contract">${ICONS.contract}<span>Dados do Contrato</span></button>
+  <button class="tab" data-tab="charges">${ICONS.charges}<span>Cobranças</span></button>
   <button class="tab" data-tab="subs">${ICONS.subs}<span>Assinaturas</span></button>
   <button class="tab" data-tab="nfse">${ICONS.nfse}<span>NFSe</span></button>
   <button class="tab" data-tab="split">${ICONS.split}<span>Split</span></button>
 </div>
 
-<!-- COBRANÇAS -->
-<div class="panel active" id="panel-charges">
-  <div class="head"><h3>Cobranças</h3><button class="btn" onclick="openChargeModal()">${ICONS.plus}<span style="margin-left:6px">Nova Cobrança</span></button></div>
-  <table><thead><tr><th>Cliente</th><th>Valor</th><th>Método</th><th>Status</th><th>Venc.</th><th>Ações</th></tr></thead><tbody>${txRows}</tbody></table>
+<!-- DADOS DO CONTRATO -->
+<div class="panel active" id="panel-contract">
+  <div class="head">
+    <h3>Dados do Contrato</h3>
+    <button class="btn" onclick="openWizard()">${ICONS.plus}<span style="margin-left:6px">Nova Cobrança</span></button>
+  </div>
+  ${planSummary}
+  <h4 style="margin:14px 0 8px;font-size:13px;color:#475569">Produtos do Negócio</h4>
+  <table>
+    <thead><tr><th>Produto</th><th style="text-align:right">Qtd</th><th style="text-align:right">Preço</th><th style="text-align:right">Subtotal</th></tr></thead>
+    <tbody>${productRowsHtml}</tbody>
+    <tfoot><tr><td colspan="3" style="text-align:right;font-weight:700;padding-top:10px">Total dos Produtos</td><td style="text-align:right;font-weight:700;padding-top:10px;color:#0066cc">R$ ${Number(dealProducts.total || 0).toFixed(2).replace('.', ',')}</td></tr></tfoot>
+  </table>
 </div>
 
-<!-- PLANEJAMENTO -->
-<div class="panel" id="panel-plan">
-  ${planSummary}
-  <form id="planForm" onsubmit="event.preventDefault();submitPlan()">
-    <div class="section">
-      <h4>${ICONS.user} 1. Cliente</h4>
-      <div class="grid">
-        <div class="fg"><label>Nome <span class="req">*</span></label><input id="pl_name" required></div>
-        <div class="fg"><label>Email <span class="req">*</span></label><input id="pl_email" type="email" required></div>
-        <div class="fg"><label>CPF/CNPJ <span class="req">*</span></label><input id="pl_doc" required></div>
-        <div class="fg"><label>Telefone</label><input id="pl_phone"></div>
-      </div>
-    </div>
-
-    <div class="section">
-      <h4>${ICONS.contract} 2. Contrato</h4>
-      <div class="grid-3">
-        <div class="fg"><label>Início <span class="req">*</span></label><input id="pl_start" type="date" required onchange="recalc()"></div>
-        <div class="fg"><label>Fim <span class="req">*</span></label><input id="pl_end" type="date" required onchange="recalc()"></div>
-        <div class="fg"><label>Forma de Pagamento <span class="req">*</span></label>
-          <select id="pl_method" required>
-            <option value="BOLETO">Boleto</option>
-            <option value="PIX">PIX</option>
-            <option value="CREDIT_CARD">Cartão</option>
-          </select>
-        </div>
-      </div>
-      <div class="fg"><label>Observação das parcelas</label><input id="pl_note"></div>
-    </div>
-
-    <div class="section">
-      <h4>${ICONS.wallet} 3. Entrada parcelada (opcional)</h4>
-      <div class="grid-3">
-        <div class="fg"><label>Valor da entrada (R$)</label><input id="pl_entry" type="number" step="0.01" min="0" value="0" onchange="recalc()"></div>
-        <div class="fg"><label>Nº de parcelas</label>
-          <select id="pl_entryN" onchange="recalc()">
-            ${Array.from({length: 12}, (_, i) => `<option value="${i + 1}">${i + 1}x</option>`).join('')}
-          </select>
-        </div>
-        <div class="fg"><label>1º vencimento da entrada</label><input id="pl_entryDue" type="date" onchange="recalc()"></div>
-      </div>
-    </div>
-
-    <div class="section">
-      <h4>${ICONS.subs} 4. Recorrência (saldo)</h4>
-      <div class="grid-3">
-        <div class="fg"><label>Valor recorrente (R$) <span class="req">*</span></label><input id="pl_recVal" type="number" step="0.01" min="0" required onchange="recalc()"></div>
-        <div class="fg"><label>Ciclo <span class="req">*</span></label>
-          <select id="pl_cycle" required onchange="recalc()">
-            <option value="WEEKLY" selected>Semanal</option>
-            <option value="BIWEEKLY">Quinzenal</option>
-            <option value="MONTHLY">Mensal</option>
-          </select>
-        </div>
-        <div class="fg"><label>Dia da semana / mês</label>
-          <select id="pl_weekday" onchange="recalc()">
-            <option value="0">Domingo</option><option value="1">Segunda</option><option value="2">Terça</option>
-            <option value="3" selected>Quarta</option><option value="4">Quinta</option><option value="5">Sexta</option><option value="6">Sábado</option>
-          </select>
-        </div>
-      </div>
-    </div>
-
-    <div class="section">
-      <h4>${ICONS.calendar} 5. Pré-visualização do cronograma</h4>
-      <table class="preview-table"><thead><tr><th>#</th><th>Tipo</th><th>Forma</th><th>Vencimento</th><th>Valor</th></tr></thead>
-      <tbody id="pl_preview"><tr><td colspan="5" class="empty">Preencha os dados para gerar o cronograma.</td></tr></tbody></table>
-    </div>
-
-    <button class="btn" type="submit" id="pl_submit" style="width:100%;padding:12px">Enviar ao Asaas e Atualizar Negócio</button>
-    <div class="msg" id="pl_msg"></div>
-  </form>
+<!-- COBRANÇAS -->
+<div class="panel" id="panel-charges">
+  <div class="head">
+    <h3>Cobranças</h3>
+    <button class="btn" onclick="openWizard()">${ICONS.plus}<span style="margin-left:6px">Nova Cobrança</span></button>
+  </div>
+  <table><thead><tr><th>Cliente</th><th>Valor</th><th>Método</th><th>Status</th><th>Venc.</th><th>Ações</th></tr></thead><tbody>${txRows}</tbody></table>
 </div>
 
 <!-- ASSINATURAS -->
@@ -427,31 +408,127 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
   <table><thead><tr><th>Nome</th><th>Wallet ID</th><th>Valor</th><th>Ativo</th></tr></thead><tbody>${splitRows}</tbody></table>
 </div>
 
-<!-- MODAL: NOVA COBRANÇA -->
-<div id="chargeModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;align-items:center;justify-content:center">
-  <div style="background:#fff;border-radius:14px;padding:22px;width:92%;max-width:480px;max-height:90vh;overflow-y:auto">
-    <h3 style="margin-bottom:14px">Nova Cobrança</h3>
-    <div class="grid">
-      <div class="fg"><label>Valor <span class="req">*</span></label><input id="ch_amount" type="number" step="0.01" min="0.01" required></div>
-      <div class="fg"><label>Método</label><select id="ch_method"><option value="pix">PIX</option><option value="boleto">Boleto</option><option value="credit_card">Cartão</option></select></div>
-      <div class="fg"><label>Vencimento <span class="req">*</span></label><input id="ch_due" type="date" required></div>
-      <div class="fg"><label>Descrição</label><input id="ch_desc"></div>
+<!-- WIZARD: NOVA COBRANÇA -->
+<div class="modal" id="wizardModal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3>Nova Cobrança / Plano de Contrato</h3>
+      <button class="ico" onclick="closeWizard()" style="font-size:18px">${ICONS.x}</button>
     </div>
-    <div class="fg"><label>Cliente <span class="req">*</span></label><input id="ch_name" required></div>
-    <div class="grid">
-      <div class="fg"><label>Email <span class="req">*</span></label><input id="ch_email" type="email" required></div>
-      <div class="fg"><label>CPF/CNPJ <span class="req">*</span></label><input id="ch_doc" required></div>
-    </div>
-    <div class="grid-3">
-      <div class="fg"><label>Juros (% mês)</label><input id="ch_int" type="number" step="0.01" value="0"></div>
-      <div class="fg"><label>Multa (%)</label><input id="ch_fine" type="number" step="0.01" value="0"></div>
-      <div class="fg"><label>Desconto (R$)</label><input id="ch_disc" type="number" step="0.01" value="0"></div>
-    </div>
-    <div style="display:flex;gap:8px;margin-top:8px">
-      <button class="btn-sec" style="flex:1" onclick="closeChargeModal()">Cancelar</button>
-      <button class="btn" style="flex:1" id="ch_submit" onclick="submitCharge()">Criar</button>
-    </div>
-    <div class="msg" id="ch_msg"></div>
+
+    <form id="wizForm" onsubmit="event.preventDefault();submitWizard()">
+
+      <div class="section">
+        <h4><span class="num">1</span> Cliente</h4>
+        <div class="grid">
+          <div class="fg"><label>Nome <span class="req">*</span></label><input id="w_name" required></div>
+          <div class="fg"><label>Email <span class="req">*</span></label><input id="w_email" type="email" required></div>
+          <div class="fg"><label>CPF/CNPJ <span class="req">*</span></label><input id="w_doc" required></div>
+          <div class="fg"><label>Telefone</label><input id="w_phone"></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h4><span class="num">2</span> Valor Total</h4>
+        <div class="grid">
+          <div class="fg"><label>Valor total do contrato (R$) <span class="req">*</span></label><input id="w_total" type="number" step="0.01" min="0.01" required onchange="onTotalChange()"></div>
+          <div class="fg" style="display:flex;align-items:flex-end">
+            <button type="button" class="btn-sec" onclick="useProductsTotal()" style="width:100%">Usar total dos produtos (R$ ${Number(dealProducts.total||0).toFixed(2)})</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h4><span class="num">3</span> Entrada</h4>
+        <div class="grid-3">
+          <div class="fg"><label>Valor da entrada (R$)</label><input id="w_entry" type="number" step="0.01" min="0" value="0" onchange="recalc()"></div>
+          <div class="fg"><label>Tipo</label>
+            <div class="radio-row" id="w_entryType">
+              <div class="radio-pill active" data-v="cash" onclick="pickPill('w_entryType', this);recalc()">À vista</div>
+              <div class="radio-pill" data-v="installments" onclick="pickPill('w_entryType', this);recalc()">Parcelada</div>
+            </div>
+          </div>
+          <div class="fg" id="w_entryN_wrap" style="display:none"><label>Nº de parcelas</label>
+            <select id="w_entryN" onchange="recalc()">
+              ${Array.from({length: 11}, (_, i) => `<option value="${i + 2}">${i + 2}x</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="grid">
+          <div class="fg"><label>1º vencimento da entrada <span class="req">*</span></label><input id="w_entryDue" type="date" onchange="recalc()"></div>
+          <div class="fg"><label>Método da entrada</label>
+            <div class="radio-row" id="w_entryMethod">
+              <div class="radio-pill active" data-v="PIX" onclick="pickPill('w_entryMethod', this)">PIX</div>
+              <div class="radio-pill" data-v="BOLETO" onclick="pickPill('w_entryMethod', this)">Boleto</div>
+              <div class="radio-pill" data-v="CREDIT_CARD" onclick="pickPill('w_entryMethod', this)">Cartão</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="balance-box">
+        <span>Saldo a parcelar:</span>
+        <b id="w_balance">R$ 0,00</b>
+      </div>
+
+      <div class="section" id="w_balanceSection">
+        <h4><span class="num">4</span> Modalidade do Saldo</h4>
+        <div class="radio-row" id="w_mode" style="margin-bottom:12px">
+          <div class="radio-pill active" data-v="recurring" onclick="pickPill('w_mode', this);onModeChange()">Recorrente (Assinatura)</div>
+          <div class="radio-pill" data-v="installments" onclick="pickPill('w_mode', this);onModeChange()">Parcelamento Fixo</div>
+        </div>
+
+        <div class="grid-3">
+          <div class="fg"><label>Data de início <span class="req">*</span></label><input id="w_start" type="date" required onchange="recalc()"></div>
+          <div class="fg"><label>Ciclo <span class="req">*</span></label>
+            <select id="w_cycle" required onchange="onCycleChange();recalc()">
+              <option value="WEEKLY" selected>Semanal</option>
+              <option value="BIWEEKLY">Quinzenal</option>
+              <option value="MONTHLY">Mensal</option>
+            </select>
+          </div>
+          <div class="fg" id="w_weekday_wrap"><label>Dia da semana</label>
+            <select id="w_weekday" onchange="recalc()">
+              <option value="0">Domingo</option><option value="1">Segunda</option><option value="2">Terça</option>
+              <option value="3" selected>Quarta</option><option value="4">Quinta</option><option value="5">Sexta</option><option value="6">Sábado</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid-3">
+          <div class="fg"><label>Modo de término <span class="req">*</span></label>
+            <div class="radio-row" id="w_endMode">
+              <div class="radio-pill active" data-v="count" onclick="pickPill('w_endMode', this);onEndModeChange();recalc()">Nº parcelas</div>
+              <div class="radio-pill" data-v="date" onclick="pickPill('w_endMode', this);onEndModeChange();recalc()">Data fim</div>
+            </div>
+          </div>
+          <div class="fg" id="w_count_wrap"><label>Nº de parcelas <span class="req">*</span></label><input id="w_count" type="number" min="1" max="240" value="10" onchange="recalc()"></div>
+          <div class="fg" id="w_end_wrap" style="display:none"><label>Data fim <span class="req">*</span></label><input id="w_end" type="date" onchange="recalc()"></div>
+        </div>
+
+        <div class="fg"><label>Método de pagamento</label>
+          <div class="radio-row" id="w_recMethod">
+            <div class="radio-pill active" data-v="PIX" onclick="pickPill('w_recMethod', this)">PIX</div>
+            <div class="radio-pill" data-v="BOLETO" onclick="pickPill('w_recMethod', this)">Boleto</div>
+            <div class="radio-pill" data-v="CREDIT_CARD" onclick="pickPill('w_recMethod', this)">Cartão</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h4><span class="num">5</span> Cronograma</h4>
+        <table class="preview-table">
+          <thead><tr><th>#</th><th>Tipo</th><th>Vencimento</th><th>Valor</th><th>Método</th></tr></thead>
+          <tbody id="w_preview"><tr><td colspan="5" class="empty">Preencha os dados acima.</td></tr></tbody>
+        </table>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button type="button" class="btn-sec" style="flex:1" onclick="closeWizard()">Cancelar</button>
+        <button type="submit" class="btn" style="flex:2" id="w_submit">Enviar ao Asaas</button>
+      </div>
+      <div class="msg" id="w_msg"></div>
+    </form>
   </div>
 </div>
 
@@ -467,10 +544,11 @@ var CTX = {
   supabaseUrl: ${safeJson(SUPABASE_URL)},
   customer: ${safeJson(customer)},
   dealFields: ${safeJson(dealFields)},
+  dealProducts: ${safeJson(dealProducts)},
   contractPlan: ${safeJson(contractPlan)},
 };
 
-// Tab navigation
+// Tab nav
 document.querySelectorAll('.tab').forEach(function(t){
   t.addEventListener('click', function(){
     try {
@@ -479,154 +557,242 @@ document.querySelectorAll('.tab').forEach(function(t){
       t.classList.add('active');
       var panel = document.getElementById('panel-' + t.dataset.tab);
       if (panel) panel.classList.add('active');
-    } catch (e) { console.error('Falha ao alternar aba', e); }
+    } catch (e) { console.error('Tab error', e); }
   });
 });
 
-// Prefill plan from customer + deal custom fields
-function prefillPlan(){
-  var c = CTX.customer || {}, d = CTX.dealFields || {}, p = CTX.contractPlan;
-  document.getElementById('pl_name').value = (p && p.customer_name) || c.name || '';
-  document.getElementById('pl_email').value = (p && p.customer_email) || c.email || '';
-  document.getElementById('pl_doc').value = (p && p.customer_document) || c.document || '';
-  document.getElementById('pl_phone').value = c.phone || '';
-  document.getElementById('pl_start').value = (p && p.contract_start) || d.UF_CRM_ASAAS_CONTRACT_START || '';
-  document.getElementById('pl_end').value = (p && p.contract_end) || d.UF_CRM_ASAAS_CONTRACT_END || '';
-  if (p) {
-    document.getElementById('pl_method').value = p.payment_method || 'BOLETO';
-    document.getElementById('pl_entry').value = p.entry_value || 0;
-    document.getElementById('pl_entryN').value = p.entry_installments || 1;
-    document.getElementById('pl_entryDue').value = p.entry_first_due || '';
-    document.getElementById('pl_recVal').value = p.recurring_value || 0;
-    document.getElementById('pl_cycle').value = p.cycle || 'WEEKLY';
-    if (p.weekday != null) document.getElementById('pl_weekday').value = p.weekday;
-  } else if (d.UF_CRM_ASAAS_PAYMENT_METHOD) {
-    document.getElementById('pl_method').value = d.UF_CRM_ASAAS_PAYMENT_METHOD;
-    document.getElementById('pl_entry').value = d.UF_CRM_ASAAS_ENTRY_VALUE || 0;
-    document.getElementById('pl_entryN').value = d.UF_CRM_ASAAS_ENTRY_INSTALLMENTS || 1;
-    document.getElementById('pl_recVal').value = d.UF_CRM_ASAAS_RECURRING_VALUE || 0;
-    if (d.UF_CRM_ASAAS_CYCLE) document.getElementById('pl_cycle').value = d.UF_CRM_ASAAS_CYCLE;
-    if (d.UF_CRM_ASAAS_WEEKDAY != null) document.getElementById('pl_weekday').value = d.UF_CRM_ASAAS_WEEKDAY;
-  }
+function pickPill(groupId, el){
+  var g = document.getElementById(groupId);
+  if (!g) return;
+  g.querySelectorAll('.radio-pill').forEach(function(p){p.classList.remove('active')});
+  el.classList.add('active');
+}
+function pillVal(groupId){
+  var g = document.getElementById(groupId);
+  if (!g) return null;
+  var a = g.querySelector('.radio-pill.active');
+  return a ? a.dataset.v : null;
+}
+function val(id){ var e = document.getElementById(id); return e ? e.value : ''; }
+
+function useProductsTotal(){
+  document.getElementById('w_total').value = (CTX.dealProducts && CTX.dealProducts.total) || 0;
+  onTotalChange();
+}
+
+function onTotalChange(){ recalc(); }
+
+function onModeChange(){
+  // no extra dynamic UI for now — cronograma redraws
   recalc();
 }
 
+function onCycleChange(){
+  var cycle = val('w_cycle');
+  document.getElementById('w_weekday_wrap').style.display = (cycle === 'MONTHLY') ? 'none' : 'block';
+}
+
+function onEndModeChange(){
+  var m = pillVal('w_endMode');
+  document.getElementById('w_count_wrap').style.display = (m === 'count') ? 'block' : 'none';
+  document.getElementById('w_end_wrap').style.display = (m === 'date') ? 'block' : 'none';
+}
+
+// entry type pill triggers parcelas wrap visibility
+function syncEntryType(){
+  var t = pillVal('w_entryType');
+  document.getElementById('w_entryN_wrap').style.display = (t === 'installments') ? 'block' : 'none';
+}
+
+// schedule calc
+function calcRecurringDates(startISO, cycle, weekday, count){
+  var dates = [];
+  var d = new Date(startISO + 'T12:00:00');
+  if (cycle === 'WEEKLY' || cycle === 'BIWEEKLY') {
+    var step = cycle === 'WEEKLY' ? 7 : 14;
+    while (d.getDay() !== weekday) d.setDate(d.getDate() + 1);
+    for (var i = 0; i < count; i++) {
+      dates.push(d.toISOString().split('T')[0]);
+      d.setDate(d.getDate() + step);
+    }
+  } else {
+    for (var j = 0; j < count; j++) {
+      dates.push(d.toISOString().split('T')[0]);
+      d.setMonth(d.getMonth() + 1);
+    }
+  }
+  return dates;
+}
+
+function countOccur(startISO, endISO, cycle, weekday){
+  var s = new Date(startISO + 'T12:00:00');
+  var e = new Date(endISO + 'T12:00:00');
+  if (cycle === 'WEEKLY' || cycle === 'BIWEEKLY') {
+    var step = cycle === 'WEEKLY' ? 7 : 14;
+    var c = new Date(s);
+    while (c.getDay() !== weekday) c.setDate(c.getDate() + 1);
+    var n = 0; while (c <= e) { n++; c.setDate(c.getDate() + step); }
+    return n;
+  }
+  var c2 = new Date(s); var n2 = 0;
+  while (c2 <= e) { n2++; c2.setMonth(c2.getMonth() + 1); }
+  return n2;
+}
+
 function recalc(){
-  var entry = parseFloat(document.getElementById('pl_entry').value) || 0;
-  var entryN = parseInt(document.getElementById('pl_entryN').value) || 1;
-  var entryDue = document.getElementById('pl_entryDue').value;
-  var start = document.getElementById('pl_start').value;
-  var end = document.getElementById('pl_end').value;
-  var cycle = document.getElementById('pl_cycle').value;
-  var weekday = parseInt(document.getElementById('pl_weekday').value);
-  var recVal = parseFloat(document.getElementById('pl_recVal').value) || 0;
-  var method = document.getElementById('pl_method').value;
+  syncEntryType();
+  var total = parseFloat(val('w_total')) || 0;
+  var entry = parseFloat(val('w_entry')) || 0;
+  var entryType = pillVal('w_entryType') || 'cash';
+  var entryN = entryType === 'installments' ? (parseInt(val('w_entryN')) || 1) : 1;
+  var entryDue = val('w_entryDue');
+  var entryMethod = pillVal('w_entryMethod') || 'PIX';
+  var balance = Math.max(0, total - entry);
+  document.getElementById('w_balance').textContent = 'R$ ' + balance.toFixed(2).replace('.', ',');
+
+  // entry rows
   var rows = [];
-  // Entry installments
-  if (entry > 0 && entryN > 0 && entryDue) {
+  if (entry > 0 && entryDue) {
     var per = Math.round((entry / entryN) * 100) / 100;
     var d0 = new Date(entryDue + 'T12:00:00');
     for (var i = 0; i < entryN; i++) {
-      var d = new Date(d0); d.setDate(d.getDate() + i * 30);
-      var val = (i === entryN - 1) ? (entry - per * (entryN - 1)) : per;
-      rows.push({n: i+1, type: 'Entrada', method: method, due: d.toISOString().split('T')[0], val: val});
+      var d = new Date(d0); d.setMonth(d.getMonth() + i);
+      var v = (i === entryN - 1) ? (entry - per * (entryN - 1)) : per;
+      rows.push({n: rows.length+1, type: 'Entrada ' + (i+1) + '/' + entryN, due: d.toISOString().split('T')[0], val: v, method: entryMethod});
     }
   }
-  // Recurring
-  if (recVal > 0 && start && end) {
-    var dates = calcDates(start, end, cycle, weekday);
-    for (var j = 0; j < dates.length; j++) {
-      rows.push({n: (rows.length + 1), type: 'Recorrente', method: method, due: dates[j], val: recVal});
+
+  // balance schedule
+  var mode = pillVal('w_mode') || 'recurring';
+  var start = val('w_start');
+  var cycle = val('w_cycle') || 'WEEKLY';
+  var weekday = parseInt(val('w_weekday'));
+  var endMode = pillVal('w_endMode') || 'count';
+  var count = parseInt(val('w_count')) || 0;
+  var endISO = val('w_end');
+  var recMethod = pillVal('w_recMethod') || 'PIX';
+
+  if (balance > 0 && start) {
+    var n = endMode === 'count' ? count : (endISO ? countOccur(start, endISO, cycle, weekday) : 0);
+    if (n > 0) {
+      var per2 = Math.round((balance / n) * 100) / 100;
+      var dates = calcRecurringDates(start, cycle, weekday, n);
+      // for recurring (subscription), all values equal balance/n; for installments, also balance/n (last adjusts)
+      for (var k = 0; k < dates.length; k++) {
+        var v2 = (k === dates.length - 1) ? (balance - per2 * (dates.length - 1)) : per2;
+        var typeLabel = mode === 'recurring' ? ('Recorrente ' + (k+1)) : ('Parcela ' + (k+1) + '/' + dates.length);
+        rows.push({n: rows.length+1, type: typeLabel, due: dates[k], val: v2, method: recMethod});
+      }
+      // auto-fill end date if count mode
+      if (endMode === 'count' && dates.length) {
+        document.getElementById('w_end').value = dates[dates.length - 1];
+      }
+      // auto-fill count if date mode
+      if (endMode === 'date') {
+        document.getElementById('w_count').value = n;
+      }
     }
   }
-  var tbody = document.getElementById('pl_preview');
-  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="5" class="empty">Preencha os dados para gerar o cronograma.</td></tr>'; return; }
+
+  var tbody = document.getElementById('w_preview');
+  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="5" class="empty">Preencha os dados acima.</td></tr>'; return; }
   tbody.innerHTML = rows.map(function(r){
-    return '<tr><td>'+r.n+'</td><td>'+r.type+'</td><td>'+r.method+'</td><td>'+new Date(r.due).toLocaleDateString('pt-BR')+'</td><td>R$ '+r.val.toFixed(2).replace('.',',')+'</td></tr>';
+    return '<tr><td>'+r.n+'</td><td>'+r.type+'</td><td>'+new Date(r.due).toLocaleDateString('pt-BR')+'</td><td>R$ '+r.val.toFixed(2).replace('.',',')+'</td><td>'+r.method+'</td></tr>';
   }).join('');
 }
 
-function calcDates(start, end, cycle, weekday){
-  var sD = new Date(start+'T12:00:00'), eD = new Date(end+'T12:00:00'), arr = [];
-  if (cycle === 'WEEKLY' || cycle === 'BIWEEKLY') {
-    var step = cycle === 'WEEKLY' ? 7 : 14;
-    var c = new Date(sD); while (c.getDay() !== weekday) c.setDate(c.getDate()+1);
-    while (c <= eD) { arr.push(c.toISOString().split('T')[0]); c.setDate(c.getDate()+step); }
-  } else {
-    var c = new Date(sD);
-    while (c <= eD) { arr.push(c.toISOString().split('T')[0]); c.setMonth(c.getMonth()+1); }
+function openWizard(){
+  var c = CTX.customer || {}, p = CTX.contractPlan;
+  document.getElementById('w_name').value = (p && p.customer_name) || c.name || '';
+  document.getElementById('w_email').value = (p && p.customer_email) || c.email || '';
+  document.getElementById('w_doc').value = (p && p.customer_document) || c.document || '';
+  document.getElementById('w_phone').value = c.phone || '';
+  var prodTotal = (CTX.dealProducts && CTX.dealProducts.total) || 0;
+  document.getElementById('w_total').value = (p && ((p.entry_value||0) + (p.recurring_value||0))) || prodTotal || '';
+  var d7 = new Date(); d7.setDate(d7.getDate()+7);
+  document.getElementById('w_start').value = (p && p.contract_start) || d7.toISOString().split('T')[0];
+  document.getElementById('w_entryDue').value = (p && p.entry_first_due) || d7.toISOString().split('T')[0];
+  if (p) {
+    document.getElementById('w_entry').value = p.entry_value || 0;
+    if (p.cycle) document.getElementById('w_cycle').value = p.cycle;
+    if (p.weekday != null) document.getElementById('w_weekday').value = p.weekday;
   }
-  return arr;
+  onCycleChange();
+  onEndModeChange();
+  syncEntryType();
+  recalc();
+  document.getElementById('wizardModal').classList.add('open');
 }
 
-async function submitPlan(){
-  var btn = document.getElementById('pl_submit'), msg = document.getElementById('pl_msg');
+function closeWizard(){ document.getElementById('wizardModal').classList.remove('open'); }
+
+async function submitWizard(){
+  var btn = document.getElementById('w_submit'), msg = document.getElementById('w_msg');
   msg.className = 'msg'; msg.textContent = '';
   btn.disabled = true; btn.textContent = 'Enviando ao Asaas...';
   try {
-    var payload = ctxPayload({
+    var total = parseFloat(val('w_total')) || 0;
+    var entry = parseFloat(val('w_entry')) || 0;
+    var entryType = pillVal('w_entryType') || 'cash';
+    var balance = Math.max(0, total - entry);
+    var endMode = pillVal('w_endMode') || 'count';
+    var count = parseInt(val('w_count')) || 0;
+    var endISO = val('w_end');
+    var cycle = val('w_cycle');
+    var weekday = parseInt(val('w_weekday'));
+    var start = val('w_start');
+
+    var n = (balance > 0 && start) ? (endMode === 'count' ? count : (endISO ? countOccur(start, endISO, cycle, weekday) : 0)) : 0;
+    var recVal = n > 0 ? Math.round((balance / n) * 100) / 100 : 0;
+    var computedEnd = endISO;
+    if (endMode === 'count' && n > 0) {
+      var dates = calcRecurringDates(start, cycle, weekday, n);
+      computedEnd = dates[dates.length - 1];
+    }
+
+    var payload = {
       action: 'submit_contract_plan',
-      name: val('pl_name'), email: val('pl_email'), doc: val('pl_doc'), phone: val('pl_phone'),
-      start: val('pl_start'), end: val('pl_end'),
-      method: val('pl_method'), note: val('pl_note'),
-      entry: parseFloat(val('pl_entry')) || 0, entryN: parseInt(val('pl_entryN')) || 1, entryDue: val('pl_entryDue'),
-      recVal: parseFloat(val('pl_recVal')) || 0, cycle: val('pl_cycle'), weekday: parseInt(val('pl_weekday')),
-    });
+      entityType: CTX.entityType, entityId: CTX.entityId,
+      memberId: CTX.memberId, domain: CTX.domain, accessToken: CTX.accessToken,
+      name: val('w_name'), email: val('w_email'), doc: val('w_doc'), phone: val('w_phone'),
+      total: total,
+      entry: entry,
+      entryN: entryType === 'installments' ? (parseInt(val('w_entryN')) || 1) : 1,
+      entryDue: val('w_entryDue'),
+      entryMethod: pillVal('w_entryMethod') || 'PIX',
+      balance: balance,
+      mode: pillVal('w_mode') || 'recurring',
+      recVal: recVal,
+      recCount: n,
+      cycle: cycle,
+      weekday: weekday,
+      start: start,
+      end: computedEnd,
+      method: pillVal('w_recMethod') || 'PIX',
+    };
+
     var r = await fetch(CTX.supabaseUrl + '/functions/v1/bitrix-crm-detail-tab', {
       method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload),
     });
     var data = await r.json();
     if (data.success) {
-      msg.className = 'msg ok'; msg.textContent = '✅ Planejamento enviado! ' + (data.summary || '');
-      setTimeout(function(){ location.reload(); }, 1800);
+      msg.className = 'msg ok'; msg.textContent = '✅ ' + (data.summary || 'Enviado!');
+      setTimeout(function(){ location.reload(); }, 1500);
     } else {
       msg.className = 'msg err'; msg.textContent = '❌ ' + (data.error || 'Falha ao enviar') + (data.detail ? '\\n' + JSON.stringify(data.detail, null, 2) : '');
     }
   } catch (e) {
     msg.className = 'msg err'; msg.textContent = '❌ ' + e.message;
   }
-  btn.disabled = false; btn.textContent = 'Enviar ao Asaas e Atualizar Negócio';
-}
-
-function val(id){ return document.getElementById(id).value; }
-function ctxPayload(extra){ return Object.assign({}, {entityType: CTX.entityType, entityId: CTX.entityId, ownerTypeId: CTX.ownerTypeId, memberId: CTX.memberId, domain: CTX.domain, accessToken: CTX.accessToken}, extra); }
-
-function openChargeModal(){
-  document.getElementById('ch_name').value = CTX.customer.name || '';
-  document.getElementById('ch_email').value = CTX.customer.email || '';
-  document.getElementById('ch_doc').value = CTX.customer.document || '';
-  var due = new Date(); due.setDate(due.getDate()+3);
-  document.getElementById('ch_due').value = due.toISOString().split('T')[0];
-  document.getElementById('chargeModal').style.display = 'flex';
-}
-function closeChargeModal(){ document.getElementById('chargeModal').style.display = 'none'; }
-
-async function submitCharge(){
-  var btn = document.getElementById('ch_submit'), msg = document.getElementById('ch_msg');
-  msg.className='msg'; btn.disabled=true; btn.textContent='Criando...';
-  try {
-    var payload = ctxPayload({
-      action: 'create_charge',
-      amount: val('ch_amount'), paymentMethod: val('ch_method'), dueDate: val('ch_due'),
-      description: val('ch_desc'),
-      customerName: val('ch_name'), customerEmail: val('ch_email'), customerDocument: val('ch_doc'),
-      interest: parseFloat(val('ch_int'))||0, fine: parseFloat(val('ch_fine'))||0, discount: parseFloat(val('ch_disc'))||0,
-    });
-    var r = await fetch(CTX.supabaseUrl + '/functions/v1/bitrix-crm-detail-tab', {
-      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload),
-    });
-    var d = await r.json();
-    if (d.success) { msg.className='msg ok'; msg.textContent='✅ Cobrança criada!'; setTimeout(function(){location.reload()}, 1200); }
-    else { msg.className='msg err'; msg.textContent='❌ ' + (d.error||'Erro'); }
-  } catch(e){ msg.className='msg err'; msg.textContent='❌ '+e.message; }
-  btn.disabled=false; btn.textContent='Criar';
+  btn.disabled = false; btn.textContent = 'Enviar ao Asaas';
 }
 
 async function rowAction(action, id){
   if (!confirm('Confirmar ação: ' + action + '?')) return;
   try {
+    var payload = {action: action, targetId: id, entityType: CTX.entityType, entityId: CTX.entityId, memberId: CTX.memberId, domain: CTX.domain, accessToken: CTX.accessToken};
     var r = await fetch(CTX.supabaseUrl + '/functions/v1/bitrix-crm-detail-tab', {
-      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(ctxPayload({action: action, targetId: id})),
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload),
     });
     var d = await r.json();
     if (d.success) location.reload(); else alert('Erro: ' + (d.error||'desconhecido'));
@@ -635,7 +801,10 @@ async function rowAction(action, id){
 
 function copyText(t){ navigator.clipboard.writeText(t).then(function(){alert('Link copiado!')}); }
 
-prefillPlan();
+// Initial UI sync
+onCycleChange();
+onEndModeChange();
+syncEntryType();
 </script>
 </body></html>`;
 }
@@ -657,7 +826,8 @@ serve(async (req) => {
           entityType: ei?.type || 'deal', entityId, ownerTypeId: ei?.ownerTypeId || 2,
           transactions: [], subscriptions: [], invoices: [], splits: [], contractPlan: null,
           memberId, domain, accessToken: 'preview_token',
-          customer: { name: 'João Silva', email: 'joao@ex.com', document: '', phone: '' }, dealFields: {},
+          customer: { name: 'João Silva', email: 'joao@ex.com', document: '', phone: '' },
+          dealFields: {}, dealProducts: { rows: [], total: 0 },
         });
         return new Response(h, { headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' } });
       }
@@ -672,7 +842,6 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // ===== JSON actions =====
     if (contentType.includes('application/json')) {
       const j = JSON.parse(bodyText);
       const action = j.action;
@@ -686,43 +855,6 @@ serve(async (req) => {
       const base = asaasBase(cfg.environment);
       const clientEndpoint = installation.client_endpoint || (installation.domain ? `https://${installation.domain}/rest/` : null);
 
-      // -------- create_charge --------
-      if (action === 'create_charge') {
-        try {
-          const amount = parseFloat(j.amount);
-          if (!amount || amount <= 0) return json({ success: false, error: 'Valor inválido' });
-          const customerId = await findOrCreateAsaasCustomer(base, cfg.api_key, j.customerName, j.customerEmail, j.customerDocument);
-          const billingMap: Record<string, string> = { pix: 'PIX', boleto: 'BOLETO', credit_card: 'CREDIT_CARD' };
-          const body: any = {
-            customer: customerId,
-            billingType: billingMap[j.paymentMethod] || 'PIX',
-            value: amount,
-            dueDate: j.dueDate || addDaysISO(new Date(), 3),
-            description: j.description || `Cobrança ${j.entityType} #${j.entityId}`,
-            externalReference: `bitrix_${j.entityType}_${j.entityId}`,
-          };
-          if (j.interest > 0) body.interest = { value: j.interest };
-          if (j.fine > 0) body.fine = { value: j.fine };
-          if (j.discount > 0) body.discount = { value: j.discount, dueDateLimitDays: 0 };
-          const r = await fetch(`${base}/payments`, { method: 'POST', headers: { 'access_token': cfg.api_key, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-          const p = await r.json();
-          if (p.errors) return json({ success: false, error: p.errors[0]?.description });
-
-          await supabase.from('transactions').insert({
-            tenant_id: installation.tenant_id, asaas_id: p.id, amount,
-            payment_method: j.paymentMethod || 'pix', status: 'pending',
-            customer_name: j.customerName, customer_email: j.customerEmail, customer_document: j.customerDocument,
-            due_date: p.dueDate, payment_url: p.invoiceUrl,
-            bitrix_entity_type: j.entityType === 'lead' ? 'lead' : 'deal', bitrix_entity_id: j.entityId,
-          });
-          if (clientEndpoint && j.accessToken) {
-            await addTimelineComment(clientEndpoint, j.accessToken, j.entityType, j.entityId, `✅ Cobrança Asaas criada: R$ ${amount.toFixed(2)} — ${p.invoiceUrl || p.id}`);
-          }
-          return json({ success: true, paymentUrl: p.invoiceUrl });
-        } catch (e: any) { return json({ success: false, error: e.message }); }
-      }
-
-      // -------- cancel/refund/resend/cancel_subscription --------
       if (action === 'cancel_charge') {
         const r = await fetch(`${base}/payments/${j.targetId}`, { method: 'DELETE', headers: { 'access_token': cfg.api_key } });
         const d = await r.json();
@@ -736,8 +868,7 @@ serve(async (req) => {
         return json({ success: false, error: d.errors?.[0]?.description || 'Falha' });
       }
       if (action === 'resend_notification') {
-        const r = await fetch(`${base}/payments/${j.targetId}/notifications`, { headers: { 'access_token': cfg.api_key } });
-        await r.json();
+        await fetch(`${base}/payments/${j.targetId}/notifications`, { headers: { 'access_token': cfg.api_key } });
         return json({ success: true });
       }
       if (action === 'cancel_subscription') {
@@ -747,7 +878,6 @@ serve(async (req) => {
         return json({ success: false, error: d.errors?.[0]?.description || 'Falha' });
       }
 
-      // -------- issue_invoice (proxy) --------
       if (action === 'issue_invoice') {
         try {
           const r = await fetch(`${SUPABASE_URL}/functions/v1/asaas-invoice-process`, {
@@ -759,20 +889,19 @@ serve(async (req) => {
         } catch (e: any) { return json({ success: false, error: e.message }); }
       }
 
-      // -------- submit_contract_plan --------
+      // -------- submit_contract_plan (wizard) --------
       if (action === 'submit_contract_plan') {
         const errors: string[] = [];
         if (!j.name) errors.push('Nome do cliente');
         if (!j.email) errors.push('Email');
         if (!j.doc) errors.push('CPF/CNPJ');
-        if (!j.start) errors.push('Data início');
-        if (!j.end) errors.push('Data fim');
-        if (!j.method) errors.push('Forma de pagamento');
-        if (!j.recVal || j.recVal <= 0) errors.push('Valor recorrente');
+        if (!j.total || j.total <= 0) errors.push('Valor total');
         if (j.entry > 0 && !j.entryDue) errors.push('Vencimento da entrada');
+        const hasBalance = (j.balance || 0) > 0;
+        if (hasBalance && !j.start) errors.push('Data de início');
+        if (hasBalance && (!j.recCount || j.recCount <= 0)) errors.push('Nº de parcelas/ocorrências');
         if (errors.length) return json({ success: false, error: 'Campos obrigatórios: ' + errors.join(', ') });
 
-        // Ensure custom fields exist
         if (clientEndpoint && j.accessToken && j.entityType === 'deal') {
           await ensureCustomFields(supabase, installation.id, clientEndpoint, j.accessToken);
         }
@@ -783,20 +912,23 @@ serve(async (req) => {
 
         try {
           const customerId = await findOrCreateAsaasCustomer(base, cfg.api_key, j.name, j.email, j.doc, j.phone);
-          const billingType = j.method;
 
-          // Entry installments
-          if (j.entry > 0 && j.entryN > 0 && j.entryDue) {
-            const per = Math.round((j.entry / j.entryN) * 100) / 100;
+          const billingMapLower = (bt: string) => bt.toLowerCase() === 'credit_card' ? 'credit_card' : bt.toLowerCase();
+
+          // Entry charges (monthly consecutive)
+          if (j.entry > 0 && j.entryDue) {
+            const entryN = j.entryN || 1;
+            const entryMethod = j.entryMethod || 'PIX';
+            const per = Math.round((j.entry / entryN) * 100) / 100;
             const d0 = new Date(j.entryDue + 'T12:00:00');
-            for (let i = 0; i < j.entryN; i++) {
-              const d = new Date(d0); d.setDate(d.getDate() + i * 30);
-              const v = i === j.entryN - 1 ? Number((j.entry - per * (j.entryN - 1)).toFixed(2)) : per;
+            for (let i = 0; i < entryN; i++) {
+              const d = new Date(d0); d.setMonth(d.getMonth() + i);
+              const v = i === entryN - 1 ? Number((j.entry - per * (entryN - 1)).toFixed(2)) : per;
               const r = await fetch(`${base}/payments`, {
                 method: 'POST', headers: { 'access_token': cfg.api_key, 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                  customer: customerId, billingType, value: v, dueDate: d.toISOString().split('T')[0],
-                  description: `Entrada ${i + 1}/${j.entryN} — ${j.note || j.entityType + ' #' + j.entityId}`,
+                  customer: customerId, billingType: entryMethod, value: v, dueDate: d.toISOString().split('T')[0],
+                  description: `Entrada ${i + 1}/${entryN} — ${j.entityType} #${j.entityId}`,
                   externalReference: `bitrix_${j.entityType}_${j.entityId}_entry_${i + 1}`,
                 }),
               });
@@ -805,55 +937,84 @@ serve(async (req) => {
               createdCharges.push(p.id);
               await supabase.from('transactions').insert({
                 tenant_id: installation.tenant_id, asaas_id: p.id, amount: v,
-                payment_method: billingType.toLowerCase() === 'credit_card' ? 'credit_card' : billingType.toLowerCase(),
-                status: 'pending', customer_name: j.name, customer_email: j.email, customer_document: j.doc,
+                payment_method: billingMapLower(entryMethod), status: 'pending',
+                customer_name: j.name, customer_email: j.email, customer_document: j.doc,
                 due_date: p.dueDate, payment_url: p.invoiceUrl,
                 bitrix_entity_type: j.entityType === 'lead' ? 'lead' : 'deal', bitrix_entity_id: j.entityId,
               });
             }
           }
 
-          // Recurring subscription
-          if (j.recVal > 0) {
-            const dates = calcInstallments(j.start, j.end, j.cycle, j.weekday, new Date(j.start).getDate());
-            if (dates.length) {
+          // Balance: recurring (subscription) or installments (multiple charges)
+          if (hasBalance && j.recCount > 0) {
+            const cycle = j.cycle || 'WEEKLY';
+            const weekday = parseInt(j.weekday);
+            const method = j.method || 'PIX';
+            const dates = generateSchedule(j.start, cycle, weekday, j.recCount);
+            const per = Math.round((j.balance / j.recCount) * 100) / 100;
+
+            if (j.mode === 'recurring') {
               const r = await fetch(`${base}/subscriptions`, {
                 method: 'POST', headers: { 'access_token': cfg.api_key, 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                  customer: customerId, billingType, value: j.recVal,
-                  nextDueDate: dates[0], cycle: j.cycle, endDate: j.end,
-                  description: `Recorrência ${j.cycle} — ${j.note || j.entityType + ' #' + j.entityId}`,
+                  customer: customerId, billingType: method, value: per,
+                  nextDueDate: dates[0], cycle, endDate: dates[dates.length - 1],
+                  description: `Recorrência ${cycle} — ${j.entityType} #${j.entityId}`,
                   externalReference: `bitrix_${j.entityType}_${j.entityId}_sub`,
                 }),
               });
               const s = await r.json();
-              if (s.errors) issuesArr.push(`Recorrência: ${s.errors[0]?.description}`);
+              if (s.errors) issuesArr.push(`Assinatura: ${s.errors[0]?.description}`);
               else {
                 subscriptionId = s.id;
                 await supabase.from('subscriptions').insert({
                   tenant_id: installation.tenant_id, asaas_id: s.id, customer_id: customerId,
                   customer_name: j.name, customer_email: j.email, customer_document: j.doc,
-                  value: j.recVal, billing_type: billingType.toLowerCase() === 'credit_card' ? 'credit_card' : billingType.toLowerCase(),
-                  cycle: j.cycle.toLowerCase(), description: j.note || '', next_due_date: dates[0], status: 'active',
+                  value: per, billing_type: billingMapLower(method),
+                  cycle: cycle.toLowerCase(), description: `Recorrência ${cycle}`, next_due_date: dates[0], status: 'active',
+                  bitrix_entity_type: j.entityType === 'lead' ? 'lead' : 'deal', bitrix_entity_id: j.entityId,
+                });
+              }
+            } else {
+              // installments → cobranças individuais
+              for (let i = 0; i < dates.length; i++) {
+                const v = i === dates.length - 1 ? Number((j.balance - per * (dates.length - 1)).toFixed(2)) : per;
+                const r = await fetch(`${base}/payments`, {
+                  method: 'POST', headers: { 'access_token': cfg.api_key, 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    customer: customerId, billingType: method, value: v, dueDate: dates[i],
+                    description: `Parcela ${i + 1}/${dates.length} — ${j.entityType} #${j.entityId}`,
+                    externalReference: `bitrix_${j.entityType}_${j.entityId}_inst_${i + 1}`,
+                  }),
+                });
+                const p = await r.json();
+                if (p.errors) { issuesArr.push(`Parcela ${i + 1}: ${p.errors[0]?.description}`); continue; }
+                createdCharges.push(p.id);
+                await supabase.from('transactions').insert({
+                  tenant_id: installation.tenant_id, asaas_id: p.id, amount: v,
+                  payment_method: billingMapLower(method), status: 'pending',
+                  customer_name: j.name, customer_email: j.email, customer_document: j.doc,
+                  due_date: p.dueDate, payment_url: p.invoiceUrl,
                   bitrix_entity_type: j.entityType === 'lead' ? 'lead' : 'deal', bitrix_entity_id: j.entityId,
                 });
               }
             }
           }
 
-          // Persist plan
           await supabase.from('contract_plans').insert({
             tenant_id: installation.tenant_id, bitrix_entity_type: j.entityType, bitrix_entity_id: j.entityId,
             customer_name: j.name, customer_email: j.email, customer_document: j.doc,
-            contract_start: j.start, contract_end: j.end, payment_method: j.method,
+            contract_start: j.start || new Date().toISOString().split('T')[0],
+            contract_end: j.end || j.start || new Date().toISOString().split('T')[0],
+            payment_method: j.method,
             entry_value: j.entry || 0, entry_installments: j.entryN || 0, entry_first_due: j.entryDue || null,
-            recurring_value: j.recVal, cycle: j.cycle, weekday: j.weekday,
+            recurring_value: j.balance > 0 ? Math.round((j.balance / j.recCount) * 100) / 100 : 0,
+            cycle: j.cycle, weekday: j.weekday,
             asaas_subscription_id: subscriptionId,
             status: issuesArr.length ? 'partial' : 'success',
             error_message: issuesArr.join('\n') || null,
           });
 
-          // Update Deal custom fields
           if (clientEndpoint && j.accessToken && j.entityType === 'deal') {
             await callBitrixApi(clientEndpoint, 'crm.deal.update', {
               id: parseInt(j.entityId),
@@ -862,7 +1023,7 @@ serve(async (req) => {
                 UF_CRM_ASAAS_CONTRACT_END: j.end,
                 UF_CRM_ASAAS_ENTRY_VALUE: j.entry || 0,
                 UF_CRM_ASAAS_ENTRY_INSTALLMENTS: j.entryN || 0,
-                UF_CRM_ASAAS_RECURRING_VALUE: j.recVal,
+                UF_CRM_ASAAS_RECURRING_VALUE: j.balance > 0 ? Math.round((j.balance / j.recCount) * 100) / 100 : 0,
                 UF_CRM_ASAAS_CYCLE: j.cycle,
                 UF_CRM_ASAAS_WEEKDAY: j.weekday,
                 UF_CRM_ASAAS_PAYMENT_METHOD: j.method,
@@ -870,21 +1031,20 @@ serve(async (req) => {
             }, j.accessToken);
           }
 
-          // Timeline comment
           if (clientEndpoint && j.accessToken) {
+            const summary = `Total R$ ${Number(j.total).toFixed(2)} | Entrada R$ ${Number(j.entry||0).toFixed(2)} em ${j.entryN || 1}x | Saldo R$ ${Number(j.balance||0).toFixed(2)} em ${j.recCount}x ${j.cycle} (${j.mode === 'recurring' ? 'assinatura' : 'parcelado'})`;
             if (issuesArr.length) {
               await addTimelineComment(clientEndpoint, j.accessToken, j.entityType, j.entityId,
-                `⚠️ Planejamento Asaas enviado com avisos:\n${issuesArr.join('\n')}\n\nCobranças criadas: ${createdCharges.length}`);
+                `⚠️ Plano Asaas enviado com avisos:\n${issuesArr.join('\n')}\n\nCobranças criadas: ${createdCharges.length}\n${summary}`);
             } else {
-              const summary = `entrada R$ ${(j.entry || 0).toFixed(2)} em ${j.entryN || 0}x + recorrência ${j.cycle} de R$ ${j.recVal.toFixed(2)} até ${j.end}`;
               await addTimelineComment(clientEndpoint, j.accessToken, j.entityType, j.entityId,
-                `✅ Planejamento Asaas enviado com sucesso: ${summary}. Cobranças: ${createdCharges.length}${subscriptionId ? ` | Assinatura: ${subscriptionId}` : ''}`);
+                `✅ Plano Asaas enviado: ${summary}. Cobranças: ${createdCharges.length}${subscriptionId ? ` | Assinatura: ${subscriptionId}` : ''}`);
             }
           }
 
           return json({
             success: true,
-            summary: `${createdCharges.length} cobrança(s) + ${subscriptionId ? '1 assinatura' : 'sem recorrência'}`,
+            summary: `${createdCharges.length} cobrança(s)${subscriptionId ? ' + 1 assinatura' : ''}`,
             issues: issuesArr,
           });
         } catch (e: any) {
@@ -920,17 +1080,17 @@ serve(async (req) => {
       return new Response(html({
         entityType: ei.type, entityId, ownerTypeId: ei.ownerTypeId,
         transactions: [], subscriptions: [], invoices: [], splits: [], contractPlan: null,
-        memberId, domain, accessToken, customer: {}, dealFields: {},
+        memberId, domain, accessToken, customer: {}, dealFields: {}, dealProducts: { rows: [], total: 0 },
       }), { headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' } });
     }
 
     const clientEndpoint = installation.client_endpoint || (installation.domain ? `https://${installation.domain}/rest/` : null);
 
-    // Fire-and-await custom fields (idempotent) + customer + deal fields in parallel
-    const [_, customer, dealFields, txRes, subRes, invRes, splitRes, planRes] = await Promise.all([
+    const [_, customer, dealFields, dealProducts, txRes, subRes, invRes, splitRes, planRes] = await Promise.all([
       (clientEndpoint && accessToken && ei.type === 'deal') ? ensureCustomFields(supabase, installation.id, clientEndpoint, accessToken).catch(() => null) : Promise.resolve(null),
       (clientEndpoint && accessToken) ? getCrmCustomer(clientEndpoint, accessToken, ei.type, entityId) : Promise.resolve({}),
       (clientEndpoint && accessToken && ei.type === 'deal') ? getDealFields(clientEndpoint, accessToken, ei.type, entityId) : Promise.resolve({}),
+      (clientEndpoint && accessToken && ei.type === 'deal') ? getDealProducts(clientEndpoint, accessToken, ei.type, entityId) : Promise.resolve({ rows: [], total: 0 }),
       supabase.from('transactions').select('*').eq('tenant_id', installation.tenant_id).eq('bitrix_entity_type', ei.type).eq('bitrix_entity_id', entityId).order('created_at', { ascending: false }),
       supabase.from('subscriptions').select('*').eq('tenant_id', installation.tenant_id).eq('bitrix_entity_type', ei.type).eq('bitrix_entity_id', entityId).order('created_at', { ascending: false }),
       supabase.from('invoices').select('*').eq('tenant_id', installation.tenant_id).eq('bitrix_entity_type', ei.type).eq('bitrix_entity_id', entityId).order('created_at', { ascending: false }),
@@ -942,7 +1102,7 @@ serve(async (req) => {
       entityType: ei.type, entityId, ownerTypeId: ei.ownerTypeId,
       transactions: txRes.data || [], subscriptions: subRes.data || [], invoices: invRes.data || [], splits: splitRes.data || [],
       contractPlan: planRes.data || null,
-      memberId, domain, accessToken, customer, dealFields,
+      memberId, domain, accessToken, customer, dealFields, dealProducts,
     }), { headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' } });
 
   } catch (error: unknown) {
