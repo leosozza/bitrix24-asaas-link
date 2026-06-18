@@ -2,7 +2,7 @@ import { AdminLayout } from './AdminLayout';
 import { useAdminTenants, adminApi } from '@/hooks/useAdminTenants';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Users, Sparkles, CheckCircle2, AlertCircle, XCircle, DollarSign, Webhook } from 'lucide-react';
+import { Users, Sparkles, CheckCircle2, AlertCircle, XCircle, DollarSign, Webhook, Send } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -15,6 +15,7 @@ function formatBRL(v: number) {
 export default function AdminOverview() {
   const { data, isLoading, refetch } = useAdminTenants();
   const [registering, setRegistering] = useState(false);
+  const [testing, setTesting] = useState(false);
 
   const tenants = data?.tenants || [];
   const stats = {
@@ -42,6 +43,20 @@ export default function AdminOverview() {
     }
   };
 
+  const handleTestWebhook = async () => {
+    setTesting(true);
+    try {
+      const result = await adminApi.testWebhook() as { status: number; response: string };
+      if (result.status === 200) toast.success(`Webhook OK (${result.status})`);
+      else toast.error(`Falha no webhook (${result.status}): ${result.response}`);
+      console.log('Webhook test:', result);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Erro ao testar webhook');
+    } finally {
+      setTesting(false);
+    }
+  };
+
   const cards = [
     { label: 'Total Tenants', value: stats.total, icon: Users, color: 'text-foreground' },
     { label: 'Em Trial', value: stats.trial, icon: Sparkles, color: 'text-blue-500' },
@@ -53,12 +68,18 @@ export default function AdminOverview() {
 
   return (
     <AdminLayout title="Visão Geral" description="Métricas dos tenants ConnectPay">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
         <div />
-        <Button variant="outline" size="sm" onClick={handleRegisterWebhook} disabled={registering}>
-          {registering ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Webhook className="w-4 h-4 mr-2" />}
-          Reparar webhook Asaas
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={handleTestWebhook} disabled={testing}>
+            {testing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+            Testar webhook
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleRegisterWebhook} disabled={registering}>
+            {registering ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Webhook className="w-4 h-4 mr-2" />}
+            Reparar webhook Asaas
+          </Button>
+        </div>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {cards.map((c) => (

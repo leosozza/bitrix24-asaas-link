@@ -320,6 +320,35 @@ serve(async (req) => {
         return json({ success: true, webhook_url: webhookUrl, asaas_response: reg.data });
       }
 
+      case 'list_webhooks': {
+        if (!THOTH_ASAAS_API_KEY) return json({ error: 'THOTH_ASAAS_API_KEY not configured' }, 400);
+        const res = await asaas('/webhooks');
+        return json({ success: res.ok, webhooks: res.data?.data || [], expected_url: webhookUrl });
+      }
+
+      case 'test_webhook': {
+        // Send a synthetic event to our own webhook endpoint to verify connectivity
+        const testEvent = {
+          event: 'PAYMENT_CONFIRMED',
+          payment: {
+            id: 'test_' + Date.now(),
+            customer: 'cus_test',
+            value: 1,
+            status: 'CONFIRMED',
+            billingType: 'BOLETO',
+            subscription: '__test__',
+          },
+        };
+        const res = await fetch(webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(testEvent),
+        });
+        const text = await res.text();
+        await logAction('test_webhook', body, res.ok ? 'success' : 'error', { status: res.status, body: text });
+        return json({ success: res.ok, status: res.status, response: text, webhook_url: webhookUrl });
+      }
+
       default:
         return json({ error: 'Invalid action' }, 400);
     }
