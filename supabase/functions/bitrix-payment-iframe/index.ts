@@ -1014,10 +1014,18 @@ async function handleCrmTabLoad(body: any, supabase: any, inst: any): Promise<Re
     let charges: any[] = [];
     let subscriptions: any[] = [];
     let dealValue = 0;
+    let savedFields: Record<string, any> = {};
     
     try {
       const ec = await getEntityContact(ep.endpoint, ep.token, entityType, entityId);
       dealValue = ec.dealValue;
+      savedFields = {
+        contractStart: ec.entity?.UF_CRM_ASAAS_CONTRACT_START || '',
+        contractEnd: ec.entity?.UF_CRM_ASAAS_CONTRACT_END || '',
+        entryInstallments: ec.entity?.UF_CRM_ASAAS_ENTRY_INSTALLMENTS || '',
+        recurringInstallments: ec.entity?.UF_CRM_ASAAS_RECURRING_INSTALLMENTS || '',
+        cycle: ec.entity?.UF_CRM_ASAAS_CYCLE || '',
+      };
       
       if (ec.customerData.cpfCnpj && ec.customerData.cpfCnpj.length >= 11) {
         const search = await asaasFetch(ctx.apiKey, ctx.baseUrl, `/customers?cpfCnpj=${ec.customerData.cpfCnpj}`);
@@ -1033,7 +1041,7 @@ async function handleCrmTabLoad(body: any, supabase: any, inst: any): Promise<Re
       console.error('[CrmTabLoad] contact/charge error:', e.message);
     }
     
-    return jsonSuccess({ customer, charges, subscriptions, dealValue });
+    return jsonSuccess({ customer, charges, subscriptions, dealValue, savedFields });
   } catch (e: any) {
     return jsonError(e.message);
   }
