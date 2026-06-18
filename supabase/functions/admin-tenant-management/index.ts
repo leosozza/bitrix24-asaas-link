@@ -304,7 +304,20 @@ serve(async (req) => {
         }).eq('tenant_id', tenant_id);
 
         await logAction('create_asaas_subscription', body, 'success', { subscription_id: createSub.data.id });
-        return json({ success: true, asaas_subscription_id: createSub.data.id, customer_id: customerId });
+
+        // Ensure webhook is registered automatically after first subscription creation
+        const reg = await registerThothWebhook();
+        if (!reg.ok) await logAction('register_webhook', { auto: true }, 'error', reg.error || reg.data);
+
+        return json({ success: true, asaas_subscription_id: createSub.data.id, customer_id: customerId, webhook_registered: reg.ok });
+      }
+
+      case 'register_webhook': {
+        if (!THOTH_ASAAS_API_KEY) return json({ error: 'THOTH_ASAAS_API_KEY not configured' }, 400);
+        const reg = await registerThothWebhook();
+        if (!reg.ok) { await logAction('register_webhook', body, 'error', reg.data); return json({ error: 'Failed to register webhook', detail: reg.data }, 400); }
+        await logAction('register_webhook', body, 'success', reg.data);
+        return json({ success: true, webhook_url: webhookUrl, asaas_response: reg.data });
       }
 
       default:
