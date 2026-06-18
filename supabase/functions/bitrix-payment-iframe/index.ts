@@ -4235,6 +4235,21 @@ function generateCrmPaymentTabPage(data: PaymentData, entityType: 'deal' | 'lead
     <div><label>Nº de Parcelas</label><input type="number" min="1" id="fInstallments" value="1" onchange="recalc()"></div>
     <div style="grid-column:span 2;"><label>Descrição</label><input type="text" id="fDesc" placeholder="Ex.: Assinatura Plano Pró"></div>
   </div>
+  <div id="entryInstallmentsBlock" class="hidden" style="background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;padding:12px;margin-bottom:12px;">
+    <div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#334155;font-weight:600;margin:0;">
+        <input type="checkbox" id="fSplitEntry" onchange="recalc()" style="width:auto;"> Parcelar entrada
+      </label>
+      <div id="entryNWrap" class="hidden" style="display:flex;align-items:center;gap:8px;">
+        <label style="margin:0;">Nº parcelas da entrada</label>
+        <input type="number" min="1" max="24" id="fEntryN" value="2" onchange="recalc()" style="width:80px;">
+      </div>
+    </div>
+    <table id="entryTable" class="hidden" style="margin-top:6px;">
+      <thead><tr><th style="width:40px;">#</th><th>Valor</th><th style="width:180px;">Vencimento</th></tr></thead>
+      <tbody id="entryTbody"></tbody>
+    </table>
+  </div>
   <div class="summary" id="summary">Preencha os campos acima para visualizar o resumo.</div>
   <div style="text-align:right;">
     <button class="btn btn-primary" id="btnCreate" onclick="createPayment()">+ Gerar Cobranças</button>
