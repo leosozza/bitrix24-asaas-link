@@ -6,7 +6,6 @@ import { Users, Sparkles, CheckCircle2, AlertCircle, XCircle, DollarSign, Webhoo
 import { Skeleton } from '@/components/ui/skeleton';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 
 function formatBRL(v: number) {
