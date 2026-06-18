@@ -834,8 +834,8 @@ function renderEntryTable(method){
   tbody.innerHTML = window.ENTRY_OVERRIDES.map(function(it, i){
     return '<tr>'+
       '<td>'+(i+1)+'</td>'+
-      '<td><input type="date" value="'+it.due+'" onchange="updateEntryItem('+i+', \\'due\\', this.value)" style="padding:5px 8px;font-size:12px;width:100%"></td>'+
-      '<td><input type="number" step="0.01" min="0" value="'+it.val+'" onchange="updateEntryItem('+i+', \\'val\\', this.value)" style="padding:5px 8px;font-size:12px;width:100%"></td>'+
+      '<td><input type="date" value="'+it.due+'" onchange="updateEntryItem('+i+', \\'due\\', this.value)" style="padding:6px 10px;font-size:13px;width:100%"></td>'+
+      '<td><input type="number" step="0.01" min="0" value="'+it.val+'" onchange="updateEntryItem('+i+', \\'val\\', this.value)" style="padding:6px 10px;font-size:13px;width:100%"></td>'+
       '<td>'+method+'</td>'+
     '</tr>';
   }).join('');
