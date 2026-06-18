@@ -3706,6 +3706,26 @@ async function generateDashboardPage(
     // ===== Settings state =====
     let settingsData = null;
     
+    // Inline SVG icons (consistent with dock nav style)
+    function icn(name, size) {
+      const s = size || 14;
+      const style = 'width:' + s + 'px;height:' + s + 'px;vertical-align:-2px;flex-shrink:0;display:inline-block;';
+      const base = 'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
+      const paths = {
+        refresh: '<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>',
+        mail: '<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>',
+        phone: '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>',
+        pin: '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>',
+        pencil: '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>',
+        info: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>',
+        file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
+        check: '<polyline points="20 6 9 17 4 12"/>',
+        alert: '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+      };
+      return '<svg ' + base + ' style="' + style + '">' + (paths[name] || '') + '</svg>';
+    }
+
+    
     function buildWebhookEventsList(events) {
       return (events || []).map((ev) => '<span style="background:#f3f4f6;padding:4px 8px;border-radius:6px;font-size:11px;font-family:monospace;">' + escapeHtml(ev) + '</span>').join('');
     }
@@ -3737,7 +3757,7 @@ async function generateDashboardPage(
       
       // Top action: Atualizar Integração
       html += '<div style="display:flex;justify-content:flex-end;margin-bottom:16px;">';
-      html += '<button class="btn btn-primary" onclick="openUpdateIntegrationModal()" title="Sincroniza campos, robôs e placements do Bitrix">↻ Atualizar Integração</button>';
+      html += '<button class="btn btn-primary" onclick="openUpdateIntegrationModal()" title="Sincroniza campos, robôs e placements do Bitrix" style="display:inline-flex;align-items:center;gap:8px;">' + icn('refresh') + ' Atualizar Integração</button>';
       html += '</div>';
       
       // Cabeçalho: Dados da Empresa
@@ -3747,12 +3767,13 @@ async function generateDashboardPage(
       html += '<div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;font-weight:600;margin-bottom:6px;">Dados da Empresa</div>';
       html += '<div style="font-size:20px;font-weight:700;color:#0f172a;margin-bottom:8px;">' + escapeHtml(p.company_name || '—') + '</div>';
       const metaParts = [];
-      if (p.email) metaParts.push('<span>📧 ' + escapeHtml(p.email) + '</span>');
-      if (p.phone) metaParts.push('<span>📱 ' + escapeHtml(p.phone) + '</span>');
-      if (p.address) metaParts.push('<span>📍 ' + escapeHtml(p.address) + '</span>');
-      html += '<div style="display:flex;flex-wrap:wrap;gap:14px;color:#64748b;font-size:13px;">' + (metaParts.join('') || '<span style="color:#94a3b8;">Sem dados de contato — clique no lápis para preencher.</span>') + '</div>';
+      if (p.email) metaParts.push('<span style="display:inline-flex;align-items:center;gap:6px;">' + icn('mail') + escapeHtml(p.email) + '</span>');
+      if (p.phone) metaParts.push('<span style="display:inline-flex;align-items:center;gap:6px;">' + icn('phone') + escapeHtml(p.phone) + '</span>');
+      if (p.address) metaParts.push('<span style="display:inline-flex;align-items:center;gap:6px;">' + icn('pin') + escapeHtml(p.address) + '</span>');
+      html += '<div style="display:flex;flex-wrap:wrap;gap:14px;color:#64748b;font-size:13px;">' + (metaParts.join('') || '<span style="color:#94a3b8;">Sem dados de contato — clique em Editar para preencher.</span>') + '</div>';
       html += '</div>';
-      html += '<button class="btn btn-secondary btn-sm" onclick="openCompanyModal()" title="Editar dados da empresa" style="display:flex;align-items:center;gap:6px;">✏️ Editar</button>';
+      html += '<button class="btn btn-secondary btn-sm" onclick="openCompanyModal()" title="Editar dados da empresa" style="display:inline-flex;align-items:center;gap:6px;">' + icn('pencil') + ' Editar</button>';
+
       html += '</div></div>';
       
       // Card Asaas resumido
@@ -3761,22 +3782,23 @@ async function generateDashboardPage(
       html += '<div style="flex:1;">';
       html += '<div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;font-weight:600;margin-bottom:6px;">Conta Asaas</div>';
       const connected = a.has_api_key;
-      html += '<div style="font-size:18px;font-weight:600;color:#0f172a;margin-bottom:10px;">' + (connected ? '🟢 Asaas Conectado · ' + envLabel : '⚠ Não configurado') + '</div>';
+      html += '<div style="font-size:18px;font-weight:600;color:#0f172a;margin-bottom:10px;display:inline-flex;align-items:center;gap:8px;">' + (connected ? '<span style="color:#16a34a;display:inline-flex;">' + icn('check', 18) + '</span> Asaas Conectado · ' + envLabel : '<span style="color:#d97706;display:inline-flex;">' + icn('alert', 18) + '</span> Não configurado') + '</div>';
       html += '<div style="display:flex;flex-wrap:wrap;gap:8px;">';
       html += '<span style="background:#dcfce7;color:#166534;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;">API Asaas v3</span>';
       html += '<span style="background:#e0f2fe;color:#075985;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;">Ambiente: ' + envLabel + '</span>';
-      html += '<span style="background:' + (wh.configured ? '#dcfce7' : '#fef3c7') + ';color:' + (wh.configured ? '#166534' : '#92400e') + ';padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;">' + (wh.configured ? '✓ Registrado automaticamente' : '⚠ Webhook pendente') + '</span>';
+      html += '<span style="background:' + (wh.configured ? '#dcfce7' : '#fef3c7') + ';color:' + (wh.configured ? '#166534' : '#92400e') + ';padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">' + (wh.configured ? icn('check') + ' Registrado automaticamente' : icn('alert') + ' Webhook pendente') + '</span>';
       html += '</div></div>';
       html += '<div style="display:flex;flex-direction:column;gap:6px;">';
-      html += '<button class="btn btn-secondary btn-sm" onclick="openAsaasModal()" title="Editar configuração Asaas">✏️ Editar</button>';
-      html += '<button class="btn btn-secondary btn-sm" onclick="openWebhookHelpModal()" title="Como configurar o webhook">ℹ️ Como configurar</button>';
+      html += '<button class="btn btn-secondary btn-sm" onclick="openAsaasModal()" title="Editar configuração Asaas" style="display:inline-flex;align-items:center;gap:6px;">' + icn('pencil') + ' Editar</button>';
+      html += '<button class="btn btn-secondary btn-sm" onclick="openWebhookHelpModal()" title="Como configurar o webhook" style="display:inline-flex;align-items:center;gap:6px;">' + icn('info') + ' Como configurar</button>';
       html += '</div>';
       html += '</div></div>';
       
       // Configuração Fiscal — colapsável (fechado por padrão)
       html += '<div class="card" style="margin-bottom:24px;">';
       html += '<div class="card-header" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;" onclick="toggleFiscalCard()">';
-      html += '<h3>⚙️ Configuração Fiscal</h3>';
+      html += '<h3 style="display:inline-flex;align-items:center;gap:8px;margin:0;">' + icn('file', 16) + ' Configuração Fiscal</h3>';
+
       html += '<span id="fiscal-caret" style="color:#64748b;font-size:14px;">▼</span>';
       html += '</div>';
       html += '<div id="fiscal-body" style="display:none;padding:20px;">';
@@ -3835,7 +3857,7 @@ async function generateDashboardPage(
       html += '<div style="margin-top:24px;padding-top:20px;border-top:1px solid #e5e7eb;">';
       html += '<h4 style="margin:0 0 12px;font-size:15px;color:#0f172a;">Webhook Asaas</h4>';
       html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">';
-      html += '<span style="background:' + (wh.configured ? '#dcfce7' : '#fef3c7') + ';color:' + (wh.configured ? '#166534' : '#92400e') + ';padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;">' + (wh.configured ? '✓ Registrado automaticamente' : '⚠ Registrar manualmente') + '</span>';
+      html += '<span style="background:' + (wh.configured ? '#dcfce7' : '#fef3c7') + ';color:' + (wh.configured ? '#166534' : '#92400e') + ';padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">' + (wh.configured ? icn('check') + ' Registrado automaticamente' : icn('alert') + ' Registrar manualmente') + '</span>';
       html += '</div>';
       html += '<div class="form-group"><label>URL do Webhook</label><div style="display:flex;gap:8px;">';
       html += '<input type="text" id="wh-url" readonly value="' + escapeHtml(wh.url || '') + '" style="flex:1;font-family:monospace;font-size:12px;">';
@@ -3861,7 +3883,7 @@ async function generateDashboardPage(
       
       // Modal: Webhook Help (passo a passo)
       html += '<div class="modal-overlay" id="webhook-help-modal" onclick="if(event.target===this)closeModal(\\'webhook-help-modal\\')">';
-      html += '<div class="modal" style="max-width:640px;"><div class="modal-header"><h3>📘 Como configurar o webhook no Asaas</h3><button class="modal-close" onclick="closeModal(\\'webhook-help-modal\\')">×</button></div>';
+      html += '<div class="modal" style="max-width:640px;"><div class="modal-header"><h3 style="display:inline-flex;align-items:center;gap:8px;margin:0;">' + icn('info', 18) + ' Como configurar o webhook no Asaas</h3><button class="modal-close" onclick="closeModal(\\'webhook-help-modal\\')">×</button></div>';
       html += '<div class="modal-body">';
       html += '<ol style="font-size:13px;color:#334155;margin:0;padding-left:22px;line-height:1.7;">';
       html += '<li>Acesse <a href="https://www.asaas.com/login" target="_blank" rel="noopener" style="color:#0369a1;">https://www.asaas.com/login</a> e entre na sua conta.</li>';
@@ -3874,14 +3896,14 @@ async function generateDashboardPage(
       html += '<li>Em <strong>Eventos</strong>, marque <strong>todos</strong> os eventos listados.</li>';
       html += '<li>Clique em <strong>Salvar</strong>.</li>';
       html += '</ol>';
-      html += '<p style="margin:14px 0 0;font-size:12px;color:#64748b;">📖 <a href="https://docs.asaas.com/docs/webhooks" target="_blank" rel="noopener" style="color:#0369a1;">docs.asaas.com/docs/webhooks</a></p>';
+      html += '<p style="margin:14px 0 0;font-size:12px;color:#64748b;"><a href="https://docs.asaas.com/docs/webhooks" target="_blank" rel="noopener" style="color:#0369a1;">docs.asaas.com/docs/webhooks</a></p>';
       html += '</div>';
       html += '<div class="modal-footer"><button class="btn btn-primary" onclick="closeModal(\\'webhook-help-modal\\')">Entendi</button></div>';
       html += '</div></div>';
       
       // Modal: Atualizar Integração
       html += '<div class="modal-overlay" id="update-modal" onclick="if(event.target===this&&!window.__updateRunning)closeModal(\\'update-modal\\')">';
-      html += '<div class="modal" style="max-width:520px;"><div class="modal-header"><h3>↻ Atualizar Integração</h3><button class="modal-close" id="update-close-btn" onclick="closeModal(\\'update-modal\\')">×</button></div>';
+      html += '<div class="modal" style="max-width:520px;"><div class="modal-header"><h3 style="display:inline-flex;align-items:center;gap:8px;margin:0;">' + icn('refresh', 18) + ' Atualizar Integração</h3><button class="modal-close" id="update-close-btn" onclick="closeModal(\\'update-modal\\')">×</button></div>';
       html += '<div class="modal-body">';
       html += '<p style="margin:0 0 16px;color:#64748b;font-size:13px;">Verificando campos, robôs, placements e pay system no Bitrix24…</p>';
       html += '<ul id="update-steps" style="list-style:none;padding:0;margin:0;font-size:14px;color:#0f172a;line-height:2;"></ul>';
