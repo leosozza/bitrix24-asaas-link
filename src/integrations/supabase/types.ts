@@ -70,6 +70,7 @@ export type Database = {
           bitrix_user_id: string | null
           client_endpoint: string | null
           created_at: string
+          custom_fields_created: boolean
           deal_fields_registered: boolean
           domain: string
           expires_at: string | null
@@ -94,6 +95,7 @@ export type Database = {
           bitrix_user_id?: string | null
           client_endpoint?: string | null
           created_at?: string
+          custom_fields_created?: boolean
           deal_fields_registered?: boolean
           domain: string
           expires_at?: string | null
@@ -118,6 +120,7 @@ export type Database = {
           bitrix_user_id?: string | null
           client_endpoint?: string | null
           created_at?: string
+          custom_fields_created?: boolean
           deal_fields_registered?: boolean
           domain?: string
           expires_at?: string | null
@@ -187,6 +190,81 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      contract_plans: {
+        Row: {
+          asaas_subscription_id: string | null
+          bitrix_entity_id: string
+          bitrix_entity_type: string
+          contract_end: string
+          contract_start: string
+          created_at: string
+          customer_document: string | null
+          customer_email: string | null
+          customer_name: string | null
+          cycle: string | null
+          entry_first_due: string | null
+          entry_installments: number | null
+          entry_value: number | null
+          error_message: string | null
+          id: string
+          monthday: number | null
+          payment_method: string
+          recurring_value: number | null
+          status: string
+          tenant_id: string
+          updated_at: string
+          weekday: number | null
+        }
+        Insert: {
+          asaas_subscription_id?: string | null
+          bitrix_entity_id: string
+          bitrix_entity_type: string
+          contract_end: string
+          contract_start: string
+          created_at?: string
+          customer_document?: string | null
+          customer_email?: string | null
+          customer_name?: string | null
+          cycle?: string | null
+          entry_first_due?: string | null
+          entry_installments?: number | null
+          entry_value?: number | null
+          error_message?: string | null
+          id?: string
+          monthday?: number | null
+          payment_method: string
+          recurring_value?: number | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+          weekday?: number | null
+        }
+        Update: {
+          asaas_subscription_id?: string | null
+          bitrix_entity_id?: string
+          bitrix_entity_type?: string
+          contract_end?: string
+          contract_start?: string
+          created_at?: string
+          customer_document?: string | null
+          customer_email?: string | null
+          customer_name?: string | null
+          cycle?: string | null
+          entry_first_due?: string | null
+          entry_installments?: number | null
+          entry_value?: number | null
+          error_message?: string | null
+          id?: string
+          monthday?: number | null
+          payment_method?: string
+          recurring_value?: number | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+          weekday?: number | null
+        }
+        Relationships: []
       }
       fiscal_configurations: {
         Row: {
