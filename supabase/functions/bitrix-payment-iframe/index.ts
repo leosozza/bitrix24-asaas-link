@@ -2437,6 +2437,7 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
       const company_name = (data.company_name || '').toString().trim();
       const email = (data.email || '').toString().trim();
       const phone = (data.phone || '').toString().trim();
+      const address = (data.address || '').toString().trim();
       
       if (!company_name) return jsonError('Nome da empresa é obrigatório');
       if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return jsonError('E-mail válido é obrigatório');
@@ -2447,6 +2448,7 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
           company_name,
           email,
           phone: phone || null,
+          address: address || null,
           updated_at: new Date().toISOString(),
         })
         .eq('id', tenantId);
