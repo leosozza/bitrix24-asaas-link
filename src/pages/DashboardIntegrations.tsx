@@ -28,6 +28,7 @@ import { supabase } from '@/integrations/supabase/client';
 import bitrix24Logo from '@/assets/bitrix24-logo.png';
 import asaasLogo from '@/assets/asaas-logo.png';
 export default function DashboardIntegrations() {
+  const { user } = useAuth();
   const [bitrixStatus, setBitrixStatus] = useState<'active' | 'expired' | 'revoked' | null>(null);
   const [asaasStatus, setAsaasStatus] = useState<'active' | 'expired' | 'revoked' | null>(null);
   
@@ -38,6 +39,31 @@ export default function DashboardIntegrations() {
   const [asaasApiKey, setAsaasApiKey] = useState('');
   const [asaasEnvironment, setAsaasEnvironment] = useState<'sandbox' | 'production'>('sandbox');
   const [isLoading, setIsLoading] = useState(false);
+
+  // Asaas test charge state
+  const [isTestingCharge, setIsTestingCharge] = useState(false);
+  const [testBillingType, setTestBillingType] = useState<'PIX' | 'BOLETO' | 'CREDIT_CARD'>('PIX');
+  const [testResult, setTestResult] = useState<any>(null);
+
+  const handleTestCharge = async () => {
+    if (!user) return;
+    setIsTestingCharge(true);
+    setTestResult(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('asaas-test-charge', {
+        body: { tenant_id: user.id, billing_type: testBillingType },
+      });
+      if (error) throw error;
+      setTestResult(data);
+      if (data?.success) toast.success('Cobrança de teste criada com sucesso!');
+      else toast.error(data?.error || 'Falha no teste');
+    } catch (e: any) {
+      setTestResult({ success: false, error: e?.message || String(e) });
+      toast.error('Erro ao executar teste');
+    } finally {
+      setIsTestingCharge(false);
+    }
+  };
 
   const handleBitrixConnect = async () => {
     if (!bitrixDomain.trim()) {
