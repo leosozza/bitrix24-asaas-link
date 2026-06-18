@@ -3863,7 +3863,7 @@ serve(async (req) => {
       // Find installation by member_id - include pay_systems_registered and robots_registered flags
       const { data: inst, error: instError } = await supabase
         .from('bitrix_installations')
-        .select('id, tenant_id, domain, pay_systems_registered, robots_registered, placements_registered, badges_registered, access_token')
+        .select('id, tenant_id, domain, pay_systems_registered, robots_registered, placements_registered, badges_registered, deal_fields_registered, access_token')
         .eq('member_id', paymentData.memberId)
         .order('updated_at', { ascending: false })
         .limit(1)
