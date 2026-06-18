@@ -667,36 +667,54 @@ export type Database = {
       }
       tenant_subscriptions: {
         Row: {
+          asaas_customer_id: string | null
+          asaas_subscription_id: string | null
+          cancel_at_period_end: boolean
+          canceled_at: string | null
           created_at: string
           current_period_end: string
           current_period_start: string
           id: string
+          notes: string | null
           plan_id: string
           status: Database["public"]["Enums"]["subscription_status"]
           tenant_id: string
           transactions_used: number
+          trial_ends_at: string | null
           updated_at: string
         }
         Insert: {
+          asaas_customer_id?: string | null
+          asaas_subscription_id?: string | null
+          cancel_at_period_end?: boolean
+          canceled_at?: string | null
           created_at?: string
           current_period_end?: string
           current_period_start?: string
           id?: string
+          notes?: string | null
           plan_id: string
           status?: Database["public"]["Enums"]["subscription_status"]
           tenant_id: string
           transactions_used?: number
+          trial_ends_at?: string | null
           updated_at?: string
         }
         Update: {
+          asaas_customer_id?: string | null
+          asaas_subscription_id?: string | null
+          cancel_at_period_end?: boolean
+          canceled_at?: string | null
           created_at?: string
           current_period_end?: string
           current_period_start?: string
           id?: string
+          notes?: string | null
           plan_id?: string
           status?: Database["public"]["Enums"]["subscription_status"]
           tenant_id?: string
           transactions_used?: number
+          trial_ends_at?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -876,7 +894,7 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "admin" | "user"
+      app_role: "admin" | "user" | "super_admin"
       asaas_environment: "sandbox" | "production"
       bitrix_entity_type: "deal" | "invoice" | "contact" | "company" | "lead"
       bitrix_status: "active" | "expired" | "revoked"
@@ -897,7 +915,12 @@ export type Database = {
         | "QUARTERLY"
         | "SEMIANNUALLY"
         | "YEARLY"
-      subscription_status: "active" | "cancelled" | "expired" | "trial"
+      subscription_status:
+        | "active"
+        | "cancelled"
+        | "expired"
+        | "trial"
+        | "past_due"
       subscription_status_asaas: "active" | "canceled" | "expired" | "pending"
       transaction_status:
         | "pending"
@@ -1033,7 +1056,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "user"],
+      app_role: ["admin", "user", "super_admin"],
       asaas_environment: ["sandbox", "production"],
       bitrix_entity_type: ["deal", "invoice", "contact", "company", "lead"],
       bitrix_status: ["active", "expired", "revoked"],
@@ -1056,7 +1079,13 @@ export const Constants = {
         "SEMIANNUALLY",
         "YEARLY",
       ],
-      subscription_status: ["active", "cancelled", "expired", "trial"],
+      subscription_status: [
+        "active",
+        "cancelled",
+        "expired",
+        "trial",
+        "past_due",
+      ],
       subscription_status_asaas: ["active", "canceled", "expired", "pending"],
       transaction_status: [
         "pending",
