@@ -884,6 +884,20 @@ function refreshPreviewOnly(){
 }
 
 
+function fitFrame(openModal){
+  if (typeof BX24 === 'undefined') return;
+  try {
+    if (openModal) {
+      var box = document.querySelector('.modal-box');
+      var h = box ? box.scrollHeight + 80 : document.body.scrollHeight;
+      var desired = Math.max(h, window.innerHeight, document.body.scrollHeight);
+      BX24.resizeWindow(Math.max(window.innerWidth, 320), desired);
+    } else {
+      BX24.fitWindow();
+    }
+  } catch(e){}
+}
+
 function openWizard(){
   var c = CTX.customer || {}, p = CTX.contractPlan;
   document.getElementById('w_name').value = (p && p.customer_name) || c.name || '';
@@ -905,9 +919,13 @@ function openWizard(){
   syncEntryType();
   recalc();
   document.getElementById('wizardModal').classList.add('open');
+  setTimeout(function(){ fitFrame(true); }, 60);
 }
 
-function closeWizard(){ document.getElementById('wizardModal').classList.remove('open'); }
+function closeWizard(){
+  document.getElementById('wizardModal').classList.remove('open');
+  setTimeout(function(){ fitFrame(false); }, 60);
+}
 
 async function submitWizard(){
   var btn = document.getElementById('w_submit'), msg = document.getElementById('w_msg');
