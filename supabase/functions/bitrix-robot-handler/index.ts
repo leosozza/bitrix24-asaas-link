@@ -237,6 +237,39 @@ async function checkAsaasPayment(apiKey: string, baseUrl: string, chargeId: stri
   return payment;
 }
 
+// Best-effort update of Deal UF_CRM_ASAAS_* fields. Only acts when target is a Deal.
+async function updateDealAsaasFields(
+  apiEndpoint: string,
+  accessToken: string,
+  entityType: string,
+  entityId: number,
+  fields: Record<string, unknown>
+) {
+  if (entityType !== 'deal' || !entityId || !apiEndpoint || !accessToken) return;
+  const cleaned: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(fields)) {
+    if (v === undefined || v === null) continue;
+    if (typeof v === 'string' && v.trim() === '') continue;
+    cleaned[k] = v;
+  }
+  if (Object.keys(cleaned).length === 0) return;
+  try {
+    const res = await callBitrixApi(apiEndpoint, 'crm.deal.update', {
+      id: entityId,
+      fields: cleaned,
+    }, accessToken);
+    if (res.error) {
+      console.error('[updateDealAsaasFields] error:', res.error, res.error_description);
+    } else {
+      console.log('[updateDealAsaasFields] Deal', entityId, 'updated with', Object.keys(cleaned).join(', '));
+    }
+  } catch (e) {
+    console.error('[updateDealAsaasFields] exception:', e);
+  }
+}
+
+
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
