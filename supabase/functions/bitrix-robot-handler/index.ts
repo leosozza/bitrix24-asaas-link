@@ -650,6 +650,11 @@ serve(async (req) => {
           paid_value: payment.value || 0,
         };
         logMessage = `Status: ${payment.status}`;
+
+        await updateDealAsaasFields(apiEndpoint, robotData.auth.access_token, entityType, entityIdNum, {
+          UF_CRM_ASAAS_CHARGE_STATUS: payment.status,
+          UF_CRM_ASAAS_PAID_AT: payment.confirmedDate || payment.paymentDate || undefined,
+        });
         break;
       }
       
