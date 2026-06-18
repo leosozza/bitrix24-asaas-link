@@ -911,6 +911,13 @@ function closeWizard(){ document.getElementById('wizardModal').classList.remove(
 async function submitWizard(){
   var btn = document.getElementById('w_submit'), msg = document.getElementById('w_msg');
   msg.className = 'msg'; msg.textContent = '';
+  // Re-run full recalc to refresh validation state, then block if invalid
+  try { recalc(); } catch(e){}
+  var warnBox = document.getElementById('w_warn');
+  if (warnBox && warnBox.style.display !== 'none' && warnBox.style.background === 'rgb(253, 236, 234)') {
+    msg.className = 'msg err'; msg.textContent = '❌ Corrija os erros indicados antes de enviar.';
+    return;
+  }
   btn.disabled = true; btn.textContent = 'Enviando ao Asaas...';
   try {
     var total = parseFloat(val('w_total')) || 0;
