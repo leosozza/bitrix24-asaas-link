@@ -4501,6 +4501,7 @@ async function loadCharges() {
     }
     renderCharges(r.charges || [], r.subscriptions || []);
     recalc();
+  } catch (e) {
     document.getElementById('chargesArea').innerHTML = '<div class="alert alert-error">Erro ao carregar: ' + e.message + '</div>';
   }
 }
