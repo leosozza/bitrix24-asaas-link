@@ -14,7 +14,9 @@ function formatBRL(v: number) {
 }
 
 export default function AdminOverview() {
-  const { data, isLoading } = useAdminTenants();
+  const { data, isLoading, refetch } = useAdminTenants();
+  const qc = useQueryClient();
+  const [registering, setRegistering] = useState(false);
 
   const tenants = data?.tenants || [];
   const stats = {
@@ -26,6 +28,20 @@ export default function AdminOverview() {
     mrr: tenants
       .filter(t => t.subscription?.status === 'active')
       .reduce((sum, t) => sum + (Number(t.plan?.price) || 0), 0),
+  };
+
+  const handleRegisterWebhook = async () => {
+    setRegistering(true);
+    try {
+      const result = await adminApi.registerWebhook();
+      toast.success('Webhook registrado no Asaas Thoth24');
+      console.log('Webhook registered:', result);
+      await refetch();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Erro ao registrar webhook');
+    } finally {
+      setRegistering(false);
+    }
   };
 
   const cards = [
