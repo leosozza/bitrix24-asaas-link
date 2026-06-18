@@ -320,7 +320,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
 
 <!-- COBRANÇAS -->
 <div class="panel active" id="panel-charges">
-  <div class="head"><h3>Cobranças</h3><button class="btn" onclick="openChargeModal()">+ Nova Cobrança</button></div>
+  <div class="head"><h3>Cobranças</h3><button class="btn" onclick="openChargeModal()">${ICONS.plus}<span style="margin-left:6px">Nova Cobrança</span></button></div>
   <table><thead><tr><th>Cliente</th><th>Valor</th><th>Método</th><th>Status</th><th>Venc.</th><th>Ações</th></tr></thead><tbody>${txRows}</tbody></table>
 </div>
 
