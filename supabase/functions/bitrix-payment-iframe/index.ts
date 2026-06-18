@@ -2539,6 +2539,81 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
     }
     
     
+    case 'get_plan': {
+      const { data: sub } = await supabase
+        .from('tenant_subscriptions')
+        .select('plan_id, status, current_period_start, current_period_end, transactions_used, subscription_plans(name, price, transaction_limit, features)')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+      const { data: plans } = await supabase
+        .from('subscription_plans')
+        .select('id, name, price, transaction_limit, features')
+        .eq('is_active', true)
+        .order('price', { ascending: true });
+      const fmtDate = (d: any) => d ? new Date(d).toLocaleDateString('pt-BR') : null;
+      const current = sub ? {
+        plan_id: sub.plan_id,
+        plan_name: (sub as any).subscription_plans?.name,
+        status: sub.status,
+        period_start: fmtDate(sub.current_period_start),
+        period_end: fmtDate(sub.current_period_end),
+        used: sub.transactions_used || 0,
+        limit: (sub as any).subscription_plans?.transaction_limit ?? 0,
+      } : null;
+      return jsonSuccess({ current, plans: plans || [] });
+    }
+    
+    case 'get_notifications': {
+      const { data: prefs } = await supabase
+        .from('notification_preferences')
+        .select('email_transactions, payment_alerts, weekly_reports')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+      return jsonSuccess({ prefs: prefs || { email_transactions: true, payment_alerts: true, weekly_reports: false } });
+    }
+    
+    case 'save_notifications': {
+      const d = data || {};
+      const { error } = await supabase
+        .from('notification_preferences')
+        .upsert({
+          tenant_id: tenantId,
+          email_transactions: !!d.email_transactions,
+          payment_alerts: !!d.payment_alerts,
+          weekly_reports: !!d.weekly_reports,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'tenant_id' });
+      if (error) return jsonError('Erro ao salvar: ' + error.message);
+      return jsonSuccess({ message: 'Preferências salvas' });
+    }
+    
+    case 'change_password': {
+      const cur = (data?.current_password || '').toString();
+      const nw = (data?.new_password || '').toString();
+      if (!cur || nw.length < 8) return jsonError('Senha inválida');
+      const { data: profile } = await supabase.from('profiles').select('email').eq('id', tenantId).maybeSingle();
+      if (!profile?.email) return jsonError('Perfil sem email');
+      const anon = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_ANON_KEY')!);
+      const { error: signErr } = await anon.auth.signInWithPassword({ email: profile.email, password: cur });
+      if (signErr) return jsonError('Senha atual incorreta');
+      const { error: upErr } = await supabase.auth.admin.updateUserById(tenantId, { password: nw });
+      if (upErr) return jsonError('Erro ao atualizar senha: ' + upErr.message);
+      return jsonSuccess({ message: 'Senha alterada' });
+    }
+    
+    case 'delete_account': {
+      const pwd = (data?.password || '').toString();
+      if (!pwd) return jsonError('Senha obrigatória');
+      const { data: profile } = await supabase.from('profiles').select('email').eq('id', tenantId).maybeSingle();
+      if (!profile?.email) return jsonError('Perfil sem email');
+      const anon = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_ANON_KEY')!);
+      const { error: signErr } = await anon.auth.signInWithPassword({ email: profile.email, password: pwd });
+      if (signErr) return jsonError('Senha incorreta');
+      const { error: delErr } = await supabase.auth.admin.deleteUser(tenantId);
+      if (delErr) return jsonError('Erro ao excluir: ' + delErr.message);
+      return jsonSuccess({ message: 'Conta excluída' });
+    }
+    
     default:
       return jsonError(`Unknown action: ${action}`);
   }
