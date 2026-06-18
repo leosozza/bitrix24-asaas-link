@@ -1,15 +1,20 @@
 import { AdminLayout } from './AdminLayout';
-import { useAdminTenants } from '@/hooks/useAdminTenants';
+import { useAdminTenants, adminApi } from '@/hooks/useAdminTenants';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, Sparkles, CheckCircle2, AlertCircle, XCircle, DollarSign } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Users, Sparkles, CheckCircle2, AlertCircle, XCircle, DollarSign, Webhook } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useState } from 'react';
+import { toast } from 'sonner';
+import { Loader2 } from 'lucide-react';
 
 function formatBRL(v: number) {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
 export default function AdminOverview() {
-  const { data, isLoading } = useAdminTenants();
+  const { data, isLoading, refetch } = useAdminTenants();
+  const [registering, setRegistering] = useState(false);
 
   const tenants = data?.tenants || [];
   const stats = {
@@ -23,6 +28,20 @@ export default function AdminOverview() {
       .reduce((sum, t) => sum + (Number(t.plan?.price) || 0), 0),
   };
 
+  const handleRegisterWebhook = async () => {
+    setRegistering(true);
+    try {
+      const result = await adminApi.registerWebhook();
+      toast.success('Webhook registrado no Asaas Thoth24');
+      console.log('Webhook registered:', result);
+      await refetch();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Erro ao registrar webhook');
+    } finally {
+      setRegistering(false);
+    }
+  };
+
   const cards = [
     { label: 'Total Tenants', value: stats.total, icon: Users, color: 'text-foreground' },
     { label: 'Em Trial', value: stats.trial, icon: Sparkles, color: 'text-blue-500' },
@@ -34,6 +53,13 @@ export default function AdminOverview() {
 
   return (
     <AdminLayout title="Visão Geral" description="Métricas dos tenants ConnectPay">
+      <div className="flex items-center justify-between mb-4">
+        <div />
+        <Button variant="outline" size="sm" onClick={handleRegisterWebhook} disabled={registering}>
+          {registering ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Webhook className="w-4 h-4 mr-2" />}
+          Reparar webhook Asaas
+        </Button>
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {cards.map((c) => (
           <Card key={c.label}>

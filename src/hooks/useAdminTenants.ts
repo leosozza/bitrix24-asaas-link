@@ -71,4 +71,5 @@ export const adminApi = {
   updatePlan: (plan_id: string, patch: Partial<AdminPlan>) => call('update_plan_details', { plan_id, ...patch }),
   createAsaasSubscription: (tenant_id: string, cpf_cnpj: string, billing_type: string) =>
     call('create_asaas_subscription', { tenant_id, cpf_cnpj, billing_type }),
+  registerWebhook: () => call('register_webhook'),
 };
