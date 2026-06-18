@@ -662,15 +662,28 @@ function recalc(){
   var balance = Math.max(0, total - entry);
   document.getElementById('w_balance').textContent = 'R$ ' + balance.toFixed(2).replace('.', ',');
 
-  // entry rows
+  // Hide balance/modalidade section if nothing left to schedule
+  document.getElementById('w_balanceSection').style.display = balance > 0 ? 'block' : 'none';
+  document.querySelector('.balance-box').style.display = entry > 0 || balance > 0 ? 'flex' : 'none';
+
+  // Rebuild entry overrides if structure changed (entry, entryN, entryDue)
+  rebuildEntryOverrides(entry, entryN, entryDue);
+
+  // Entry rows: render editable table when entry > 0
+  var entryWrap = document.getElementById('w_entryTable_wrap');
+  if (entry > 0 && entryDue) {
+    entryWrap.style.display = 'block';
+    renderEntryTable(entryMethod);
+  } else {
+    entryWrap.style.display = 'none';
+  }
+
+  // Cronograma: entry overrides + balance schedule
   var rows = [];
   if (entry > 0 && entryDue) {
-    var per = Math.round((entry / entryN) * 100) / 100;
-    var d0 = new Date(entryDue + 'T12:00:00');
-    for (var i = 0; i < entryN; i++) {
-      var d = new Date(d0); d.setMonth(d.getMonth() + i);
-      var v = (i === entryN - 1) ? (entry - per * (entryN - 1)) : per;
-      rows.push({n: rows.length+1, type: 'Entrada ' + (i+1) + '/' + entryN, due: d.toISOString().split('T')[0], val: v, method: entryMethod});
+    for (var i = 0; i < window.ENTRY_OVERRIDES.length; i++) {
+      var it = window.ENTRY_OVERRIDES[i];
+      rows.push({n: rows.length+1, type: 'Entrada ' + (i+1) + '/' + entryN, due: it.due, val: Number(it.val) || 0, method: entryMethod});
     }
   }
 
@@ -689,20 +702,13 @@ function recalc(){
     if (n > 0) {
       var per2 = Math.round((balance / n) * 100) / 100;
       var dates = calcRecurringDates(start, cycle, weekday, n);
-      // for recurring (subscription), all values equal balance/n; for installments, also balance/n (last adjusts)
       for (var k = 0; k < dates.length; k++) {
         var v2 = (k === dates.length - 1) ? (balance - per2 * (dates.length - 1)) : per2;
         var typeLabel = mode === 'recurring' ? ('Recorrente ' + (k+1)) : ('Parcela ' + (k+1) + '/' + dates.length);
         rows.push({n: rows.length+1, type: typeLabel, due: dates[k], val: v2, method: recMethod});
       }
-      // auto-fill end date if count mode
-      if (endMode === 'count' && dates.length) {
-        document.getElementById('w_end').value = dates[dates.length - 1];
-      }
-      // auto-fill count if date mode
-      if (endMode === 'date') {
-        document.getElementById('w_count').value = n;
-      }
+      if (endMode === 'count' && dates.length) document.getElementById('w_end').value = dates[dates.length - 1];
+      if (endMode === 'date') document.getElementById('w_count').value = n;
     }
   }
 
@@ -712,6 +718,85 @@ function recalc(){
     return '<tr><td>'+r.n+'</td><td>'+r.type+'</td><td>'+new Date(r.due).toLocaleDateString('pt-BR')+'</td><td>R$ '+r.val.toFixed(2).replace('.',',')+'</td><td>'+r.method+'</td></tr>';
   }).join('');
 }
+
+// Entry override state: array of {due, val}
+window.ENTRY_OVERRIDES = window.ENTRY_OVERRIDES || [];
+window.ENTRY_SIG = window.ENTRY_SIG || '';
+
+function rebuildEntryOverrides(entry, entryN, entryDue){
+  if (!(entry > 0) || !entryDue || !entryN) { window.ENTRY_OVERRIDES = []; window.ENTRY_SIG = ''; return; }
+  var sig = entry + '|' + entryN + '|' + entryDue;
+  if (sig === window.ENTRY_SIG && window.ENTRY_OVERRIDES.length === entryN) return;
+  var per = Math.round((entry / entryN) * 100) / 100;
+  var d0 = new Date(entryDue + 'T12:00:00');
+  var arr = [];
+  for (var i = 0; i < entryN; i++) {
+    var d = new Date(d0); d.setMonth(d.getMonth() + i);
+    var v = (i === entryN - 1) ? Math.round((entry - per * (entryN - 1)) * 100) / 100 : per;
+    arr.push({due: d.toISOString().split('T')[0], val: v});
+  }
+  window.ENTRY_OVERRIDES = arr;
+  window.ENTRY_SIG = sig;
+}
+
+function renderEntryTable(method){
+  var tbody = document.getElementById('w_entryTable');
+  tbody.innerHTML = window.ENTRY_OVERRIDES.map(function(it, i){
+    return '<tr>'+
+      '<td>'+(i+1)+'</td>'+
+      '<td><input type="date" value="'+it.due+'" onchange="updateEntryItem('+i+', \\'due\\', this.value)" style="padding:5px 8px;font-size:12px;width:100%"></td>'+
+      '<td><input type="number" step="0.01" min="0" value="'+it.val+'" onchange="updateEntryItem('+i+', \\'val\\', this.value)" style="padding:5px 8px;font-size:12px;width:100%"></td>'+
+      '<td>'+method+'</td>'+
+    '</tr>';
+  }).join('');
+}
+
+window.updateEntryItem = function(idx, field, value){
+  if (!window.ENTRY_OVERRIDES[idx]) return;
+  window.ENTRY_OVERRIDES[idx][field] = field === 'val' ? (parseFloat(value) || 0) : value;
+  // refresh cronograma preview only (don't rebuild overrides)
+  refreshPreviewOnly();
+};
+
+function refreshPreviewOnly(){
+  // re-render just the cronograma table using current overrides (avoid recalc which would rebuild overrides)
+  var entry = parseFloat(val('w_entry')) || 0;
+  var entryN = (pillVal('w_entryType') === 'installments') ? (parseInt(val('w_entryN')) || 1) : 1;
+  var entryMethod = pillVal('w_entryMethod') || 'PIX';
+  var rows = [];
+  for (var i = 0; i < window.ENTRY_OVERRIDES.length; i++) {
+    var it = window.ENTRY_OVERRIDES[i];
+    rows.push({n: rows.length+1, type: 'Entrada '+(i+1)+'/'+entryN, due: it.due, val: Number(it.val)||0, method: entryMethod});
+  }
+  var total = parseFloat(val('w_total')) || 0;
+  var balance = Math.max(0, total - entry);
+  var mode = pillVal('w_mode') || 'recurring';
+  var start = val('w_start');
+  var cycle = val('w_cycle') || 'WEEKLY';
+  var weekday = parseInt(val('w_weekday'));
+  var endMode = pillVal('w_endMode') || 'count';
+  var count = parseInt(val('w_count')) || 0;
+  var endISO = val('w_end');
+  var recMethod = pillVal('w_recMethod') || 'PIX';
+  if (balance > 0 && start) {
+    var n = endMode === 'count' ? count : (endISO ? countOccur(start, endISO, cycle, weekday) : 0);
+    if (n > 0) {
+      var per2 = Math.round((balance / n) * 100) / 100;
+      var dates = calcRecurringDates(start, cycle, weekday, n);
+      for (var k = 0; k < dates.length; k++) {
+        var v2 = (k === dates.length - 1) ? (balance - per2 * (dates.length - 1)) : per2;
+        var typeLabel = mode === 'recurring' ? ('Recorrente '+(k+1)) : ('Parcela '+(k+1)+'/'+dates.length);
+        rows.push({n: rows.length+1, type: typeLabel, due: dates[k], val: v2, method: recMethod});
+      }
+    }
+  }
+  var tbody = document.getElementById('w_preview');
+  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="5" class="empty">Preencha os dados acima.</td></tr>'; return; }
+  tbody.innerHTML = rows.map(function(r){
+    return '<tr><td>'+r.n+'</td><td>'+r.type+'</td><td>'+new Date(r.due).toLocaleDateString('pt-BR')+'</td><td>R$ '+r.val.toFixed(2).replace('.',',')+'</td><td>'+r.method+'</td></tr>';
+  }).join('');
+}
+
 
 function openWizard(){
   var c = CTX.customer || {}, p = CTX.contractPlan;
