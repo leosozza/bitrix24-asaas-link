@@ -3042,6 +3042,7 @@ async function generateDashboardPage(
         html += '<p style="font-size:13px;color:#f59e0b;">⚠ Webhook não configurado</p>';
         html += '<button class="btn btn-warning btn-sm" style="margin-top:8px;" onclick="repairWebhook()">Reparar Webhook</button>';
       }
+      html += '<button class="btn btn-primary btn-sm" style="margin-top:8px;margin-left:8px;" onclick="repairIntegration()">Reparar Integração Bitrix</button>';
       html += '</div>';
       
       html += '</div>';
@@ -3053,6 +3054,18 @@ async function generateDashboardPage(
       const result = await apiCall('repair_webhook');
       if (result.success) {
         showToast(result.message);
+        tabLoaded['integrations'] = false;
+        loadIntegrations();
+      } else {
+        showToast(result.error || 'Erro', 'error');
+      }
+    }
+
+    async function repairIntegration() {
+      showToast('Marcando integração para reparo...');
+      const result = await apiCall('repair_integration');
+      if (result.success) {
+        showToast(result.message || 'Integração marcada para reparo. Reabra o app no Bitrix24.');
         tabLoaded['integrations'] = false;
         loadIntegrations();
       } else {
