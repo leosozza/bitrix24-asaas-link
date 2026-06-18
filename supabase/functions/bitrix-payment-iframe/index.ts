@@ -1067,21 +1067,34 @@ async function handleCrmTabCreate(body: any, supabase: any, inst: any): Promise<
     let subscriptionRec: any = null;
     let entryCharge: any = null;
     
-    // Entry charge (always at startDate)
-    if (entry > 0) {
+    // Entry: support single charge or multiple installments
+    // payload.entryInstallments = [{ value, dueDate }, ...] (preferred)
+    // fallback: single charge with payload.entryValue at startDate
+    let entryItems: Array<{ value: number; dueDate: string }> = [];
+    if (Array.isArray(payload.entryInstallments) && payload.entryInstallments.length > 0) {
+      entryItems = payload.entryInstallments
+        .map((it: any) => ({ value: Number(it.value) || 0, dueDate: String(it.dueDate || '') }))
+        .filter((it: any) => it.value > 0 && it.dueDate);
+    } else if (entry > 0) {
+      entryItems = [{ value: entry, dueDate: toISODate(startDate) }];
+    }
+    
+    for (let i = 0; i < entryItems.length; i++) {
+      const it = entryItems[i];
+      const label = entryItems.length > 1 ? `Entrada ${i + 1}/${entryItems.length}` : 'Entrada';
       const entryPayload: any = {
         customer: customer.id,
         billingType,
-        value: entry,
-        dueDate: toISODate(startDate),
-        description: (description ? description + ' - ' : '') + 'Entrada',
-        externalReference: externalRef + '-entry',
+        value: it.value,
+        dueDate: it.dueDate,
+        description: (description ? description + ' - ' : '') + label,
+        externalReference: externalRef + '-entry-' + (i + 1),
       };
       const r = await asaasFetch(ctx.apiKey, ctx.baseUrl, `/payments`, { method: 'POST', body: JSON.stringify(entryPayload) });
-      if (r.errors) throw new Error('Asaas (entrada): ' + JSON.stringify(r.errors));
-      entryCharge = r;
+      if (r.errors) throw new Error(`Asaas (${label.toLowerCase()}): ` + JSON.stringify(r.errors));
+      if (!entryCharge) entryCharge = r;
       created.push(r);
-      installmentsList.push({ n: 0, label: 'Entrada', id: r.id, value: r.value, dueDate: r.dueDate, url: r.invoiceUrl });
+      installmentsList.push({ type: 'entry', n: i + 1, label, id: r.id, value: r.value, dueDate: r.dueDate, url: r.invoiceUrl });
     }
     
     const saldo = Math.max(0, total - entry);
