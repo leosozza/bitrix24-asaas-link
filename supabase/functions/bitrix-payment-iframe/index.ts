@@ -845,6 +845,8 @@ async function ensureDealAsaasFields(clientEndpoint: string, accessToken: string
     { FIELD_NAME: 'UF_CRM_ASAAS_INVOICE_NUMBER', USER_TYPE_ID: 'string', LABEL: 'Número da NFSe' },
     { FIELD_NAME: 'UF_CRM_ASAAS_INVOICE_PDF', USER_TYPE_ID: 'string', LABEL: 'PDF da NFSe' },
     { FIELD_NAME: 'UF_CRM_ASAAS_INVOICE_STATUS', USER_TYPE_ID: 'string', LABEL: 'Status NFSe' },
+    // Parcelado (lista de parcelas em JSON)
+    { FIELD_NAME: 'UF_CRM_ASAAS_INSTALLMENTS_JSON', USER_TYPE_ID: 'string', LABEL: 'Parcelas (JSON)' },
   ];
 
   const created: string[] = [];
