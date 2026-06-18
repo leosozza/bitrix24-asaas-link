@@ -3883,7 +3883,7 @@ async function generateDashboardPage(
       
       // Modal: Webhook Help (passo a passo)
       html += '<div class="modal-overlay" id="webhook-help-modal" onclick="if(event.target===this)closeModal(\\'webhook-help-modal\\')">';
-      html += '<div class="modal" style="max-width:640px;"><div class="modal-header"><h3>📘 Como configurar o webhook no Asaas</h3><button class="modal-close" onclick="closeModal(\\'webhook-help-modal\\')">×</button></div>';
+      html += '<div class="modal" style="max-width:640px;"><div class="modal-header"><h3 style="display:inline-flex;align-items:center;gap:8px;margin:0;">' + icn('info', 18) + ' Como configurar o webhook no Asaas</h3><button class="modal-close" onclick="closeModal(\\'webhook-help-modal\\')">×</button></div>';
       html += '<div class="modal-body">';
       html += '<ol style="font-size:13px;color:#334155;margin:0;padding-left:22px;line-height:1.7;">';
       html += '<li>Acesse <a href="https://www.asaas.com/login" target="_blank" rel="noopener" style="color:#0369a1;">https://www.asaas.com/login</a> e entre na sua conta.</li>';
