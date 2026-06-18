@@ -327,9 +327,9 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
 .fg input,.fg select,.fg textarea{width:100%;padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;outline:none;font-family:inherit}
 .fg input:focus,.fg select:focus{border-color:#0066cc;box-shadow:0 0 0 3px rgba(0,102,204,.1)}
 .fg input[readonly]{background:#f8fafc;color:#475569}
-.section{border:1px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:14px}
-.section h4{font-size:13px;margin-bottom:10px;color:#0f172a;display:flex;align-items:center;gap:7px}
-.section h4 .num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,#2FC6F6,#0066cc);color:#fff;font-size:11px;font-weight:700}
+.section{border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:16px}
+.section h4{font-size:15px;margin-bottom:12px;color:#0f172a;display:flex;align-items:center;gap:7px}
+.section h4 .num{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#2FC6F6,#0066cc);color:#fff;font-size:13px;font-weight:700}
 .info-banner{background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px}
 .msg{margin-top:10px;padding:10px;border-radius:8px;font-size:12px;display:none}
 .msg.ok{display:block;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}
