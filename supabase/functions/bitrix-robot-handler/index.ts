@@ -453,7 +453,7 @@ serve(async (req) => {
     // Process based on robot code
     switch (robotData.code) {
       case 'asaas_create_charge': {
-        const { payment_method, amount, customer_name, customer_email, customer_document, due_days } = robotData.properties;
+        const { payment_method, amount, customer_name, customer_email, customer_document, due_days, description, external_reference, installment_count, interest_percent, fine_percent, discount_value, discount_due_days } = robotData.properties;
         console.log('[Robot] create_charge raw inputs:', { amount, customer_document, payment_method });
 
         const docDigits = stripDocument(customer_document);
