@@ -1,77 +1,50 @@
-## Entrada parcelada (na aba Pagamentos Asaas)
+## Criar campos Bitrix para dados do contrato Asaas
 
-Adicionar a possibilidade de **parcelar a entrada** em N cobranças individuais, com data editável por parcela. Aplica-se a qualquer modo (À vista / Parcelado / Recorrente) sempre que houver "Entrada > 0".
+Adicionar criação automática de novos campos `UF_CRM_ASAAS_*` no Deal (e Lead) via `ensureDealAsaasFields` no edge function `bitrix-payment-iframe`, e gravá-los junto com `crm_tab_create`.
 
-### UI (dentro da seção "Entrada" já existente)
+### Novos campos no Bitrix
 
-Quando o usuário preenche **Valor da entrada** (>0), aparece:
-
-- Checkbox: **"Parcelar entrada"**
-- Se marcado:
-  - Campo: **Nº de parcelas da entrada** (default 1, min 1, max 24)
-  - Campo: **Valor de cada parcela** (auto: `entrada / N`, último ajustado para fechar centavos) — somente leitura, mas recalculado ao vivo
-  - Tabela de pré-visualização das parcelas da entrada:
-
-```text
-#  | Valor    | Vencimento (date picker)
-1  | 1.000,00 | [21/06/2026]
-2  | 1.000,00 | [21/07/2026]
-3  | 1.000,00 | [21/08/2026]
-```
-
-  - Vencimento da parcela 1 = "Data de início" do formulário; demais = parcela 1 + N meses (mensal por padrão) — todas editáveis individualmente pelo usuário.
-
-### Comportamento de cálculo
-
-- `entradaTotal = valor digitado`
-- `valoresEntrada = splitInstallmentValues(entradaTotal, nParcelasEntrada)` (mesma função já criada — última parcela absorve diferença de centavos)
-- `saldo = valorTotal - entradaTotal` (segue alimentando o fluxo À vista / Parcelado / Recorrente como hoje)
-
-### Criação no Asaas
-
-Para cada linha da tabela de entrada, **um `POST /payments` individual** com:
-- `value` = valor daquela parcela
-- `dueDate` = data escolhida pelo usuário naquela linha
-- `description` = `"<descrição base> - Entrada <i>/<N>"`
-- `billingType` = método selecionado
-
-Continuam sendo criadas DEPOIS as cobranças do saldo (parcelado, à vista única ou subscription), como já funciona hoje.
-
-### Persistência no Deal
-
-- Reaproveitar o campo já criado `UF_CRM_ASAAS_INSTALLMENTS_JSON`: prefixar as parcelas da entrada antes das parcelas do saldo, marcando `type: "entry"` vs `type: "balance"` em cada item:
-
-```json
-[
-  {"type":"entry","n":1,"id":"pay_xxx","value":1000,"dueDate":"2026-06-21","url":"..."},
-  {"type":"entry","n":2,"id":"pay_yyy","value":1000,"dueDate":"2026-07-21","url":"..."},
-  ...
-  {"type":"balance","n":1,"id":"pay_zzz","value":...,"dueDate":"...","url":"..."}
-]
-```
-
-- Os campos resumo (`UF_CRM_ASAAS_CHARGE_*`) continuam apontando para a **primeira cobrança gerada** (entrada parcela 1), como hoje.
+| Código UF                              | Tipo        | Valores / formato                          |
+| -------------------------------------- | ----------- | ------------------------------------------ |
+| `UF_CRM_ASAAS_CONTRACT_START`          | `date`      | Data de início do contrato                 |
+| `UF_CRM_ASAAS_CONTRACT_END`            | `date`      | Data de fim do contrato                    |
+| `UF_CRM_ASAAS_ENTRY_INSTALLMENTS`      | `enumeration` (lista) | `1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 18, 24` |
+| `UF_CRM_ASAAS_RECURRING_INSTALLMENTS`  | `enumeration` (lista) | `1..24, 36, 48, 60`                       |
+| `UF_CRM_ASAAS_CYCLE`                   | `enumeration` (lista) | `WEEKLY` (Semanal), `BIWEEKLY` (Quinzenal), `MONTHLY` (Mensal) |
 
 ### Mudanças técnicas
 
 Tudo em `supabase/functions/bitrix-payment-iframe/index.ts`:
 
-1. `generateCrmPaymentTabPage()` — adicionar checkbox + input N + tabela dinâmica com inputs `date` por linha. JS atualiza valores ao mudar entrada/N e datas ao mudar data de início.
-2. Handler `crm_tab_create` — antes do bloco atual de entrada única:
-   - Se `entryInstallments && entryInstallments.length > 0`, iterar e fazer `POST /payments` para cada item usando `value` e `dueDate` recebidos do front.
-   - Caso contrário, manter comportamento atual (1 cobrança de entrada).
-3. Payload do front passa a enviar `entryInstallments: [{ value, dueDate }, ...]` em vez de (ou além de) `entryValue` simples. Manter retrocompatibilidade: se vier só `entryValue`, tratar como 1 parcela.
-4. Montagem do `installmentsJson` final concatena entradas + saldo com o campo `type`.
+1. **`ensureDealAsaasFields`** — adicionar os 5 campos acima às definições criadas via `crm.deal.userfield.add` e `crm.lead.userfield.add`. Para os campos `enumeration`, enviar `LIST` com `VALUE` e `XML_ID` (usado para leitura/gravação consistente).
+
+2. **`crm_tab_load`** — ao montar o estado inicial, ler do Deal/Lead os valores atuais desses 5 campos e devolver ao front para pré-preencher: data de início, data de fim, nº parcelas da entrada, nº parcelas recorrentes e ciclo.
+
+3. **`generateCrmPaymentTabPage()`** — bindar os inputs existentes (Data de início, Data de fim, Nº parcelas entrada, Frequência) aos valores recebidos do load. Adicionar opção "Quinzenal" no select de frequência se ainda não existir. Nº parcelas da entrada e nº parcelas recorrentes passam a ser `<select>` com as opções da tabela acima (em vez de input numérico livre).
+
+4. **`crm_tab_create`** — após criar cobranças no Asaas, no `crm.deal.update` / `crm.lead.update` final, gravar também:
+   - `UF_CRM_ASAAS_CONTRACT_START` = `startDate`
+   - `UF_CRM_ASAAS_CONTRACT_END` = `endDate` (quando recorrente; vazio caso contrário)
+   - `UF_CRM_ASAAS_ENTRY_INSTALLMENTS` = ID do item da lista correspondente ao N escolhido
+   - `UF_CRM_ASAAS_RECURRING_INSTALLMENTS` = ID do item da lista correspondente ao N
+   - `UF_CRM_ASAAS_CYCLE` = ID do item da lista (`WEEKLY`/`BIWEEKLY`/`MONTHLY`)
+
+   Para resolver "valor → ID do item da lista", reusar a leitura de `crm.deal.userfield.get` por `FIELD_NAME` e cachear o mapa `XML_ID → ID` por requisição.
+
+### Ação necessária do usuário após implementar
+
+Clicar em **"Reparar Integração Bitrix"** no dashboard uma vez para que `ensureDealAsaasFields` rode e crie os 5 novos campos no Bitrix.
+
+### Validação
+
+1. Reparar integração → conferir no Bitrix (Deal → Configurações → Campos personalizados) os 5 campos criados.
+2. Abrir aba "Pagamentos Asaas" em um Deal limpo: campos vazios.
+3. Preencher início 21/06/2026, fim 21/12/2026, ciclo Semanal, entrada parcelada 3x, recorrente 12x → criar.
+4. Recarregar a aba: os 5 campos devem voltar preenchidos com os mesmos valores.
+5. Conferir na ficha do Deal (fora da aba) que os 5 campos estão visíveis e preenchidos.
 
 ### Fora de escopo
 
-- Editar valor individual de cada parcela da entrada (só data é editável; valores são distribuídos automaticamente).
-- Descrição/observação por parcela.
-- Reprocessar/recriar entrada após criada (cancela e cria de novo via UI atual).
-
-### Validação após implementar
-
-1. Abrir aba "Pagamentos Asaas" em um Deal.
-2. Total R$ 10.000, Entrada R$ 3.000, **Parcelar entrada = 3**, datas 21/06, 21/07, 21/08; saldo Parcelado 7x semanal.
-3. Verificar no Asaas: 3 cobranças de R$ 1.000 nas datas escolhidas + 7 cobranças do saldo.
-4. Verificar no Deal: `UF_CRM_ASAAS_INSTALLMENTS_JSON` com 10 itens (3 `entry` + 7 `balance`).
+- Migrar dados de Deals antigos para os novos campos.
+- Tornar os campos obrigatórios na ficha do Deal.
+- Sincronizar mudanças feitas diretamente nos campos do Deal de volta para o Asaas.
