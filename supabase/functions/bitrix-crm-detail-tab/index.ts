@@ -322,11 +322,11 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
 </div>
 
 <div class="tabs">
-  <button class="tab active" data-tab="charges">Cobranças</button>
-  <button class="tab" data-tab="plan">Planejamento</button>
-  <button class="tab" data-tab="subs">Assinaturas</button>
-  <button class="tab" data-tab="nfse">NFSe</button>
-  <button class="tab" data-tab="split">Split</button>
+  <button class="tab active" data-tab="charges">${ICONS.charges}<span>Cobranças</span></button>
+  <button class="tab" data-tab="plan">${ICONS.plan}<span>Planejamento</span></button>
+  <button class="tab" data-tab="subs">${ICONS.subs}<span>Assinaturas</span></button>
+  <button class="tab" data-tab="nfse">${ICONS.nfse}<span>NFSe</span></button>
+  <button class="tab" data-tab="split">${ICONS.split}<span>Split</span></button>
 </div>
 
 <!-- COBRANÇAS -->
@@ -340,7 +340,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
   ${planSummary}
   <form id="planForm" onsubmit="event.preventDefault();submitPlan()">
     <div class="section">
-      <h4>1. Cliente</h4>
+      <h4>${ICONS.user} 1. Cliente</h4>
       <div class="grid">
         <div class="fg"><label>Nome <span class="req">*</span></label><input id="pl_name" required></div>
         <div class="fg"><label>Email <span class="req">*</span></label><input id="pl_email" type="email" required></div>
@@ -350,7 +350,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
     </div>
 
     <div class="section">
-      <h4>2. Contrato</h4>
+      <h4>${ICONS.contract} 2. Contrato</h4>
       <div class="grid-3">
         <div class="fg"><label>Início <span class="req">*</span></label><input id="pl_start" type="date" required onchange="recalc()"></div>
         <div class="fg"><label>Fim <span class="req">*</span></label><input id="pl_end" type="date" required onchange="recalc()"></div>
@@ -366,7 +366,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
     </div>
 
     <div class="section">
-      <h4>3. Entrada parcelada (opcional)</h4>
+      <h4>${ICONS.wallet} 3. Entrada parcelada (opcional)</h4>
       <div class="grid-3">
         <div class="fg"><label>Valor da entrada (R$)</label><input id="pl_entry" type="number" step="0.01" min="0" value="0" onchange="recalc()"></div>
         <div class="fg"><label>Nº de parcelas</label>
@@ -379,7 +379,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
     </div>
 
     <div class="section">
-      <h4>4. Recorrência (saldo)</h4>
+      <h4>${ICONS.subs} 4. Recorrência (saldo)</h4>
       <div class="grid-3">
         <div class="fg"><label>Valor recorrente (R$) <span class="req">*</span></label><input id="pl_recVal" type="number" step="0.01" min="0" required onchange="recalc()"></div>
         <div class="fg"><label>Ciclo <span class="req">*</span></label>
@@ -399,7 +399,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
     </div>
 
     <div class="section">
-      <h4>5. Pré-visualização do cronograma</h4>
+      <h4>${ICONS.calendar} 5. Pré-visualização do cronograma</h4>
       <table class="preview-table"><thead><tr><th>#</th><th>Tipo</th><th>Forma</th><th>Vencimento</th><th>Valor</th></tr></thead>
       <tbody id="pl_preview"><tr><td colspan="5" class="empty">Preencha os dados para gerar o cronograma.</td></tr></tbody></table>
     </div>
