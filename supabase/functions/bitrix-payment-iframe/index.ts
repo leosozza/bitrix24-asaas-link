@@ -817,6 +817,63 @@ async function registerBadges(clientEndpoint: string, accessToken: string): Prom
   return { success: registered.length > 0, registered };
 }
 
+// Auto-create Asaas custom fields (UF_CRM_ASAAS_*) on Deal entity. Idempotent.
+async function ensureDealAsaasFields(clientEndpoint: string, accessToken: string): Promise<{ success: boolean; created: string[] }> {
+  console.log('[DealFields] Ensuring UF_CRM_ASAAS_* fields on Deal...');
+  const fields: Array<{ FIELD_NAME: string; USER_TYPE_ID: string; LABEL: string }> = [
+    // Charge
+    { FIELD_NAME: 'UF_CRM_ASAAS_CHARGE_ID', USER_TYPE_ID: 'string', LABEL: 'ID Cobrança Asaas' },
+    { FIELD_NAME: 'UF_CRM_ASAAS_CHARGE_URL', USER_TYPE_ID: 'string', LABEL: 'Link de Pagamento' },
+    { FIELD_NAME: 'UF_CRM_ASAAS_CHARGE_STATUS', USER_TYPE_ID: 'string', LABEL: 'Status Cobrança' },
+    { FIELD_NAME: 'UF_CRM_ASAAS_CHARGE_VALUE', USER_TYPE_ID: 'double', LABEL: 'Valor da Cobrança' },
+    { FIELD_NAME: 'UF_CRM_ASAAS_BILLING_TYPE', USER_TYPE_ID: 'string', LABEL: 'Forma de Pagamento' },
+    { FIELD_NAME: 'UF_CRM_ASAAS_DUE_DATE', USER_TYPE_ID: 'date', LABEL: 'Data de Vencimento' },
+    { FIELD_NAME: 'UF_CRM_ASAAS_PAID_AT', USER_TYPE_ID: 'date', LABEL: 'Data do Pagamento' },
+    { FIELD_NAME: 'UF_CRM_ASAAS_PIX_CODE', USER_TYPE_ID: 'string', LABEL: 'PIX Copia-Cola' },
+    { FIELD_NAME: 'UF_CRM_ASAAS_BOLETO_URL', USER_TYPE_ID: 'string', LABEL: 'URL do Boleto' },
+    // Subscription
+    { FIELD_NAME: 'UF_CRM_ASAAS_SUBSCRIPTION_ID', USER_TYPE_ID: 'string', LABEL: 'ID Assinatura Asaas' },
+    { FIELD_NAME: 'UF_CRM_ASAAS_SUBSCRIPTION_URL', USER_TYPE_ID: 'string', LABEL: 'URL Assinatura' },
+    { FIELD_NAME: 'UF_CRM_ASAAS_SUBSCRIPTION_STATUS', USER_TYPE_ID: 'string', LABEL: 'Status Assinatura' },
+    { FIELD_NAME: 'UF_CRM_ASAAS_SUBSCRIPTION_VALUE', USER_TYPE_ID: 'double', LABEL: 'Valor Assinatura' },
+    { FIELD_NAME: 'UF_CRM_ASAAS_NEXT_DUE', USER_TYPE_ID: 'date', LABEL: 'Próximo Vencimento' },
+    { FIELD_NAME: 'UF_CRM_ASAAS_CYCLE', USER_TYPE_ID: 'string', LABEL: 'Ciclo' },
+    // Invoice (NFSe)
+    { FIELD_NAME: 'UF_CRM_ASAAS_INVOICE_ID', USER_TYPE_ID: 'string', LABEL: 'ID NFSe' },
+    { FIELD_NAME: 'UF_CRM_ASAAS_INVOICE_NUMBER', USER_TYPE_ID: 'string', LABEL: 'Número da NFSe' },
+    { FIELD_NAME: 'UF_CRM_ASAAS_INVOICE_PDF', USER_TYPE_ID: 'string', LABEL: 'PDF da NFSe' },
+    { FIELD_NAME: 'UF_CRM_ASAAS_INVOICE_STATUS', USER_TYPE_ID: 'string', LABEL: 'Status NFSe' },
+  ];
+
+  const created: string[] = [];
+  for (const f of fields) {
+    const res = await callBitrixApi(clientEndpoint, 'crm.deal.userfield.add', {
+      fields: {
+        FIELD_NAME: f.FIELD_NAME,
+        USER_TYPE_ID: f.USER_TYPE_ID,
+        EDIT_FORM_LABEL: { pt: f.LABEL, br: f.LABEL, en: f.LABEL, ru: f.LABEL },
+        LIST_COLUMN_LABEL: { pt: f.LABEL, br: f.LABEL, en: f.LABEL, ru: f.LABEL },
+        LIST_FILTER_LABEL: { pt: f.LABEL, br: f.LABEL, en: f.LABEL, ru: f.LABEL },
+        SHOW_FILTER: 'Y',
+        SHOW_IN_LIST: 'Y',
+        EDIT_IN_LIST: 'Y',
+        IS_SEARCHABLE: 'Y',
+        MULTIPLE: 'N',
+      },
+    }, accessToken);
+
+    if (res.result) {
+      console.log(`[DealFields] Created ${f.FIELD_NAME}`);
+      created.push(f.FIELD_NAME);
+    } else if (res.error && /ALREADY|EXIST|DUPLICATE/i.test(String(res.error) + ' ' + String(res.error_description || ''))) {
+      console.log(`[DealFields] Already exists: ${f.FIELD_NAME}`);
+    } else {
+      console.error(`[DealFields] Failed ${f.FIELD_NAME}:`, res.error, res.error_description);
+    }
+  }
+  return { success: true, created };
+}
+
 // ============= END BITRIX API FUNCTIONS =============
 
 // Generate auth page when installation is not linked
