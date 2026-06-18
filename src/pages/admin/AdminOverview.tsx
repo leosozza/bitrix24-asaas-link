@@ -14,7 +14,6 @@ function formatBRL(v: number) {
 
 export default function AdminOverview() {
   const { data, isLoading, refetch } = useAdminTenants();
-  const qc = useQueryClient();
   const [registering, setRegistering] = useState(false);
 
   const tenants = data?.tenants || [];
