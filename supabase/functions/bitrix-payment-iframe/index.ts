@@ -1067,21 +1067,34 @@ async function handleCrmTabCreate(body: any, supabase: any, inst: any): Promise<
     let subscriptionRec: any = null;
     let entryCharge: any = null;
     
-    // Entry charge (always at startDate)
-    if (entry > 0) {
+    // Entry: support single charge or multiple installments
+    // payload.entryInstallments = [{ value, dueDate }, ...] (preferred)
+    // fallback: single charge with payload.entryValue at startDate
+    let entryItems: Array<{ value: number; dueDate: string }> = [];
+    if (Array.isArray(payload.entryInstallments) && payload.entryInstallments.length > 0) {
+      entryItems = payload.entryInstallments
+        .map((it: any) => ({ value: Number(it.value) || 0, dueDate: String(it.dueDate || '') }))
+        .filter((it: any) => it.value > 0 && it.dueDate);
+    } else if (entry > 0) {
+      entryItems = [{ value: entry, dueDate: toISODate(startDate) }];
+    }
+    
+    for (let i = 0; i < entryItems.length; i++) {
+      const it = entryItems[i];
+      const label = entryItems.length > 1 ? `Entrada ${i + 1}/${entryItems.length}` : 'Entrada';
       const entryPayload: any = {
         customer: customer.id,
         billingType,
-        value: entry,
-        dueDate: toISODate(startDate),
-        description: (description ? description + ' - ' : '') + 'Entrada',
-        externalReference: externalRef + '-entry',
+        value: it.value,
+        dueDate: it.dueDate,
+        description: (description ? description + ' - ' : '') + label,
+        externalReference: externalRef + '-entry-' + (i + 1),
       };
       const r = await asaasFetch(ctx.apiKey, ctx.baseUrl, `/payments`, { method: 'POST', body: JSON.stringify(entryPayload) });
-      if (r.errors) throw new Error('Asaas (entrada): ' + JSON.stringify(r.errors));
-      entryCharge = r;
+      if (r.errors) throw new Error(`Asaas (${label.toLowerCase()}): ` + JSON.stringify(r.errors));
+      if (!entryCharge) entryCharge = r;
       created.push(r);
-      installmentsList.push({ n: 0, label: 'Entrada', id: r.id, value: r.value, dueDate: r.dueDate, url: r.invoiceUrl });
+      installmentsList.push({ type: 'entry', n: i + 1, label, id: r.id, value: r.value, dueDate: r.dueDate, url: r.invoiceUrl });
     }
     
     const saldo = Math.max(0, total - entry);
@@ -1097,7 +1110,7 @@ async function handleCrmTabCreate(body: any, supabase: any, inst: any): Promise<
       if (r.errors) throw new Error('Asaas: ' + JSON.stringify(r.errors));
       firstCharge = entryCharge || r;
       created.push(r);
-      installmentsList.push({ n: 1, id: r.id, value: r.value, dueDate: r.dueDate, url: r.invoiceUrl });
+      installmentsList.push({ type: 'balance', n: 1, id: r.id, value: r.value, dueDate: r.dueDate, url: r.invoiceUrl });
     } else if (type === 'INSTALLMENT') {
       const values = splitInstallmentValues(saldo, installments);
       // First installment dueDate = startDate if no entry, else startDate + 1 period
@@ -1115,7 +1128,7 @@ async function handleCrmTabCreate(body: any, supabase: any, inst: any): Promise<
         if (r.errors) throw new Error(`Asaas (parcela ${i + 1}): ` + JSON.stringify(r.errors));
         if (!firstCharge) firstCharge = entryCharge || r;
         created.push(r);
-        installmentsList.push({ n: i + 1, id: r.id, value: r.value, dueDate: r.dueDate, url: r.invoiceUrl });
+        installmentsList.push({ type: 'balance', n: i + 1, id: r.id, value: r.value, dueDate: r.dueDate, url: r.invoiceUrl });
       }
     } else if (type === 'SUBSCRIPTION') {
       const nextDue = entry > 0 ? addPeriod(startDate, period, 1) : startDate;
@@ -4222,6 +4235,21 @@ function generateCrmPaymentTabPage(data: PaymentData, entityType: 'deal' | 'lead
     <div><label>Nº de Parcelas</label><input type="number" min="1" id="fInstallments" value="1" onchange="recalc()"></div>
     <div style="grid-column:span 2;"><label>Descrição</label><input type="text" id="fDesc" placeholder="Ex.: Assinatura Plano Pró"></div>
   </div>
+  <div id="entryInstallmentsBlock" class="hidden" style="background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;padding:12px;margin-bottom:12px;">
+    <div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#334155;font-weight:600;margin:0;">
+        <input type="checkbox" id="fSplitEntry" onchange="recalc()" style="width:auto;"> Parcelar entrada
+      </label>
+      <div id="entryNWrap" class="hidden" style="display:flex;align-items:center;gap:8px;">
+        <label style="margin:0;">Nº parcelas da entrada</label>
+        <input type="number" min="1" max="24" id="fEntryN" value="2" onchange="recalc()" style="width:80px;">
+      </div>
+    </div>
+    <table id="entryTable" class="hidden" style="margin-top:6px;">
+      <thead><tr><th style="width:40px;">#</th><th>Valor</th><th style="width:180px;">Vencimento</th></tr></thead>
+      <tbody id="entryTbody"></tbody>
+    </table>
+  </div>
   <div class="summary" id="summary">Preencha os campos acima para visualizar o resumo.</div>
   <div style="text-align:right;">
     <button class="btn btn-primary" id="btnCreate" onclick="createPayment()">+ Gerar Cobranças</button>
@@ -4341,6 +4369,82 @@ function recalc() {
             + (end ? '<span>Encerra em <strong>' + fmtDate(end) + '</strong></span>' : '');
   }
   document.getElementById('summary').innerHTML = summary;
+  renderEntryInstallments(entry, start);
+}
+
+function splitEntryValues(total, n) {
+  if (n <= 0 || total <= 0) return [];
+  const base = Math.floor((total * 100) / n) / 100;
+  const arr = Array(n).fill(base);
+  const diff = Math.round((total - base * n) * 100) / 100;
+  arr[n - 1] = Math.round((base + diff) * 100) / 100;
+  return arr;
+}
+
+function addMonthsISO(iso, months) {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1 + months, d));
+  return dt.toISOString().split('T')[0];
+}
+
+// Stores user-edited dates so that recalc doesn't trample them
+let entryDateOverrides = {};
+function renderEntryInstallments(entry, start) {
+  const block = document.getElementById('entryInstallmentsBlock');
+  const split = document.getElementById('fSplitEntry');
+  const nWrap = document.getElementById('entryNWrap');
+  const table = document.getElementById('entryTable');
+  const tbody = document.getElementById('entryTbody');
+  if (!(entry > 0)) {
+    block.classList.add('hidden');
+    split.checked = false;
+    nWrap.classList.add('hidden');
+    table.classList.add('hidden');
+    tbody.innerHTML = '';
+    return;
+  }
+  block.classList.remove('hidden');
+  if (!split.checked) {
+    nWrap.classList.add('hidden');
+    table.classList.add('hidden');
+    tbody.innerHTML = '';
+    return;
+  }
+  nWrap.classList.remove('hidden');
+  const n = Math.max(1, Math.min(24, parseInt(document.getElementById('fEntryN').value) || 1));
+  const values = splitEntryValues(entry, n);
+  let html = '';
+  for (let i = 0; i < n; i++) {
+    const defaultDate = addMonthsISO(start, i);
+    const date = entryDateOverrides[i] || defaultDate;
+    html += '<tr>'
+      + '<td>' + (i + 1) + '</td>'
+      + '<td><strong>' + fmtBRL(values[i]) + '</strong></td>'
+      + '<td><input type="date" data-eidx="' + i + '" value="' + date + '" onchange="onEntryDateChange(event)"></td>'
+      + '</tr>';
+  }
+  tbody.innerHTML = html;
+  table.classList.remove('hidden');
+}
+function onEntryDateChange(e) {
+  const idx = parseInt(e.target.getAttribute('data-eidx'));
+  entryDateOverrides[idx] = e.target.value;
+}
+function collectEntryInstallments() {
+  const split = document.getElementById('fSplitEntry');
+  const entry = parseFloat(document.getElementById('fEntry').value) || 0;
+  const start = document.getElementById('fStart').value;
+  if (!(entry > 0)) return [];
+  if (!split.checked) return [{ value: entry, dueDate: start }];
+  const n = Math.max(1, Math.min(24, parseInt(document.getElementById('fEntryN').value) || 1));
+  const values = splitEntryValues(entry, n);
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const inp = document.querySelector('[data-eidx="' + i + '"]');
+    out.push({ value: values[i], dueDate: (inp && inp.value) || entryDateOverrides[i] || addMonthsISO(start, i) });
+  }
+  return out;
 }
 
 async function loadCharges() {
@@ -4414,6 +4518,7 @@ async function createPayment() {
       endDate: document.getElementById('fEnd').value,
       total: parseFloat(document.getElementById('fTotal').value) || 0,
       entryValue: parseFloat(document.getElementById('fEntry').value) || 0,
+      entryInstallments: collectEntryInstallments(),
       installments: parseInt(document.getElementById('fInstallments').value) || 1,
       description: document.getElementById('fDesc').value,
     };
