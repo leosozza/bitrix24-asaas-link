@@ -1128,7 +1128,7 @@ async function handleCrmTabCreate(body: any, supabase: any, inst: any): Promise<
         if (r.errors) throw new Error(`Asaas (parcela ${i + 1}): ` + JSON.stringify(r.errors));
         if (!firstCharge) firstCharge = entryCharge || r;
         created.push(r);
-        installmentsList.push({ n: i + 1, id: r.id, value: r.value, dueDate: r.dueDate, url: r.invoiceUrl });
+        installmentsList.push({ type: 'balance', n: i + 1, id: r.id, value: r.value, dueDate: r.dueDate, url: r.invoiceUrl });
       }
     } else if (type === 'SUBSCRIPTION') {
       const nextDue = entry > 0 ? addPeriod(startDate, period, 1) : startDate;
