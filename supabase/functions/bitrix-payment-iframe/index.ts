@@ -4267,7 +4267,7 @@ function generateCrmPaymentTabPage(data: PaymentData, entityType: 'deal' | 'lead
       </label>
       <div id="entryNWrap" class="hidden" style="display:flex;align-items:center;gap:8px;">
         <label style="margin:0;">Nº parcelas da entrada</label>
-        <input type="number" min="1" max="24" id="fEntryN" value="2" onchange="recalc()" style="width:80px;">
+        <select id="fEntryN" onchange="recalc()" style="width:auto;">${[1,2,3,4,5,6,7,8,9,10,12,18,24].map(n => `<option value="${n}"${n===2?' selected':''}>${n}x</option>`).join('')}</select>
       </div>
     </div>
     <table id="entryTable" class="hidden" style="margin-top:6px;">
