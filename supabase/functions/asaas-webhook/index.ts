@@ -496,6 +496,39 @@ serve(async (req) => {
     }
     
     console.log(`Updated transaction ${transaction.id} to status: ${newStatus}`);
+
+    // Mirror status into Deal UF_CRM_ASAAS_* (best-effort, only if linked to a Deal)
+    if (transaction.bitrix_entity_type === 'deal' && transaction.bitrix_entity_id) {
+      try {
+        const { data: inst } = await supabase
+          .from('bitrix_installations')
+          .select('client_endpoint, access_token, domain')
+          .eq('tenant_id', tenantId)
+          .eq('status', 'active')
+          .maybeSingle();
+        const ep = inst?.client_endpoint || (inst?.domain ? `https://${inst.domain}/rest/` : null);
+        if (ep && inst?.access_token) {
+          const dealFields: Record<string, unknown> = {
+            UF_CRM_ASAAS_CHARGE_STATUS: payment.status,
+          };
+          if (payment.confirmedDate || payment.paymentDate) {
+            dealFields.UF_CRM_ASAAS_PAID_AT = payment.confirmedDate || payment.paymentDate;
+          }
+          const dealId = parseInt(String(transaction.bitrix_entity_id).replace(/\D/g, '')) || 0;
+          if (dealId) {
+            await fetch(`${ep}crm.deal.update`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ auth: inst.access_token, id: dealId, fields: dealFields }),
+            });
+            console.log('[Webhook] Updated Deal', dealId, 'UF_CRM_ASAAS_* status:', payment.status);
+          }
+        }
+      } catch (e) {
+        console.error('[Webhook] Failed to mirror status to Deal:', e);
+      }
+    }
+
     
     // Log the webhook event
     await supabase.from('integration_logs').insert({
