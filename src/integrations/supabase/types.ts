@@ -70,6 +70,7 @@ export type Database = {
           bitrix_user_id: string | null
           client_endpoint: string | null
           created_at: string
+          deal_fields_registered: boolean
           domain: string
           expires_at: string | null
           icons_registered: boolean | null
@@ -93,6 +94,7 @@ export type Database = {
           bitrix_user_id?: string | null
           client_endpoint?: string | null
           created_at?: string
+          deal_fields_registered?: boolean
           domain: string
           expires_at?: string | null
           icons_registered?: boolean | null
@@ -116,6 +118,7 @@ export type Database = {
           bitrix_user_id?: string | null
           client_endpoint?: string | null
           created_at?: string
+          deal_fields_registered?: boolean
           domain?: string
           expires_at?: string | null
           icons_registered?: boolean | null
