@@ -2401,7 +2401,7 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
       
       const { data: profile } = await supabase
         .from('profiles')
-        .select('company_name, email, phone, bitrix_domain')
+        .select('company_name, email, phone, address, bitrix_domain')
         .eq('id', tenantId)
         .maybeSingle();
       
