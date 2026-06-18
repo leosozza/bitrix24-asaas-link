@@ -1110,7 +1110,7 @@ async function handleCrmTabCreate(body: any, supabase: any, inst: any): Promise<
       if (r.errors) throw new Error('Asaas: ' + JSON.stringify(r.errors));
       firstCharge = entryCharge || r;
       created.push(r);
-      installmentsList.push({ n: 1, id: r.id, value: r.value, dueDate: r.dueDate, url: r.invoiceUrl });
+      installmentsList.push({ type: 'balance', n: 1, id: r.id, value: r.value, dueDate: r.dueDate, url: r.invoiceUrl });
     } else if (type === 'INSTALLMENT') {
       const values = splitInstallmentValues(saldo, installments);
       // First installment dueDate = startDate if no entry, else startDate + 1 period
