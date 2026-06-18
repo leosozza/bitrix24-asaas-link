@@ -2951,6 +2951,19 @@ async function generateDashboardPage(
         <span class="dock-label">Notas Fiscais</span>
       </button>
       <div class="dock-separator"></div>
+      <button class="dock-tab" onclick="switchTab('plan')" data-tab="plan">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+        <span class="dock-label">Plano</span>
+      </button>
+      <button class="dock-tab" onclick="switchTab('notifications')" data-tab="notifications">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        <span class="dock-label">Notificações</span>
+      </button>
+      <button class="dock-tab" onclick="switchTab('security')" data-tab="security">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        <span class="dock-label">Segurança</span>
+      </button>
+      <div class="dock-separator"></div>
       <button class="dock-tab" onclick="switchTab('integrations')" data-tab="integrations">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
         <span class="dock-label">Integrações</span>
