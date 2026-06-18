@@ -4369,6 +4369,82 @@ function recalc() {
             + (end ? '<span>Encerra em <strong>' + fmtDate(end) + '</strong></span>' : '');
   }
   document.getElementById('summary').innerHTML = summary;
+  renderEntryInstallments(entry, start);
+}
+
+function splitEntryValues(total, n) {
+  if (n <= 0 || total <= 0) return [];
+  const base = Math.floor((total * 100) / n) / 100;
+  const arr = Array(n).fill(base);
+  const diff = Math.round((total - base * n) * 100) / 100;
+  arr[n - 1] = Math.round((base + diff) * 100) / 100;
+  return arr;
+}
+
+function addMonthsISO(iso, months) {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1 + months, d));
+  return dt.toISOString().split('T')[0];
+}
+
+// Stores user-edited dates so that recalc doesn't trample them
+let entryDateOverrides = {};
+function renderEntryInstallments(entry, start) {
+  const block = document.getElementById('entryInstallmentsBlock');
+  const split = document.getElementById('fSplitEntry');
+  const nWrap = document.getElementById('entryNWrap');
+  const table = document.getElementById('entryTable');
+  const tbody = document.getElementById('entryTbody');
+  if (!(entry > 0)) {
+    block.classList.add('hidden');
+    split.checked = false;
+    nWrap.classList.add('hidden');
+    table.classList.add('hidden');
+    tbody.innerHTML = '';
+    return;
+  }
+  block.classList.remove('hidden');
+  if (!split.checked) {
+    nWrap.classList.add('hidden');
+    table.classList.add('hidden');
+    tbody.innerHTML = '';
+    return;
+  }
+  nWrap.classList.remove('hidden');
+  const n = Math.max(1, Math.min(24, parseInt(document.getElementById('fEntryN').value) || 1));
+  const values = splitEntryValues(entry, n);
+  let html = '';
+  for (let i = 0; i < n; i++) {
+    const defaultDate = addMonthsISO(start, i);
+    const date = entryDateOverrides[i] || defaultDate;
+    html += '<tr>'
+      + '<td>' + (i + 1) + '</td>'
+      + '<td><strong>' + fmtBRL(values[i]) + '</strong></td>'
+      + '<td><input type="date" data-eidx="' + i + '" value="' + date + '" onchange="onEntryDateChange(event)"></td>'
+      + '</tr>';
+  }
+  tbody.innerHTML = html;
+  table.classList.remove('hidden');
+}
+function onEntryDateChange(e) {
+  const idx = parseInt(e.target.getAttribute('data-eidx'));
+  entryDateOverrides[idx] = e.target.value;
+}
+function collectEntryInstallments() {
+  const split = document.getElementById('fSplitEntry');
+  const entry = parseFloat(document.getElementById('fEntry').value) || 0;
+  const start = document.getElementById('fStart').value;
+  if (!(entry > 0)) return [];
+  if (!split.checked) return [{ value: entry, dueDate: start }];
+  const n = Math.max(1, Math.min(24, parseInt(document.getElementById('fEntryN').value) || 1));
+  const values = splitEntryValues(entry, n);
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const inp = document.querySelector('[data-eidx="' + i + '"]');
+    out.push({ value: values[i], dueDate: (inp && inp.value) || entryDateOverrides[i] || addMonthsISO(start, i) });
+  }
+  return out;
 }
 
 async function loadCharges() {
