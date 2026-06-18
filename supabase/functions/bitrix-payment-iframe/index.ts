@@ -26,6 +26,8 @@ interface PaymentData {
   memberId: string;
   accessToken?: string;
   serverEndpoint?: string;
+  placement?: string;
+  placementOptions?: { ID?: string; CATEGORY_ID?: string } | null;
 }
 
 // ============= BITRIX API FUNCTIONS FOR PAY SYSTEM REGISTRATION =============
