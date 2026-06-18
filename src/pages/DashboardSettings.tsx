@@ -577,12 +577,19 @@ export default function DashboardSettings() {
                 </div>
               </div>
 
-              <div className="flex justify-end">
+              <div className="flex flex-wrap justify-end gap-2">
                 <Button variant="outline" onClick={handleRepairWebhook} disabled={isRepairingWebhook}>
                   {isRepairingWebhook ? (
                     <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Reparando...</>
                   ) : (
                     <><RefreshCw className="mr-2 h-4 w-4" />Registrar/Reparar webhook no Asaas</>
+                  )}
+                </Button>
+                <Button onClick={handleRepairIntegration} disabled={isRepairingIntegration}>
+                  {isRepairingIntegration ? (
+                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Reparando...</>
+                  ) : (
+                    <><RefreshCw className="mr-2 h-4 w-4" />Reparar Integração Bitrix (robôs + campos)</>
                   )}
                 </Button>
               </div>
