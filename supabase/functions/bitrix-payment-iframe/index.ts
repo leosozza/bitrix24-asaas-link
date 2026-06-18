@@ -4216,7 +4216,7 @@ async function generateDashboardPage(
       else showToast(r.error || 'Erro ao excluir', 'error');
     }
     
-    function escapeHtml(s) { return String(s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+    
     
     
     // BX24 init
