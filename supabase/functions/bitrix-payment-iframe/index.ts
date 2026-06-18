@@ -4353,8 +4353,8 @@ function generateCrmPaymentTabPage(data: PaymentData, entityType: 'deal' | 'lead
       </select>
     </div>
     <div>
-      <label>Forma Pagamento</label>
-      <select id="fBilling">
+      <label>Forma Pagamento <span style="color:#dc2626;">*</span></label>
+      <select id="fBilling" required>
         <option value="BOLETO" selected>Boleto Bancário</option>
         <option value="PIX">PIX</option>
         <option value="CREDIT_CARD">Cartão de Crédito</option>
@@ -4362,20 +4362,21 @@ function generateCrmPaymentTabPage(data: PaymentData, entityType: 'deal' | 'lead
       </select>
     </div>
     <div>
-      <label>Início (1º Vencimento)</label>
-      <input type="date" id="fStart" onchange="recalc()">
+      <label>Início (1º Vencimento) <span style="color:#dc2626;">*</span></label>
+      <input type="date" id="fStart" required onchange="recalc()">
     </div>
     <div>
-      <label>Fim (opcional)</label>
+      <label>Fim (recorrente) <span id="fEndStar" style="color:#dc2626;display:none;">*</span></label>
       <input type="date" id="fEnd" onchange="recalc()">
     </div>
   </div>
   <div class="row">
-    <div><label>Valor Total (R$)</label><input type="number" step="0.01" id="fTotal" placeholder="0,00" onchange="recalc()"></div>
+    <div><label>Valor Total (R$) <span style="color:#dc2626;">*</span></label><input type="number" step="0.01" min="0.01" id="fTotal" required placeholder="0,00" onchange="recalc()"></div>
     <div><label>Entrada (R$)</label><input type="number" step="0.01" id="fEntry" placeholder="0,00" onchange="recalc()"></div>
-    <div><label>Nº de Parcelas</label><select id="fInstallments" onchange="recalc()">${[1,2,3,4,5,6,7,8,9,10,11,12,15,18,24,36,48,60].map(n => `<option value="${n}"${n===1?' selected':''}>${n}x</option>`).join('')}</select></div>
+    <div><label>Nº de Parcelas <span id="fInstStar" style="color:#dc2626;display:none;">*</span></label><select id="fInstallments" onchange="recalc()">${[1,2,3,4,5,6,7,8,9,10,11,12,15,18,24,36,48,60].map(n => `<option value="${n}"${n===1?' selected':''}>${n}x</option>`).join('')}</select></div>
     <div style="grid-column:span 2;"><label>Descrição</label><input type="text" id="fDesc" placeholder="Ex.: Assinatura Plano Pró"></div>
   </div>
+  <div id="contactWarn" class="alert alert-error hidden" style="margin-top:4px;"></div>
   <div id="entryInstallmentsBlock" class="hidden" style="background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;padding:12px;margin-bottom:12px;">
     <div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
       <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#334155;font-weight:600;margin:0;">
