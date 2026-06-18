@@ -1183,6 +1183,18 @@ async function handleCrmTabCreate(body: any, supabase: any, inst: any): Promise<
       if (installmentsList.length > 0) {
         uf.UF_CRM_ASAAS_INSTALLMENTS_JSON = JSON.stringify(installmentsList);
       }
+      // Contract fields (always persisted)
+      uf.UF_CRM_ASAAS_CONTRACT_START = payload.startDate || '';
+      if (payload.endDate) uf.UF_CRM_ASAAS_CONTRACT_END = payload.endDate;
+      uf.UF_CRM_ASAAS_ENTRY_INSTALLMENTS = entryItems.length || 0;
+      uf.UF_CRM_ASAAS_CYCLE = period;
+      if (type === 'INSTALLMENT') {
+        uf.UF_CRM_ASAAS_RECURRING_INSTALLMENTS = installments;
+      } else if (type === 'SUBSCRIPTION') {
+        uf.UF_CRM_ASAAS_RECURRING_INSTALLMENTS = 0;
+      } else {
+        uf.UF_CRM_ASAAS_RECURRING_INSTALLMENTS = 1;
+      }
       if (Object.keys(uf).length > 0) {
         await updateDealUfFields(ep.endpoint, ep.token, entityType, entityId, uf);
       }
