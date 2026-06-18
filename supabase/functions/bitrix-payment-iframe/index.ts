@@ -4257,7 +4257,7 @@ function generateCrmPaymentTabPage(data: PaymentData, entityType: 'deal' | 'lead
   <div class="row">
     <div><label>Valor Total (R$)</label><input type="number" step="0.01" id="fTotal" placeholder="0,00" onchange="recalc()"></div>
     <div><label>Entrada (R$)</label><input type="number" step="0.01" id="fEntry" placeholder="0,00" onchange="recalc()"></div>
-    <div><label>Nº de Parcelas</label><input type="number" min="1" id="fInstallments" value="1" onchange="recalc()"></div>
+    <div><label>Nº de Parcelas</label><select id="fInstallments" onchange="recalc()">${[1,2,3,4,5,6,7,8,9,10,11,12,15,18,24,36,48,60].map(n => `<option value="${n}"${n===1?' selected':''}>${n}x</option>`).join('')}</select></div>
     <div style="grid-column:span 2;"><label>Descrição</label><input type="text" id="fDesc" placeholder="Ex.: Assinatura Plano Pró"></div>
   </div>
   <div id="entryInstallmentsBlock" class="hidden" style="background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;padding:12px;margin-bottom:12px;">
