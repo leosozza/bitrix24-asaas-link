@@ -715,11 +715,97 @@ function recalc(){
     }
   }
 
+  finalizeSchedule(rows);
+}
+
+function cycleLabel(c){ return c==='WEEKLY'?'semanal':c==='BIWEEKLY'?'quinzenal':c==='MONTHLY'?'mensal':String(c||''); }
+
+function finalizeSchedule(rows){
   var tbody = document.getElementById('w_preview');
-  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="5" class="empty">Preencha os dados acima.</td></tr>'; return; }
-  tbody.innerHTML = rows.map(function(r){
-    return '<tr><td>'+r.n+'</td><td>'+r.type+'</td><td>'+new Date(r.due).toLocaleDateString('pt-BR')+'</td><td>R$ '+r.val.toFixed(2).replace('.',',')+'</td><td>'+r.method+'</td></tr>';
-  }).join('');
+  var total = parseFloat(val('w_total')) || 0;
+  var entry = parseFloat(val('w_entry')) || 0;
+  var mode = pillVal('w_mode') || 'recurring';
+  var cycle = val('w_cycle') || 'WEEKLY';
+  var balance = Math.max(0, total - entry);
+  var lbl = document.getElementById('w_cycleLabel');
+  if (lbl) lbl.textContent = balance > 0 ? ('• Ciclo do saldo: ' + cycleLabel(cycle) + (mode==='installments'?' (parcelamento fixo)':' (assinatura recorrente)')) : '';
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">Preencha os dados acima.</td></tr>';
+  } else {
+    tbody.innerHTML = rows.map(function(r){
+      return '<tr><td>'+r.n+'</td><td>'+r.type+'</td><td>'+new Date(r.due+'T12:00:00').toLocaleDateString('pt-BR')+'</td><td>R$ '+r.val.toFixed(2).replace('.',',')+'</td><td>'+r.method+'</td></tr>';
+    }).join('');
+  }
+  var sum = rows.reduce(function(a,r){return a + (Number(r.val)||0);}, 0);
+  var tot = document.getElementById('w_totals');
+  if (tot) tot.textContent = rows.length ? ('Soma do cronograma: R$ ' + sum.toFixed(2).replace('.',',') + ' / Valor total: R$ ' + total.toFixed(2).replace('.',',')) : '';
+  validateWizard(rows, {total: total, entry: entry, balance: balance, mode: mode, cycle: cycle});
+}
+
+function validateWizard(rows, s){
+  var errs = [], warns = [];
+  // basic
+  if (!(s.total > 0)) errs.push('Informe um valor total maior que zero.');
+  if (s.entry < 0) errs.push('Valor de entrada não pode ser negativo.');
+  if (s.entry > s.total + 0.009) errs.push('Entrada (R$ '+s.entry.toFixed(2)+') maior que o total (R$ '+s.total.toFixed(2)+').');
+
+  // entry items
+  var items = window.ENTRY_OVERRIDES || [];
+  if (s.entry > 0 && items.length) {
+    var sumE = 0, prev = null;
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i];
+      if (!it.due) errs.push('Parcela de entrada '+(i+1)+' sem data.');
+      if (!(Number(it.val) >= 0)) errs.push('Parcela de entrada '+(i+1)+' com valor inválido.');
+      if (prev && it.due && it.due < prev) warns.push('Datas das entradas fora de ordem na parcela '+(i+1)+'.');
+      prev = it.due || prev;
+      sumE += Number(it.val) || 0;
+    }
+    if (Math.abs(sumE - s.entry) > 0.01) errs.push('Soma das parcelas de entrada (R$ '+sumE.toFixed(2)+') difere do valor de entrada (R$ '+s.entry.toFixed(2)+').');
+  }
+
+  // balance config
+  var start = val('w_start');
+  var endMode = pillVal('w_endMode') || 'count';
+  var count = parseInt(val('w_count')) || 0;
+  var endISO = val('w_end');
+  if (s.balance > 0) {
+    if (!start) errs.push('Informe a data de início do saldo.');
+    if (endMode === 'count' && !(count > 0)) errs.push('Informe o número de parcelas (>0).');
+    if (endMode === 'date') {
+      if (!endISO) errs.push('Informe a data fim.');
+      else if (start && endISO < start) errs.push('Data fim do saldo é anterior ao início.');
+    }
+    // balance start should be after last entry date
+    if (items.length && start) {
+      var lastE = items.map(function(x){return x.due;}).filter(Boolean).sort().pop();
+      if (lastE && start <= lastE) warns.push('Início do saldo ('+start+') sobrepõe a última entrada ('+lastE+').');
+    }
+    // schedule sum vs balance
+    var sched = rows.filter(function(r){ return r.type.indexOf('Entrada') !== 0; });
+    if (sched.length) {
+      var sumS = sched.reduce(function(a,r){return a + (Number(r.val)||0);}, 0);
+      if (Math.abs(sumS - s.balance) > 0.05) warns.push('Soma das parcelas do saldo (R$ '+sumS.toFixed(2)+') difere do saldo (R$ '+s.balance.toFixed(2)+').');
+    }
+  }
+
+  var box = document.getElementById('w_warn');
+  var btn = document.getElementById('w_submit');
+  if (errs.length) {
+    box.style.display = 'block';
+    box.style.background = '#fdecea'; box.style.color = '#a12622'; box.style.border = '1px solid #f5c2c0';
+    box.innerHTML = '<strong>Corrija antes de enviar:</strong><ul style="margin:6px 0 0 18px;padding:0">' + errs.concat(warns).map(function(e){return '<li>'+e+'</li>';}).join('') + '</ul>';
+    if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
+  } else if (warns.length) {
+    box.style.display = 'block';
+    box.style.background = '#fff4e5'; box.style.color = '#8a5a00'; box.style.border = '1px solid #ffd596';
+    box.innerHTML = '<strong>Atenção:</strong><ul style="margin:6px 0 0 18px;padding:0">' + warns.map(function(e){return '<li>'+e+'</li>';}).join('') + '</ul>';
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+  } else {
+    box.style.display = 'none'; box.innerHTML = '';
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+  }
+  return errs.length === 0;
 }
 
 // Entry override state: array of {due, val}
