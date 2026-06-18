@@ -3782,22 +3782,23 @@ async function generateDashboardPage(
       html += '<div style="flex:1;">';
       html += '<div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;font-weight:600;margin-bottom:6px;">Conta Asaas</div>';
       const connected = a.has_api_key;
-      html += '<div style="font-size:18px;font-weight:600;color:#0f172a;margin-bottom:10px;">' + (connected ? '🟢 Asaas Conectado · ' + envLabel : '⚠ Não configurado') + '</div>';
+      html += '<div style="font-size:18px;font-weight:600;color:#0f172a;margin-bottom:10px;display:inline-flex;align-items:center;gap:8px;">' + (connected ? '<span style="color:#16a34a;display:inline-flex;">' + icn('check', 18) + '</span> Asaas Conectado · ' + envLabel : '<span style="color:#d97706;display:inline-flex;">' + icn('alert', 18) + '</span> Não configurado') + '</div>';
       html += '<div style="display:flex;flex-wrap:wrap;gap:8px;">';
       html += '<span style="background:#dcfce7;color:#166534;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;">API Asaas v3</span>';
       html += '<span style="background:#e0f2fe;color:#075985;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;">Ambiente: ' + envLabel + '</span>';
-      html += '<span style="background:' + (wh.configured ? '#dcfce7' : '#fef3c7') + ';color:' + (wh.configured ? '#166534' : '#92400e') + ';padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;">' + (wh.configured ? '✓ Registrado automaticamente' : '⚠ Webhook pendente') + '</span>';
+      html += '<span style="background:' + (wh.configured ? '#dcfce7' : '#fef3c7') + ';color:' + (wh.configured ? '#166534' : '#92400e') + ';padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">' + (wh.configured ? icn('check') + ' Registrado automaticamente' : icn('alert') + ' Webhook pendente') + '</span>';
       html += '</div></div>';
       html += '<div style="display:flex;flex-direction:column;gap:6px;">';
-      html += '<button class="btn btn-secondary btn-sm" onclick="openAsaasModal()" title="Editar configuração Asaas">✏️ Editar</button>';
-      html += '<button class="btn btn-secondary btn-sm" onclick="openWebhookHelpModal()" title="Como configurar o webhook">ℹ️ Como configurar</button>';
+      html += '<button class="btn btn-secondary btn-sm" onclick="openAsaasModal()" title="Editar configuração Asaas" style="display:inline-flex;align-items:center;gap:6px;">' + icn('pencil') + ' Editar</button>';
+      html += '<button class="btn btn-secondary btn-sm" onclick="openWebhookHelpModal()" title="Como configurar o webhook" style="display:inline-flex;align-items:center;gap:6px;">' + icn('info') + ' Como configurar</button>';
       html += '</div>';
       html += '</div></div>';
       
       // Configuração Fiscal — colapsável (fechado por padrão)
       html += '<div class="card" style="margin-bottom:24px;">';
       html += '<div class="card-header" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;" onclick="toggleFiscalCard()">';
-      html += '<h3>⚙️ Configuração Fiscal</h3>';
+      html += '<h3 style="display:inline-flex;align-items:center;gap:8px;margin:0;">' + icn('file', 16) + ' Configuração Fiscal</h3>';
+
       html += '<span id="fiscal-caret" style="color:#64748b;font-size:14px;">▼</span>';
       html += '</div>';
       html += '<div id="fiscal-body" style="display:none;padding:20px;">';
