@@ -395,18 +395,14 @@ async function registerAutomationRobots(clientEndpoint: string, accessToken: str
           Required: 'Y',
           Default: 'pix',
         },
-        amount: {
-          Name: 'Valor (R$)',
-          Type: 'double',
-          Required: 'Y',
-        },
+        amount: { Name: 'Valor da Assinatura (R$)', Type: 'double', Required: 'Y' },
         cycle: {
           Name: 'Ciclo de Cobrança',
           Type: 'select',
-          Options: { 
-            WEEKLY: 'Semanal', 
-            BIWEEKLY: 'Quinzenal', 
-            MONTHLY: 'Mensal', 
+          Options: {
+            WEEKLY: 'Semanal',
+            BIWEEKLY: 'Quinzenal',
+            MONTHLY: 'Mensal',
             BIMONTHLY: 'Bimestral',
             QUARTERLY: 'Trimestral',
             SEMIANNUALLY: 'Semestral',
@@ -415,26 +411,13 @@ async function registerAutomationRobots(clientEndpoint: string, accessToken: str
           Required: 'Y',
           Default: 'MONTHLY',
         },
-        customer_name: {
-          Name: 'Nome do Cliente',
-          Type: 'string',
-          Required: 'Y',
-        },
-        customer_email: {
-          Name: 'Email do Cliente',
-          Type: 'string',
-          Required: 'N',
-        },
-        customer_document: {
-          Name: 'CPF/CNPJ',
-          Type: 'string',
-          Required: 'Y',
-        },
-        first_due_days: {
-          Name: 'Dias para Primeira Cobrança',
-          Type: 'int',
-          Default: 7,
-        },
+        customer_name: { Name: 'Nome do Cliente', Type: 'string', Required: 'Y' },
+        customer_email: { Name: 'Email do Cliente', Type: 'string', Required: 'N' },
+        customer_document: { Name: 'CPF/CNPJ', Type: 'string', Required: 'Y' },
+        first_due_days: { Name: 'Dias para Primeira Cobrança', Type: 'int', Default: 7 },
+        description: { Name: 'Descrição da Assinatura', Type: 'string', Required: 'N' },
+        end_date: { Name: 'Data Final (YYYY-MM-DD, opcional)', Type: 'string', Required: 'N' },
+        max_payments: { Name: 'Máx. cobranças (opcional)', Type: 'int', Required: 'N' },
         bitrix_entity_type: {
           Name: 'Tipo de Entidade Bitrix (alvo)',
           Type: 'select',
@@ -442,11 +425,7 @@ async function registerAutomationRobots(clientEndpoint: string, accessToken: str
           Default: 'deal',
           Required: 'N',
         },
-        bitrix_entity_id: {
-          Name: 'ID do Deal/Lead (opcional)',
-          Type: 'string',
-          Required: 'N',
-        },
+        bitrix_entity_id: { Name: 'ID do Deal/Lead (opcional)', Type: 'string', Required: 'N' },
       },
       RETURN_PROPERTIES: {
         subscription_id: {
