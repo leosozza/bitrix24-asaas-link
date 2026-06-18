@@ -59,6 +59,7 @@ export default function DashboardSettings() {
   const [webhookConfigured, setWebhookConfigured] = useState(false);
   const [manualSecret, setManualSecret] = useState('');
   const [isRepairingWebhook, setIsRepairingWebhook] = useState(false);
+  const [isRepairingIntegration, setIsRepairingIntegration] = useState(false);
   const [isSavingSecret, setIsSavingSecret] = useState(false);
 
   const loadWebhookInfo = async () => {
@@ -111,6 +112,31 @@ export default function DashboardSettings() {
       toast.error(e?.message || 'Erro ao reparar webhook');
     } finally {
       setIsRepairingWebhook(false);
+    }
+  };
+
+  const handleRepairIntegration = async () => {
+    if (!user) return;
+    setIsRepairingIntegration(true);
+    try {
+      const { data: install } = await supabase
+        .from('bitrix_installations')
+        .select('member_id')
+        .eq('tenant_id', user.id)
+        .maybeSingle();
+      if (!install?.member_id) {
+        toast.error('Instalação Bitrix não encontrada');
+        return;
+      }
+      const { data, error } = await supabase.functions.invoke('bitrix-payment-iframe', {
+        body: { memberId: install.member_id, action: 'repair_integration' },
+      });
+      if (error) throw error;
+      toast.success(data?.message || 'Integração marcada para reparo. Reabra o app no Bitrix24.');
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro ao reparar integração');
+    } finally {
+      setIsRepairingIntegration(false);
     }
   };
 
@@ -551,12 +577,19 @@ export default function DashboardSettings() {
                 </div>
               </div>
 
-              <div className="flex justify-end">
+              <div className="flex flex-wrap justify-end gap-2">
                 <Button variant="outline" onClick={handleRepairWebhook} disabled={isRepairingWebhook}>
                   {isRepairingWebhook ? (
                     <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Reparando...</>
                   ) : (
                     <><RefreshCw className="mr-2 h-4 w-4" />Registrar/Reparar webhook no Asaas</>
+                  )}
+                </Button>
+                <Button onClick={handleRepairIntegration} disabled={isRepairingIntegration}>
+                  {isRepairingIntegration ? (
+                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Reparando...</>
+                  ) : (
+                    <><RefreshCw className="mr-2 h-4 w-4" />Reparar Integração Bitrix (robôs + campos)</>
                   )}
                 </Button>
               </div>
