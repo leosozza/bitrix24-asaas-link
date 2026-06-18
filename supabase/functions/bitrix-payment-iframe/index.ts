@@ -3042,6 +3042,7 @@ async function generateDashboardPage(
         html += '<p style="font-size:13px;color:#f59e0b;">⚠ Webhook não configurado</p>';
         html += '<button class="btn btn-warning btn-sm" style="margin-top:8px;" onclick="repairWebhook()">Reparar Webhook</button>';
       }
+      html += '<button class="btn btn-primary btn-sm" style="margin-top:8px;margin-left:8px;" onclick="repairIntegration()">Reparar Integração Bitrix</button>';
       html += '</div>';
       
       html += '</div>';
@@ -3053,6 +3054,18 @@ async function generateDashboardPage(
       const result = await apiCall('repair_webhook');
       if (result.success) {
         showToast(result.message);
+        tabLoaded['integrations'] = false;
+        loadIntegrations();
+      } else {
+        showToast(result.error || 'Erro', 'error');
+      }
+    }
+
+    async function repairIntegration() {
+      showToast('Marcando integração para reparo...');
+      const result = await apiCall('repair_integration');
+      if (result.success) {
+        showToast(result.message || 'Integração marcada para reparo. Reabra o app no Bitrix24.');
         tabLoaded['integrations'] = false;
         loadIntegrations();
       } else {
@@ -3135,7 +3148,10 @@ async function generateDashboardPage(
       html += '<p style="margin:6px 0 0;font-size:12px;color:#64748b;">💡 Após salvar, gere uma cobrança de teste para validar a entrega. O status aparece na aba <strong>Integrações</strong>.</p>';
       html += '</div>';
       
-      html += '<button class="btn btn-warning" style="margin-top:12px;" onclick="repairWebhookFromSettings()">Tentar registrar automaticamente novamente</button>';
+      html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">';
+      html += '<button class="btn btn-warning" onclick="repairWebhookFromSettings()">Tentar registrar automaticamente novamente</button>';
+      html += '<button class="btn btn-primary" onclick="repairIntegrationFromSettings()">Reparar Integração Bitrix (robôs + campos)</button>';
+      html += '</div>';
       html += '</div></div>';
       return html;
     }
@@ -3292,6 +3308,18 @@ async function generateDashboardPage(
       const result = await apiCall('repair_webhook');
       if (result.success) {
         showToast(result.message);
+        tabLoaded['settings'] = false;
+        loadSettings();
+      } else {
+        showToast(result.error || 'Erro', 'error');
+      }
+    }
+
+    async function repairIntegrationFromSettings() {
+      showToast('Marcando integração para reparo...');
+      const result = await apiCall('repair_integration');
+      if (result.success) {
+        showToast(result.message || 'Integração marcada para reparo. Reabra o app no Bitrix24.');
         tabLoaded['settings'] = false;
         loadSettings();
       } else {
