@@ -43,7 +43,10 @@ async function registerThothWebhook() {
       name: 'ConnectPay Thoth24 Billing',
       url: webhookUrl,
       email: 'contato@thoth24.com',
-      apiVersion: '3',
+      enabled: true,
+      interrupted: false,
+      apiVersion: 3,
+      sendType: 'SEQUENTIALLY',
       events: ['PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED', 'PAYMENT_OVERDUE', 'SUBSCRIPTION_UPDATED', 'SUBSCRIPTION_DELETED'],
     }),
   });
