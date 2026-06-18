@@ -3894,6 +3894,7 @@ async function generateDashboardPage(
       const result = await apiCall('save_config', { data: { apiKey, environment } });
       if (result.success) {
         showToast(result.message);
+        closeModal('asaas-modal');
         tabLoaded['settings'] = false;
         loadSettings();
       } else {
