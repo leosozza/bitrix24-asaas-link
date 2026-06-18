@@ -1041,7 +1041,13 @@ async function handleCrmTabLoad(body: any, supabase: any, inst: any): Promise<Re
       console.error('[CrmTabLoad] contact/charge error:', e.message);
     }
     
-    return jsonSuccess({ customer, charges, subscriptions, dealValue, savedFields });
+    // Also surface raw contact data so the UI can validate required fields client-side
+    let customerData: any = null;
+    try {
+      const ec2 = await getEntityContact(ep.endpoint, ep.token, entityType, entityId);
+      customerData = ec2.customerData;
+    } catch { /* ignore */ }
+    return jsonSuccess({ customer, charges, subscriptions, dealValue, savedFields, customerData });
   } catch (e: any) {
     return jsonError(e.message);
   }
@@ -1052,23 +1058,72 @@ async function updateDealUfFields(clientEndpoint: string, accessToken: string, e
   await callBitrixApi(clientEndpoint, 'crm.deal.update', { id: entityId, fields }, accessToken);
 }
 
-async function handleCrmTabCreate(body: any, supabase: any, inst: any): Promise<Response> {
+// Post a comment on the Deal/Lead timeline
+async function addTimelineComment(clientEndpoint: string, accessToken: string, entityType: 'deal' | 'lead', entityId: string, comment: string): Promise<void> {
   try {
-    const { entityType, entityId, payload } = body;
+    const ENTITY_TYPE = entityType === 'deal' ? 'deal' : 'lead';
+    await callBitrixApi(clientEndpoint, 'crm.timeline.comment.add', {
+      fields: { ENTITY_ID: Number(entityId), ENTITY_TYPE, COMMENT: comment },
+    }, accessToken);
+  } catch (e: any) {
+    console.error('[Timeline] comment.add failed:', e?.message || e);
+  }
+}
+
+function formatAsaasErrors(errors: any): string {
+  if (!errors) return '';
+  if (Array.isArray(errors)) {
+    return errors.map((e: any) => {
+      const code = e.code ? '[' + e.code + '] ' : '';
+      const field = e.field ? '(' + e.field + ') ' : '';
+      const desc = e.description || e.message || JSON.stringify(e);
+      return '- ' + code + field + desc;
+    }).join('\n');
+  }
+  if (typeof errors === 'string') return '- ' + errors;
+  return '- ' + JSON.stringify(errors);
+}
+
+async function handleCrmTabCreate(body: any, supabase: any, inst: any): Promise<Response> {
+  const { entityType, entityId, payload } = body;
+  const ep0 = await getClientEndpointForInst(inst, supabase);
+  try {
     if (!payload) return jsonError('payload obrigatório');
     const ctx = await loadInstallationContext(supabase, inst);
-    const ep = await getClientEndpointForInst(inst, supabase);
+    const ep = ep0;
     if (!ep) return jsonError('Instalação Bitrix sem token de acesso');
     
     const ec = await getEntityContact(ep.endpoint, ep.token, entityType, entityId);
-    const customer = await findOrCreateAsaasCustomerSimple(ctx.apiKey, ctx.baseUrl, ec.customerData);
-    
-    const type = payload.type as 'ONCE' | 'INSTALLMENT' | 'SUBSCRIPTION';
-    const billingType = payload.billingType || 'BOLETO';
-    const period = payload.period || 'MONTHLY';
+
+    // === Server-side required-field validation ===
+    const missing: string[] = [];
+    if (!ec.customerData.cpfCnpj || ec.customerData.cpfCnpj.length < 11) missing.push('CPF/CNPJ do contato');
+    if (!ec.customerData.email && !ec.customerData.phone) missing.push('E-mail ou telefone do contato');
     const total = Number(payload.total) || 0;
-    const entry = Number(payload.entryValue) || 0;
+    if (!(total > 0)) missing.push('Valor total');
+    if (!payload.billingType) missing.push('Forma de pagamento');
+    if (!payload.startDate) missing.push('Data de início');
+    const type = payload.type as 'ONCE' | 'INSTALLMENT' | 'SUBSCRIPTION';
+    const period = payload.period || 'MONTHLY';
     const installments = Math.max(1, parseInt(payload.installments) || 1);
+    if (type === 'SUBSCRIPTION') {
+      if (!period) missing.push('Ciclo (período)');
+    }
+    if (type === 'INSTALLMENT') {
+      if (!period) missing.push('Ciclo (período)');
+      if (!(installments > 0)) missing.push('Nº de parcelas');
+    }
+    if (missing.length > 0) {
+      const msg = 'Campos obrigatórios faltando:\n' + missing.map(m => '- ' + m).join('\n');
+      await addTimelineComment(ep.endpoint, ep.token, entityType, entityId,
+        '❌ Cobrança Asaas não enviada\n\n' + msg);
+      return jsonError(msg);
+    }
+
+    const customer = await findOrCreateAsaasCustomerSimple(ctx.apiKey, ctx.baseUrl, ec.customerData);
+
+    const billingType = payload.billingType || 'BOLETO';
+    const entry = Number(payload.entryValue) || 0;
     const description = (payload.description || '').toString();
     const startDate = new Date(payload.startDate + 'T12:00:00Z');
     if (isNaN(startDate.getTime())) throw new Error('Data de início inválida');
@@ -1076,13 +1131,12 @@ async function handleCrmTabCreate(body: any, supabase: any, inst: any): Promise<
     const externalRef = `bitrix-${entityType}-${entityId}`;
     const created: any[] = [];
     const installmentsList: any[] = [];
+    const successList: Array<{ label: string; id: string; value: number; dueDate: string; url?: string }> = [];
+    const errorList: Array<{ label: string; errors: any; payload: any }> = [];
     let firstCharge: any = null;
     let subscriptionRec: any = null;
     let entryCharge: any = null;
     
-    // Entry: support single charge or multiple installments
-    // payload.entryInstallments = [{ value, dueDate }, ...] (preferred)
-    // fallback: single charge with payload.entryValue at startDate
     let entryItems: Array<{ value: number; dueDate: string }> = [];
     if (Array.isArray(payload.entryInstallments) && payload.entryInstallments.length > 0) {
       entryItems = payload.entryInstallments
@@ -1104,9 +1158,13 @@ async function handleCrmTabCreate(body: any, supabase: any, inst: any): Promise<
         externalReference: externalRef + '-entry-' + (i + 1),
       };
       const r = await asaasFetch(ctx.apiKey, ctx.baseUrl, `/payments`, { method: 'POST', body: JSON.stringify(entryPayload) });
-      if (r.errors) throw new Error(`Asaas (${label.toLowerCase()}): ` + JSON.stringify(r.errors));
+      if (r.errors) {
+        errorList.push({ label, errors: r.errors, payload: entryPayload });
+        continue;
+      }
       if (!entryCharge) entryCharge = r;
       created.push(r);
+      successList.push({ label, id: r.id, value: r.value, dueDate: r.dueDate, url: r.invoiceUrl });
       installmentsList.push({ type: 'entry', n: i + 1, label, id: r.id, value: r.value, dueDate: r.dueDate, url: r.invoiceUrl });
     }
     
@@ -1120,27 +1178,35 @@ async function handleCrmTabCreate(body: any, supabase: any, inst: any): Promise<
         externalReference: externalRef,
       };
       const r = await asaasFetch(ctx.apiKey, ctx.baseUrl, `/payments`, { method: 'POST', body: JSON.stringify(p) });
-      if (r.errors) throw new Error('Asaas: ' + JSON.stringify(r.errors));
-      firstCharge = entryCharge || r;
-      created.push(r);
-      installmentsList.push({ type: 'balance', n: 1, id: r.id, value: r.value, dueDate: r.dueDate, url: r.invoiceUrl });
+      if (r.errors) {
+        errorList.push({ label: 'Cobrança única', errors: r.errors, payload: p });
+      } else {
+        firstCharge = entryCharge || r;
+        created.push(r);
+        successList.push({ label: 'Cobrança única', id: r.id, value: r.value, dueDate: r.dueDate, url: r.invoiceUrl });
+        installmentsList.push({ type: 'balance', n: 1, id: r.id, value: r.value, dueDate: r.dueDate, url: r.invoiceUrl });
+      }
     } else if (type === 'INSTALLMENT') {
       const values = splitInstallmentValues(saldo, installments);
-      // First installment dueDate = startDate if no entry, else startDate + 1 period
       const baseDate = entry > 0 ? addPeriod(startDate, period, 1) : startDate;
       for (let i = 0; i < installments; i++) {
         const dueDate = addPeriod(baseDate, period, i);
+        const label = `Parcela ${i + 1}/${installments}`;
         const p: any = {
           customer: customer.id, billingType,
           value: values[i],
           dueDate: toISODate(dueDate),
-          description: (description ? description + ' - ' : '') + `Parcela ${i + 1}/${installments}`,
+          description: (description ? description + ' - ' : '') + label,
           externalReference: externalRef + `-p${i + 1}`,
         };
         const r = await asaasFetch(ctx.apiKey, ctx.baseUrl, `/payments`, { method: 'POST', body: JSON.stringify(p) });
-        if (r.errors) throw new Error(`Asaas (parcela ${i + 1}): ` + JSON.stringify(r.errors));
+        if (r.errors) {
+          errorList.push({ label, errors: r.errors, payload: p });
+          continue;
+        }
         if (!firstCharge) firstCharge = entryCharge || r;
         created.push(r);
+        successList.push({ label, id: r.id, value: r.value, dueDate: r.dueDate, url: r.invoiceUrl });
         installmentsList.push({ type: 'balance', n: i + 1, id: r.id, value: r.value, dueDate: r.dueDate, url: r.invoiceUrl });
       }
     } else if (type === 'SUBSCRIPTION') {
@@ -1155,9 +1221,13 @@ async function handleCrmTabCreate(body: any, supabase: any, inst: any): Promise<
       };
       if (payload.endDate) subPayload.endDate = payload.endDate;
       const r = await asaasFetch(ctx.apiKey, ctx.baseUrl, `/subscriptions`, { method: 'POST', body: JSON.stringify(subPayload) });
-      if (r.errors) throw new Error('Asaas (assinatura): ' + JSON.stringify(r.errors));
-      subscriptionRec = r;
-      if (!firstCharge) firstCharge = entryCharge;
+      if (r.errors) {
+        errorList.push({ label: 'Assinatura recorrente', errors: r.errors, payload: subPayload });
+      } else {
+        subscriptionRec = r;
+        successList.push({ label: 'Assinatura recorrente', id: r.id, value: r.value || (saldo || total), dueDate: r.nextDueDate });
+        if (!firstCharge) firstCharge = entryCharge;
+      }
     }
     
     // Update Deal UF_CRM_ASAAS_* fields (best-effort)
@@ -1183,28 +1253,74 @@ async function handleCrmTabCreate(body: any, supabase: any, inst: any): Promise<
       if (installmentsList.length > 0) {
         uf.UF_CRM_ASAAS_INSTALLMENTS_JSON = JSON.stringify(installmentsList);
       }
-      // Contract fields (always persisted)
       uf.UF_CRM_ASAAS_CONTRACT_START = payload.startDate || '';
       if (payload.endDate) uf.UF_CRM_ASAAS_CONTRACT_END = payload.endDate;
       uf.UF_CRM_ASAAS_ENTRY_INSTALLMENTS = entryItems.length || 0;
       uf.UF_CRM_ASAAS_CYCLE = period;
-      if (type === 'INSTALLMENT') {
-        uf.UF_CRM_ASAAS_RECURRING_INSTALLMENTS = installments;
-      } else if (type === 'SUBSCRIPTION') {
-        uf.UF_CRM_ASAAS_RECURRING_INSTALLMENTS = 0;
-      } else {
-        uf.UF_CRM_ASAAS_RECURRING_INSTALLMENTS = 1;
-      }
+      if (type === 'INSTALLMENT') uf.UF_CRM_ASAAS_RECURRING_INSTALLMENTS = installments;
+      else if (type === 'SUBSCRIPTION') uf.UF_CRM_ASAAS_RECURRING_INSTALLMENTS = 0;
+      else uf.UF_CRM_ASAAS_RECURRING_INSTALLMENTS = 1;
       if (Object.keys(uf).length > 0) {
         await updateDealUfFields(ep.endpoint, ep.token, entityType, entityId, uf);
       }
     } catch (e: any) {
       console.error('[CrmTabCreate] UF update failed:', e.message);
     }
-    
-    return jsonSuccess({ created: created.length + (subscriptionRec ? 1 : 0), charges: created, subscription: subscriptionRec });
+
+    // === Timeline comment with success / error summary ===
+    try {
+      const lines: string[] = [];
+      const hasErr = errorList.length > 0;
+      const hasOk = successList.length > 0 || !!subscriptionRec;
+      if (hasErr && !hasOk) {
+        lines.push('❌ Falha ao criar cobrança Asaas');
+      } else if (hasErr && hasOk) {
+        lines.push('⚠️ Cobrança Asaas criada com erros');
+      } else {
+        lines.push('✅ Cobrança Asaas criada com sucesso');
+      }
+      lines.push('');
+      lines.push('Valor total: ' + (total).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }));
+      lines.push('Forma: ' + billingType + ' · Tipo: ' + type + (type !== 'ONCE' ? ' · Ciclo: ' + period : ''));
+      lines.push('Sucesso: ' + successList.length + ' · Erros: ' + errorList.length);
+      if (successList.length > 0) {
+        lines.push('');
+        lines.push('Cobranças criadas:');
+        for (const s of successList) {
+          const v = (Number(s.value) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+          lines.push('- ' + s.label + ' · ' + v + ' · venc. ' + (s.dueDate || '-') + ' · ID ' + s.id + (s.url ? ' · ' + s.url : ''));
+        }
+      }
+      if (errorList.length > 0) {
+        lines.push('');
+        lines.push('Erros retornados pelo Asaas:');
+        for (const er of errorList) {
+          lines.push('• ' + er.label);
+          lines.push(formatAsaasErrors(er.errors));
+        }
+      }
+      await addTimelineComment(ep.endpoint, ep.token, entityType, entityId, lines.join('\n'));
+    } catch (e: any) {
+      console.error('[CrmTabCreate] timeline comment failed:', e.message);
+    }
+
+    if (errorList.length > 0 && successList.length === 0 && !subscriptionRec) {
+      return jsonError('Asaas: ' + formatAsaasErrors(errorList[0].errors));
+    }
+    return jsonSuccess({
+      created: created.length + (subscriptionRec ? 1 : 0),
+      charges: created,
+      subscription: subscriptionRec,
+      successCount: successList.length,
+      errorCount: errorList.length,
+      errors: errorList,
+    });
   } catch (e: any) {
     console.error('[CrmTabCreate] error:', e);
+    if (ep0) {
+      try { await addTimelineComment(ep0.endpoint, ep0.token, entityType, entityId,
+        '❌ Erro ao processar envio Asaas\n\n' + (e?.message || String(e))); } catch { /* ignore */ }
+    }
     return jsonError(e.message);
   }
 }
@@ -4237,8 +4353,8 @@ function generateCrmPaymentTabPage(data: PaymentData, entityType: 'deal' | 'lead
       </select>
     </div>
     <div>
-      <label>Forma Pagamento</label>
-      <select id="fBilling">
+      <label>Forma Pagamento <span style="color:#dc2626;">*</span></label>
+      <select id="fBilling" required>
         <option value="BOLETO" selected>Boleto Bancário</option>
         <option value="PIX">PIX</option>
         <option value="CREDIT_CARD">Cartão de Crédito</option>
@@ -4246,20 +4362,21 @@ function generateCrmPaymentTabPage(data: PaymentData, entityType: 'deal' | 'lead
       </select>
     </div>
     <div>
-      <label>Início (1º Vencimento)</label>
-      <input type="date" id="fStart" onchange="recalc()">
+      <label>Início (1º Vencimento) <span style="color:#dc2626;">*</span></label>
+      <input type="date" id="fStart" required onchange="recalc()">
     </div>
     <div>
-      <label>Fim (opcional)</label>
+      <label>Fim (recorrente) <span id="fEndStar" style="color:#dc2626;display:none;">*</span></label>
       <input type="date" id="fEnd" onchange="recalc()">
     </div>
   </div>
   <div class="row">
-    <div><label>Valor Total (R$)</label><input type="number" step="0.01" id="fTotal" placeholder="0,00" onchange="recalc()"></div>
+    <div><label>Valor Total (R$) <span style="color:#dc2626;">*</span></label><input type="number" step="0.01" min="0.01" id="fTotal" required placeholder="0,00" onchange="recalc()"></div>
     <div><label>Entrada (R$)</label><input type="number" step="0.01" id="fEntry" placeholder="0,00" onchange="recalc()"></div>
-    <div><label>Nº de Parcelas</label><select id="fInstallments" onchange="recalc()">${[1,2,3,4,5,6,7,8,9,10,11,12,15,18,24,36,48,60].map(n => `<option value="${n}"${n===1?' selected':''}>${n}x</option>`).join('')}</select></div>
+    <div><label>Nº de Parcelas <span id="fInstStar" style="color:#dc2626;display:none;">*</span></label><select id="fInstallments" onchange="recalc()">${[1,2,3,4,5,6,7,8,9,10,11,12,15,18,24,36,48,60].map(n => `<option value="${n}"${n===1?' selected':''}>${n}x</option>`).join('')}</select></div>
     <div style="grid-column:span 2;"><label>Descrição</label><input type="text" id="fDesc" placeholder="Ex.: Assinatura Plano Pró"></div>
   </div>
+  <div id="contactWarn" class="alert alert-error hidden" style="margin-top:4px;"></div>
   <div id="entryInstallmentsBlock" class="hidden" style="background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;padding:12px;margin-bottom:12px;">
     <div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
       <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#334155;font-weight:600;margin:0;">
@@ -4292,7 +4409,7 @@ const ENTITY_ID = ${JSON.stringify(entityId)};
 const MEMBER_ID = ${JSON.stringify(safeMember)};
 const API_URL = window.location.origin + window.location.pathname;
 
-let state = { customer: null, dealValue: 0 };
+let state = { customer: null, customerData: null, dealValue: 0 };
 
 function showAlert(type, msg, timeout) {
   const box = document.getElementById('alertBox');
@@ -4358,6 +4475,9 @@ function updateForm() {
   document.getElementById('fEnd').disabled = (t === 'ONCE');
   document.getElementById('fPeriod').disabled = (t === 'ONCE');
   if (t === 'ONCE') document.getElementById('fInstallments').value = 1;
+  // Toggle required asterisks based on type
+  document.getElementById('fInstStar').style.display = (t === 'INSTALLMENT') ? 'inline' : 'none';
+  document.getElementById('fEndStar').style.display = (t === 'SUBSCRIPTION') ? 'inline' : 'none';
   recalc();
 }
 
@@ -4476,9 +4596,22 @@ async function loadCharges() {
   try {
     const r = await apiCall('crm_tab_load');
     state.customer = r.customer;
+    state.customerData = r.customerData || null;
     state.dealValue = r.dealValue || 0;
     if (state.dealValue && !document.getElementById('fTotal').value) {
       document.getElementById('fTotal').value = state.dealValue;
+    }
+    // Validate contact has CPF/CNPJ + email or phone (Asaas requirements)
+    const warn = document.getElementById('contactWarn');
+    const cd = state.customerData || {};
+    const probs = [];
+    if (!cd.cpfCnpj || String(cd.cpfCnpj).length < 11) probs.push('CPF/CNPJ do contato');
+    if (!cd.email && !cd.phone) probs.push('E-mail ou telefone do contato');
+    if (probs.length > 0) {
+      warn.innerHTML = '<strong>⚠️ Dados obrigatórios do contato faltando:</strong><br>' + probs.map(p => '• ' + p).join('<br>') + '<br><small>Preencha no Contato/Lead antes de gerar a cobrança.</small>';
+      warn.classList.remove('hidden');
+    } else {
+      warn.classList.add('hidden');
     }
     // Prefill saved contract fields from Bitrix
     const sf = r.savedFields || {};
@@ -4566,13 +4699,32 @@ async function createPayment() {
       installments: parseInt(document.getElementById('fInstallments').value) || 1,
       description: document.getElementById('fDesc').value,
     };
-    if (!payload.total || payload.total <= 0) throw new Error('Informe o valor total.');
-    if (!payload.startDate) throw new Error('Informe a data de início.');
+    // Client-side required validation
+    const missing = [];
+    const cd = state.customerData || {};
+    if (!cd.cpfCnpj || String(cd.cpfCnpj).length < 11) missing.push('CPF/CNPJ do contato');
+    if (!cd.email && !cd.phone) missing.push('E-mail ou telefone do contato');
+    if (!payload.total || payload.total <= 0) missing.push('Valor total');
+    if (!payload.billingType) missing.push('Forma de pagamento');
+    if (!payload.startDate) missing.push('Data de início');
+    if (payload.type === 'SUBSCRIPTION' && !payload.endDate) missing.push('Data de fim (recorrente)');
+    if (payload.type === 'INSTALLMENT' && !(payload.installments > 0)) missing.push('Nº de parcelas');
+    if (payload.entryValue > 0 && document.getElementById('fSplitEntry').checked) {
+      const ei = payload.entryInstallments || [];
+      if (ei.some(it => !it.dueDate)) missing.push('Vencimento de cada parcela da entrada');
+    }
+    if (missing.length > 0) {
+      throw new Error('Campos obrigatórios faltando:\\n- ' + missing.join('\\n- '));
+    }
     const r = await apiCall('crm_tab_create', { payload: payload });
-    showAlert('success', 'Cobranças geradas com sucesso! ' + (r.created || 0) + ' item(ns) criado(s).', 4000);
+    if (r.errorCount && r.errorCount > 0) {
+      showAlert('error', '⚠️ ' + (r.successCount || 0) + ' cobrança(s) criada(s), ' + r.errorCount + ' com erro. Veja o timeline do registro.', 8000);
+    } else {
+      showAlert('success', '✅ Cobranças geradas com sucesso! ' + (r.created || 0) + ' item(ns) criado(s).', 4000);
+    }
     await loadCharges();
   } catch (e) {
-    showAlert('error', 'Erro: ' + e.message, 6000);
+    showAlert('error', String(e.message).replace(/\\n/g, '<br>'), 8000);
   } finally {
     btn.disabled = false;
     btn.textContent = '+ Gerar Cobranças';

@@ -1,50 +1,84 @@
-## Criar campos Bitrix para dados do contrato Asaas
+## Objetivo
 
-Adicionar criação automática de novos campos `UF_CRM_ASAAS_*` no Deal (e Lead) via `ensureDealAsaasFields` no edge function `bitrix-payment-iframe`, e gravá-los junto com `crm_tab_create`.
+1. Marcar como **obrigatórios** no placement "Pagamentos Asaas" todos os campos que o Asaas exige para criar cobrança/assinatura.
+2. Após cada tentativa de envio ao Asaas, **registrar no timeline do Deal/Lead**:
+   - Sucesso → comentário com resumo (valor, nº cobranças, IDs Asaas, link).
+   - Erro → comentário com a lista completa dos erros retornados pelo Asaas (campo + descrição).
 
-### Novos campos no Bitrix
+## Campos obrigatórios (validados antes do envio)
 
-| Código UF                              | Tipo        | Valores / formato                          |
-| -------------------------------------- | ----------- | ------------------------------------------ |
-| `UF_CRM_ASAAS_CONTRACT_START`          | `date`      | Data de início do contrato                 |
-| `UF_CRM_ASAAS_CONTRACT_END`            | `date`      | Data de fim do contrato                    |
-| `UF_CRM_ASAAS_ENTRY_INSTALLMENTS`      | `enumeration` (lista) | `1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 18, 24` |
-| `UF_CRM_ASAAS_RECURRING_INSTALLMENTS`  | `enumeration` (lista) | `1..24, 36, 48, 60`                       |
-| `UF_CRM_ASAAS_CYCLE`                   | `enumeration` (lista) | `WEEKLY` (Semanal), `BIWEEKLY` (Quinzenal), `MONTHLY` (Mensal) |
+Bloqueia o botão "Criar cobrança" e mostra borda vermelha + mensagem se faltar:
 
-### Mudanças técnicas
+**Cliente / Contato**
+- Nome (CRM já fornece)
+- CPF/CNPJ (`UF_CRM_*` ou contato vinculado) — Asaas exige para criar customer
+- E-mail OU telefone (pelo menos um)
 
-Tudo em `supabase/functions/bitrix-payment-iframe/index.ts`:
+**Cobrança**
+- Valor total > 0
+- Forma de pagamento (BOLETO / PIX / CREDIT_CARD / UNDEFINED)
+- Data de vencimento (ou Data de início, no caso de recorrente/parcelado)
 
-1. **`ensureDealAsaasFields`** — adicionar os 5 campos acima às definições criadas via `crm.deal.userfield.add` e `crm.lead.userfield.add`. Para os campos `enumeration`, enviar `LIST` com `VALUE` e `XML_ID` (usado para leitura/gravação consistente).
+**Recorrente / Parcelado (quando aplicável)**
+- Ciclo (Semanal / Quinzenal / Mensal) — quando recorrente
+- Nº de parcelas recorrentes — quando recorrente
+- Data de fim do contrato — quando recorrente
+- Nº de parcelas da entrada — quando "Parcelar entrada" estiver marcado
+- Valor de entrada > 0 — quando houver entrada
+- Datas de cada parcela da entrada — quando entrada parcelada
 
-2. **`crm_tab_load`** — ao montar o estado inicial, ler do Deal/Lead os valores atuais desses 5 campos e devolver ao front para pré-preencher: data de início, data de fim, nº parcelas da entrada, nº parcelas recorrentes e ciclo.
+**Split (quando aplicável)**
+- Wallet ID destino + percentual ou valor fixo por linha
 
-3. **`generateCrmPaymentTabPage()`** — bindar os inputs existentes (Data de início, Data de fim, Nº parcelas entrada, Frequência) aos valores recebidos do load. Adicionar opção "Quinzenal" no select de frequência se ainda não existir. Nº parcelas da entrada e nº parcelas recorrentes passam a ser `<select>` com as opções da tabela acima (em vez de input numérico livre).
+Visualmente: label com `*` vermelho, atributo `required`, validação JS antes do POST, toast listando o que falta.
 
-4. **`crm_tab_create`** — após criar cobranças no Asaas, no `crm.deal.update` / `crm.lead.update` final, gravar também:
-   - `UF_CRM_ASAAS_CONTRACT_START` = `startDate`
-   - `UF_CRM_ASAAS_CONTRACT_END` = `endDate` (quando recorrente; vazio caso contrário)
-   - `UF_CRM_ASAAS_ENTRY_INSTALLMENTS` = ID do item da lista correspondente ao N escolhido
-   - `UF_CRM_ASAAS_RECURRING_INSTALLMENTS` = ID do item da lista correspondente ao N
-   - `UF_CRM_ASAAS_CYCLE` = ID do item da lista (`WEEKLY`/`BIWEEKLY`/`MONTHLY`)
+## Timeline do Deal/Lead após envio
 
-   Para resolver "valor → ID do item da lista", reusar a leitura de `crm.deal.userfield.get` por `FIELD_NAME` e cachear o mapa `XML_ID → ID` por requisição.
+Em `bitrix-payment-iframe` → `crm_tab_create`, depois de tentar criar no Asaas:
 
-### Ação necessária do usuário após implementar
+**Em caso de sucesso** — chamar `crm.timeline.comment.add`:
+```
+✅ Cobrança Asaas criada
+Valor total: R$ X
+Cobranças geradas: N (entrada Nx + recorrente Nx)
+IDs Asaas: pay_xxx, pay_yyy
+Link da 1ª cobrança: https://...
+```
 
-Clicar em **"Reparar Integração Bitrix"** no dashboard uma vez para que `ensureDealAsaasFields` rode e crie os 5 novos campos no Bitrix.
+**Em caso de erro (qualquer cobrança falhou)** — chamar `crm.timeline.comment.add`:
+```
+❌ Erro ao criar cobrança Asaas
+Cobranças criadas com sucesso: N
+Cobranças com erro: M
 
-### Validação
+Erros retornados pelo Asaas:
+- [campo|code] descrição completa
+- [campo|code] descrição completa
+...
 
-1. Reparar integração → conferir no Bitrix (Deal → Configurações → Campos personalizados) os 5 campos criados.
-2. Abrir aba "Pagamentos Asaas" em um Deal limpo: campos vazios.
-3. Preencher início 21/06/2026, fim 21/12/2026, ciclo Semanal, entrada parcelada 3x, recorrente 12x → criar.
-4. Recarregar a aba: os 5 campos devem voltar preenchidos com os mesmos valores.
-5. Conferir na ficha do Deal (fora da aba) que os 5 campos estão visíveis e preenchidos.
+Payload enviado: { valor, vencimento, forma }
+```
 
-### Fora de escopo
+Implementação:
+- Nova função `addDealTimelineComment(client, entityType, entityId, comment)` que escolhe `ENTITY_TYPE = 'deal' | 'lead'`.
+- `crm_tab_create` acumula `successList[]` e `errorList[]` por cobrança gerada (entrada + recorrentes). No final, monta o texto e posta 1 comentário consolidado.
+- Mesmo se todas falharem, registra no timeline (o usuário precisa ver o erro lá).
 
-- Migrar dados de Deals antigos para os novos campos.
-- Tornar os campos obrigatórios na ficha do Deal.
-- Sincronizar mudanças feitas diretamente nos campos do Deal de volta para o Asaas.
+## Arquivos
+
+- `supabase/functions/bitrix-payment-iframe/index.ts`
+  - `generateCrmPaymentTabPage()` — adicionar `required`, asteriscos, validação JS.
+  - `handleCrmTabCreate` — acumular sucessos/erros + chamar `crm.timeline.comment.add` no final.
+  - Nova helper `addDealTimelineComment`.
+
+## Fora de escopo
+
+- Tornar os campos `UF_CRM_ASAAS_*` obrigatórios na ficha nativa do Deal.
+- Reenvio automático em caso de falha.
+- Atividade tipo "tarefa" no timeline (usar somente comentário).
+
+## Validação
+
+1. Abrir aba sem CPF no contato → botão bloqueado, mensagem "CPF/CNPJ obrigatório".
+2. Preencher tudo → enviar → no timeline do Deal aparece comentário verde de sucesso com IDs.
+3. Forçar erro (ex: valor 0.01 com forma inválida) → no timeline aparece comentário vermelho com lista de erros do Asaas.
