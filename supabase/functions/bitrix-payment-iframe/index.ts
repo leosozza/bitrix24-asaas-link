@@ -847,6 +847,11 @@ async function ensureDealAsaasFields(clientEndpoint: string, accessToken: string
     { FIELD_NAME: 'UF_CRM_ASAAS_INVOICE_STATUS', USER_TYPE_ID: 'string', LABEL: 'Status NFSe' },
     // Parcelado (lista de parcelas em JSON)
     { FIELD_NAME: 'UF_CRM_ASAAS_INSTALLMENTS_JSON', USER_TYPE_ID: 'string', LABEL: 'Parcelas (JSON)' },
+    // Contrato
+    { FIELD_NAME: 'UF_CRM_ASAAS_CONTRACT_START', USER_TYPE_ID: 'date', LABEL: 'Início do Contrato' },
+    { FIELD_NAME: 'UF_CRM_ASAAS_CONTRACT_END', USER_TYPE_ID: 'date', LABEL: 'Fim do Contrato' },
+    { FIELD_NAME: 'UF_CRM_ASAAS_ENTRY_INSTALLMENTS', USER_TYPE_ID: 'integer', LABEL: 'Nº Parcelas da Entrada' },
+    { FIELD_NAME: 'UF_CRM_ASAAS_RECURRING_INSTALLMENTS', USER_TYPE_ID: 'integer', LABEL: 'Nº Parcelas Recorrentes' },
   ];
 
   const created: string[] = [];
@@ -1009,10 +1014,18 @@ async function handleCrmTabLoad(body: any, supabase: any, inst: any): Promise<Re
     let charges: any[] = [];
     let subscriptions: any[] = [];
     let dealValue = 0;
+    let savedFields: Record<string, any> = {};
     
     try {
       const ec = await getEntityContact(ep.endpoint, ep.token, entityType, entityId);
       dealValue = ec.dealValue;
+      savedFields = {
+        contractStart: ec.entity?.UF_CRM_ASAAS_CONTRACT_START || '',
+        contractEnd: ec.entity?.UF_CRM_ASAAS_CONTRACT_END || '',
+        entryInstallments: ec.entity?.UF_CRM_ASAAS_ENTRY_INSTALLMENTS || '',
+        recurringInstallments: ec.entity?.UF_CRM_ASAAS_RECURRING_INSTALLMENTS || '',
+        cycle: ec.entity?.UF_CRM_ASAAS_CYCLE || '',
+      };
       
       if (ec.customerData.cpfCnpj && ec.customerData.cpfCnpj.length >= 11) {
         const search = await asaasFetch(ctx.apiKey, ctx.baseUrl, `/customers?cpfCnpj=${ec.customerData.cpfCnpj}`);
@@ -1028,7 +1041,7 @@ async function handleCrmTabLoad(body: any, supabase: any, inst: any): Promise<Re
       console.error('[CrmTabLoad] contact/charge error:', e.message);
     }
     
-    return jsonSuccess({ customer, charges, subscriptions, dealValue });
+    return jsonSuccess({ customer, charges, subscriptions, dealValue, savedFields });
   } catch (e: any) {
     return jsonError(e.message);
   }
@@ -1169,6 +1182,18 @@ async function handleCrmTabCreate(body: any, supabase: any, inst: any): Promise<
       }
       if (installmentsList.length > 0) {
         uf.UF_CRM_ASAAS_INSTALLMENTS_JSON = JSON.stringify(installmentsList);
+      }
+      // Contract fields (always persisted)
+      uf.UF_CRM_ASAAS_CONTRACT_START = payload.startDate || '';
+      if (payload.endDate) uf.UF_CRM_ASAAS_CONTRACT_END = payload.endDate;
+      uf.UF_CRM_ASAAS_ENTRY_INSTALLMENTS = entryItems.length || 0;
+      uf.UF_CRM_ASAAS_CYCLE = period;
+      if (type === 'INSTALLMENT') {
+        uf.UF_CRM_ASAAS_RECURRING_INSTALLMENTS = installments;
+      } else if (type === 'SUBSCRIPTION') {
+        uf.UF_CRM_ASAAS_RECURRING_INSTALLMENTS = 0;
+      } else {
+        uf.UF_CRM_ASAAS_RECURRING_INSTALLMENTS = 1;
       }
       if (Object.keys(uf).length > 0) {
         await updateDealUfFields(ep.endpoint, ep.token, entityType, entityId, uf);
@@ -4232,7 +4257,7 @@ function generateCrmPaymentTabPage(data: PaymentData, entityType: 'deal' | 'lead
   <div class="row">
     <div><label>Valor Total (R$)</label><input type="number" step="0.01" id="fTotal" placeholder="0,00" onchange="recalc()"></div>
     <div><label>Entrada (R$)</label><input type="number" step="0.01" id="fEntry" placeholder="0,00" onchange="recalc()"></div>
-    <div><label>Nº de Parcelas</label><input type="number" min="1" id="fInstallments" value="1" onchange="recalc()"></div>
+    <div><label>Nº de Parcelas</label><select id="fInstallments" onchange="recalc()">${[1,2,3,4,5,6,7,8,9,10,11,12,15,18,24,36,48,60].map(n => `<option value="${n}"${n===1?' selected':''}>${n}x</option>`).join('')}</select></div>
     <div style="grid-column:span 2;"><label>Descrição</label><input type="text" id="fDesc" placeholder="Ex.: Assinatura Plano Pró"></div>
   </div>
   <div id="entryInstallmentsBlock" class="hidden" style="background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;padding:12px;margin-bottom:12px;">
@@ -4242,7 +4267,7 @@ function generateCrmPaymentTabPage(data: PaymentData, entityType: 'deal' | 'lead
       </label>
       <div id="entryNWrap" class="hidden" style="display:flex;align-items:center;gap:8px;">
         <label style="margin:0;">Nº parcelas da entrada</label>
-        <input type="number" min="1" max="24" id="fEntryN" value="2" onchange="recalc()" style="width:80px;">
+        <select id="fEntryN" onchange="recalc()" style="width:auto;">${[1,2,3,4,5,6,7,8,9,10,12,18,24].map(n => `<option value="${n}"${n===2?' selected':''}>${n}x</option>`).join('')}</select>
       </div>
     </div>
     <table id="entryTable" class="hidden" style="margin-top:6px;">
@@ -4454,6 +4479,25 @@ async function loadCharges() {
     state.dealValue = r.dealValue || 0;
     if (state.dealValue && !document.getElementById('fTotal').value) {
       document.getElementById('fTotal').value = state.dealValue;
+    }
+    // Prefill saved contract fields from Bitrix
+    const sf = r.savedFields || {};
+    if (sf.contractStart) document.getElementById('fStart').value = String(sf.contractStart).split('T')[0];
+    if (sf.contractEnd) document.getElementById('fEnd').value = String(sf.contractEnd).split('T')[0];
+    if (sf.cycle) {
+      const pSel = document.getElementById('fPeriod');
+      if ([...pSel.options].some(o => o.value === sf.cycle)) pSel.value = sf.cycle;
+    }
+    const recN = parseInt(sf.recurringInstallments);
+    if (recN > 1) {
+      const iSel = document.getElementById('fInstallments');
+      if ([...iSel.options].some(o => parseInt(o.value) === recN)) iSel.value = String(recN);
+    }
+    const entN = parseInt(sf.entryInstallments);
+    if (entN > 1) {
+      document.getElementById('fSplitEntry').checked = true;
+      const eSel = document.getElementById('fEntryN');
+      if ([...eSel.options].some(o => parseInt(o.value) === entN)) eSel.value = String(entN);
     }
     renderCharges(r.charges || [], r.subscriptions || []);
     recalc();
