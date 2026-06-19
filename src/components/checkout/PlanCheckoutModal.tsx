@@ -99,6 +99,7 @@ export function PlanCheckoutModal({ open, onOpenChange, initialPlanId, onCheckou
       if (data?.error) throw new Error(data.error);
       setResult({ invoice_url: data.invoice_url, plan_name: data.plan_name });
       setStep(4);
+      onCheckoutComplete?.();
       if (data.invoice_url) {
         window.open(data.invoice_url, '_blank', 'noopener,noreferrer');
       }
