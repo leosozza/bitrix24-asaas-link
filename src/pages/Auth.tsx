@@ -18,15 +18,20 @@ export default function Auth() {
   // Get Bitrix params from URL (passed from installation flow)
   const memberId = searchParams.get('member_id') || undefined;
   const bitrixDomain = searchParams.get('domain') || undefined;
+  const planSlug = searchParams.get('plan') || undefined;
+
+  useEffect(() => {
+    if (planSlug) setActiveTab('signup');
+  }, [planSlug]);
 
   useEffect(() => {
     if (!loading && user) {
-      navigate('/dashboard');
+      navigate(planSlug ? `/dashboard/settings?checkout=${planSlug}` : '/dashboard');
     }
-  }, [user, loading, navigate]);
+  }, [user, loading, navigate, planSlug]);
 
   const handleSuccess = () => {
-    navigate('/dashboard');
+    navigate(planSlug ? `/dashboard/settings?checkout=${planSlug}` : '/dashboard');
   };
 
   return (
