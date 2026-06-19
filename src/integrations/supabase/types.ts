@@ -756,6 +756,7 @@ export type Database = {
           current_period_end: string
           current_period_start: string
           id: string
+          invoice_url: string | null
           notes: string | null
           plan_id: string
           status: Database["public"]["Enums"]["subscription_status"]
@@ -773,6 +774,7 @@ export type Database = {
           current_period_end?: string
           current_period_start?: string
           id?: string
+          invoice_url?: string | null
           notes?: string | null
           plan_id: string
           status?: Database["public"]["Enums"]["subscription_status"]
@@ -790,6 +792,7 @@ export type Database = {
           current_period_end?: string
           current_period_start?: string
           id?: string
+          invoice_url?: string | null
           notes?: string | null
           plan_id?: string
           status?: Database["public"]["Enums"]["subscription_status"]

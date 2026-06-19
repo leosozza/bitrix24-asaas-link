@@ -21,6 +21,7 @@ import { toast } from 'sonner';
 import {
   Loader2, Save, Building2, Bell, CreditCard, Shield, FileText, Search, Pencil,
   Webhook, Copy, RefreshCw, Info, ChevronDown, Plus, CheckCircle2, Circle, Mail, Phone, MapPin,
+  ExternalLink, AlertCircle,
 } from 'lucide-react';
 
 interface MunicipalService { id: string; code: string; description: string; }
@@ -163,16 +164,25 @@ export default function DashboardSettings() {
       // Plan
       const { data: sub } = await supabase
         .from('tenant_subscriptions')
-        .select('plan_id, status, current_period_end, transactions_used, subscription_plans(name, transaction_limit)')
+        .select('plan_id, status, current_period_start, current_period_end, trial_ends_at, transactions_used, asaas_subscription_id, asaas_customer_id, cancel_at_period_end, canceled_at, invoice_url, subscription_plans(name, price, transaction_limit)')
         .eq('tenant_id', user.id)
         .maybeSingle();
       if (sub) {
         setPlanCurrent({
+          plan_id: sub.plan_id,
           plan_name: (sub as any).subscription_plans?.name,
+          plan_price: (sub as any).subscription_plans?.price,
           status: sub.status,
+          period_start: sub.current_period_start,
           period_end: sub.current_period_end,
+          trial_ends_at: sub.trial_ends_at,
           used: sub.transactions_used || 0,
           limit: (sub as any).subscription_plans?.transaction_limit ?? 0,
+          asaas_subscription_id: sub.asaas_subscription_id,
+          asaas_customer_id: sub.asaas_customer_id,
+          cancel_at_period_end: sub.cancel_at_period_end,
+          canceled_at: sub.canceled_at,
+          invoice_url: (sub as any).invoice_url,
         });
       }
       // Notifications
@@ -189,6 +199,34 @@ export default function DashboardSettings() {
   const copyToClipboard = async (text: string, label: string) => {
     try { await navigator.clipboard.writeText(text); toast.success(`${label} copiado!`); }
     catch { toast.error('Não foi possível copiar'); }
+  };
+
+  const refreshSubscription = async () => {
+    if (!user) return;
+    const { data: sub } = await supabase
+      .from('tenant_subscriptions')
+      .select('plan_id, status, current_period_start, current_period_end, trial_ends_at, transactions_used, asaas_subscription_id, asaas_customer_id, cancel_at_period_end, canceled_at, invoice_url, subscription_plans(name, price, transaction_limit)')
+      .eq('tenant_id', user.id)
+      .maybeSingle();
+    if (sub) {
+      setPlanCurrent({
+        plan_id: sub.plan_id,
+        plan_name: (sub as any).subscription_plans?.name,
+        plan_price: (sub as any).subscription_plans?.price,
+        status: sub.status,
+        period_start: sub.current_period_start,
+        period_end: sub.current_period_end,
+        trial_ends_at: sub.trial_ends_at,
+        used: sub.transactions_used || 0,
+        limit: (sub as any).subscription_plans?.transaction_limit ?? 0,
+        asaas_subscription_id: sub.asaas_subscription_id,
+        asaas_customer_id: sub.asaas_customer_id,
+        cancel_at_period_end: sub.cancel_at_period_end,
+        canceled_at: sub.canceled_at,
+        invoice_url: (sub as any).invoice_url,
+      });
+      toast.success('Status atualizado');
+    }
   };
 
   const openCompanyDialog = () => {
@@ -572,7 +610,7 @@ export default function DashboardSettings() {
             </CardHeader>
           </Card>
 
-          {/* ============= PLANO ============= */}
+          {/* ============= ASSINATURA CONNECTPAY ============= */}
           <Card className="border-border/50">
             <CardHeader>
               <div className="flex items-center gap-3">
@@ -581,26 +619,130 @@ export default function DashboardSettings() {
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center justify-between">
-                    <CardTitle>Plano e Uso</CardTitle>
-                    {planCurrent && <StatusBadge status={planCurrent.status} />}
+                    <CardTitle>Assinatura ConnectPay</CardTitle>
+                    <div className="flex items-center gap-2">
+                      {(() => {
+                        if (!planCurrent) return null;
+                        const displayStatus = planCurrent.status === 'active'
+                          ? 'active'
+                          : planCurrent.status === 'cancelled'
+                          ? 'cancelled'
+                          : planCurrent.status === 'expired'
+                          ? 'expired'
+                          : planCurrent.status === 'past_due'
+                          ? 'overdue'
+                          : planCurrent.status === 'trial' && planCurrent.asaas_subscription_id
+                          ? 'pending'
+                          : 'trial';
+                        return <StatusBadge status={displayStatus} />;
+                      })()}
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={refreshSubscription} title="Atualizar status">
+                        <RefreshCw className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
-                  <CardDescription>Seu plano atual e consumo de transações</CardDescription>
+                  <CardDescription>Status do plano e orientações após o checkout</CardDescription>
                 </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-6">
               {planCurrent ? (
                 <>
-                  <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
-                    <div>
-                      <p className="font-medium text-lg">Plano {planCurrent.plan_name || '—'}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {planCurrent.status === 'trial' ? 'Trial até ' : 'Válido até '}
-                        {planCurrent.period_end ? new Date(planCurrent.period_end).toLocaleDateString('pt-BR') : '—'}
-                      </p>
-                    </div>
-                    <Button onClick={() => { setCheckoutPlanId(null); setShowCheckout(true); }}>Fazer Upgrade</Button>
-                  </div>
+                  {(() => {
+                    const status = planCurrent.status;
+                    const isCheckoutPending = status === 'trial' && planCurrent.asaas_subscription_id;
+                    const isActive = status === 'active';
+                    const isCancelled = status === 'cancelled' || planCurrent.cancel_at_period_end;
+                    const isExpired = status === 'expired';
+                    const isPastDue = status === 'past_due';
+                    const isTrial = status === 'trial' && !planCurrent.asaas_subscription_id;
+
+                    return (
+                      <div className="rounded-lg border border-border/60 p-4 space-y-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div>
+                            <p className="font-medium text-lg">Plano {planCurrent.plan_name || '—'}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {isActive && planCurrent.period_end && `Renovação em ${new Date(planCurrent.period_end).toLocaleDateString('pt-BR')}`}
+                              {isTrial && planCurrent.trial_ends_at && `Trial até ${new Date(planCurrent.trial_ends_at).toLocaleDateString('pt-BR')}`}
+                              {(isCheckoutPending || isPastDue || isExpired || isCancelled) && planCurrent.period_end && `Vigência até ${new Date(planCurrent.period_end).toLocaleDateString('pt-BR')}`}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            {planCurrent.plan_price && (
+                              <p className="text-xl font-bold">
+                                {Number(planCurrent.plan_price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                <span className="text-xs text-muted-foreground font-normal">/mês</span>
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="rounded-md bg-muted/50 p-3 text-sm space-y-1">
+                          {isActive && (
+                            <>
+                              <p className="font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
+                                <CheckCircle2 className="h-4 w-4" /> Sua assinatura está ativa
+                              </p>
+                              <p className="text-muted-foreground">Acesso liberado. A próxima cobrança será gerada automaticamente.</p>
+                            </>
+                          )}
+                          {isTrial && (
+                            <>
+                              <p className="font-medium">Período de testes</p>
+                              <p className="text-muted-foreground">Você está usando o plano gratuitamente. Faça o upgrade antes do fim do trial para não perder o acesso.</p>
+                            </>
+                          )}
+                          {isCheckoutPending && (
+                            <>
+                              <p className="font-medium flex items-center gap-2">
+                                <AlertCircle className="h-4 w-4 text-amber-500" /> Aguardando pagamento
+                              </p>
+                              <p className="text-muted-foreground">
+                                Sua assinatura foi criada no Asaas. Conclua o pagamento para ativar o plano. Caso já tenha pago, clique no botão de atualizar status ao lado do título.
+                              </p>
+                            </>
+                          )}
+                          {isCancelled && (
+                            <>
+                              <p className="font-medium text-destructive">Assinatura cancelada</p>
+                              <p className="text-muted-foreground">Sua assinatura foi cancelada. Clique abaixo para contratar um plano novamente.</p>
+                            </>
+                          )}
+                          {isExpired && (
+                            <>
+                              <p className="font-medium text-destructive">Assinatura expirada</p>
+                              <p className="text-muted-foreground">O período da sua assinatura encerrou. Renove para continuar usando todos os recursos.</p>
+                            </>
+                          )}
+                          {isPastDue && (
+                            <>
+                              <p className="font-medium text-destructive">Assinatura inadimplente</p>
+                              <p className="text-muted-foreground">Identificamos uma cobrança em atraso. Regularize o pagamento para evitar a suspensão do acesso.</p>
+                            </>
+                          )}
+                        </div>
+
+                        <div className="flex flex-wrap gap-3">
+                          {isCheckoutPending && planCurrent.invoice_url && (
+                            <Button asChild className="gap-2">
+                              <a href={planCurrent.invoice_url} target="_blank" rel="noopener noreferrer">
+                                <ExternalLink className="h-4 w-4" /> Abrir fatura no Asaas
+                              </a>
+                            </Button>
+                          )}
+                          {(isCheckoutPending || isCancelled || isExpired || isPastDue || isTrial) && (
+                            <Button variant="outline" onClick={() => { setCheckoutPlanId(isCheckoutPending ? planCurrent.plan_id : null); setShowCheckout(true); }}>
+                              {isCheckoutPending ? 'Reabrir checkout' : isTrial ? 'Fazer Upgrade' : 'Reativar assinatura'}
+                            </Button>
+                          )}
+                          {isActive && (
+                            <Button onClick={() => { setCheckoutPlanId(null); setShowCheckout(true); }}>Fazer Upgrade</Button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Transações utilizadas</span>
@@ -861,7 +1003,7 @@ export default function DashboardSettings() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      <PlanCheckoutModal open={showCheckout} onOpenChange={setShowCheckout} initialPlanId={checkoutPlanId} />
+      <PlanCheckoutModal open={showCheckout} onOpenChange={setShowCheckout} initialPlanId={checkoutPlanId} onCheckoutComplete={refreshSubscription} />
       </DashboardLayout>
     </>
   );
