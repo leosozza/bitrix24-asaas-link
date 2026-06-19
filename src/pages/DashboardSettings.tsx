@@ -21,6 +21,7 @@ import { toast } from 'sonner';
 import {
   Loader2, Save, Building2, Bell, CreditCard, Shield, FileText, Search, Pencil,
   Webhook, Copy, RefreshCw, Info, ChevronDown, Plus, CheckCircle2, Circle, Mail, Phone, MapPin,
+  ExternalLink, AlertCircle,
 } from 'lucide-react';
 
 interface MunicipalService { id: string; code: string; description: string; }
