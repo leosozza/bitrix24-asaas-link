@@ -1,59 +1,78 @@
-## Reestruturação da Aba CRM Asaas
+## Objetivo
 
-### 1. Reordenação das Abas
-Nova ordem dos sub-tabs no `bitrix-crm-detail-tab`:
-1. **Dados do Contrato** (antes "Planejamento") — agora primeira aba e default
-2. **Cobranças**
-3. **Assinaturas**
-4. **NFSe**
-5. **Split**
+Finalizar a contratação e pagamento dos planos ConnectPay. O cliente poderá escolher um plano (no cadastro OU via "Fazer Upgrade" nas Configurações), informar CPF/CNPJ e método de pagamento (PIX ou Cartão), e será redirecionado para a fatura do Asaas (`invoiceUrl`) para concluir o pagamento. O webhook Asaas já existente (`thoth-asaas-webhook`) ativa a assinatura automaticamente.
 
-### 2. Modal "Nova Cobrança" Reformulado
-Fluxo guiado em seções dinâmicas:
+## Fluxos de usuário
 
-**a) Valor Total do Contrato**
-- Auto-preenchido com soma dos produtos do Deal (via `crm.deal.productrows.get`)
-- Editável
+### A) No cadastro (novo cliente)
+1. Landing → CTA do plano leva para `/auth?plan=<id>&action=signup`.
+2. Após criar conta (trigger `handle_new_user` já cria trial Pro de 14 dias).
+3. Se houver `?plan=` na URL, exibe modal de checkout direto após login.
+4. Cliente pode também clicar "Continuar com Trial" para pular.
 
-**b) Entrada**
-- Campo `Valor de Entrada`
-- Toggle: `À vista` | `Parcelada` (se parcelada → número de parcelas 2–12)
-- Método pagamento entrada: PIX (padrão) | Boleto | Cartão
+### B) Upgrade depois do trial
+1. Em `/dashboard/settings`, botão **Fazer Upgrade** abre o mesmo modal de checkout, listando os 3 planos ativos.
+2. Cliente escolhe plano e segue o mesmo fluxo.
 
-**c) Saldo a Parcelar** (calculado: total − entrada)
-- Exibido em destaque, readonly
+### Checkout (modal compartilhado)
+Passo 1 — Escolher plano (cards Starter/Pro/Enterprise com preço e features).
+Passo 2 — Dados de cobrança: CPF/CNPJ (validação básica), telefone (pré-preenchido do perfil).
+Passo 3 — Método: **PIX** (padrão) ou **Cartão de crédito**.
+Passo 4 — Confirmar → chama edge function → recebe `invoiceUrl` → abre em nova aba e mostra tela "Aguardando pagamento" com botão "Já paguei / Atualizar status".
 
-**d) Modalidade do Saldo**
-- Radio: `Recorrente (Assinatura)` | `Parcelamento Fixo`
+## Mudanças técnicas
 
-**e) Configuração da Recorrência/Parcelamento**
-- Data de início (padrão: hoje +7d)
-- Ciclo: `Semanal` (padrão) | `Quinzenal` | `Mensal`
-- Modo de término: `Data fim` OU `Número de parcelas` (mutuamente exclusivos)
-  - Se data fim → calcula nº de parcelas automaticamente
-  - Se nº parcelas → calcula data fim automaticamente
-- Método pagamento recorrente: PIX | Boleto | Cartão
+### Backend — edge function `subscription-checkout` (nova, pública para usuários autenticados)
+Ação única: `create_checkout`. Recebe `{ plan_id, cpf_cnpj, billing_type, phone? }`.
 
-**f) Preview do Cronograma**
-- Tabela ao vivo: `#`, `Data`, `Valor`, `Tipo` (Entrada/Recorrente)
-- Atualiza em tempo real conforme campos mudam
-- Dia da semana é fixado pela data inicial (ex.: quarta → todas quartas)
+Reaproveita a lógica existente em `admin-tenant-management/create_asaas_subscription` mas:
+- Roda como o próprio tenant (valida JWT, não exige super_admin).
+- Atualiza/cria customer no Asaas Thoth24 (busca por CPF/CNPJ, cria se não existir).
+- Cria assinatura mensal no Asaas com `value = plan.price`, `cycle: 'MONTHLY'`, `nextDueDate = hoje + 1 dia`.
+- Busca a 1ª fatura da assinatura (`GET /subscriptions/{id}/payments`) para obter o `invoiceUrl` retornável.
+- Atualiza `tenant_subscriptions`: `plan_id`, `asaas_customer_id`, `asaas_subscription_id`, status mantém `trial` até o webhook confirmar pagamento (e então vira `active`).
+- Salva CPF/CNPJ e telefone em `profiles` se ainda não houver.
+- Retorna `{ subscription_id, invoice_url, payment_id }`.
 
-### 3. Submissão
-- Cria cobrança(s) de entrada via `bitrix-payment-process`
-- Cria assinatura via `bitrix-subscription-process` (se recorrente) OU múltiplas cobranças (se parcelamento fixo)
-- Cada cobrança/assinatura criada loga na timeline do Bitrix (sucesso/erro)
-- Atualiza/cria registro em `contract_plans`
+Garantia: registra o webhook Thoth24 se ainda não estiver (chama `registerThothWebhook` na primeira execução do tenant — já é idempotente após o fix anterior).
 
-### 4. Status na Lista de Cobranças
-- Coluna `Status` com badge colorido (Pendente, Pago, Vencido, Cancelado, Estornado)
-- Já existe parcialmente — garantir consistência visual
+### Webhook `thoth-asaas-webhook` (já existe)
+Sem alteração funcional necessária. Apenas confirmar que, ao receber `PAYMENT_CONFIRMED`/`PAYMENT_RECEIVED`, ele:
+- Encontra `tenant_subscriptions` pelo `asaas_subscription_id`.
+- Atualiza `status='active'`, `current_period_start/end` para o ciclo de 30 dias.
+- Em `PAYMENT_OVERDUE` → `past_due`. Em `SUBSCRIPTION_DELETED` → `canceled`.
 
-### Arquivos afetados
-- `supabase/functions/bitrix-crm-detail-tab/index.ts` — reordenar tabs, reescrever modal "Nova Cobrança" com novo wizard, lógica de cálculo de cronograma, integração com `crm.deal.productrows.get`
-- `supabase/functions/bitrix-payment-process/index.ts` — aceitar criação em lote (parcelamento fixo)
+### Frontend
+- **`src/components/checkout/PlanCheckoutModal.tsx`** (novo): wizard de 3 passos (plano → dados → método → confirmação) usando `Dialog`, `RadioGroup`, `Input` com máscara CPF/CNPJ.
+- **`src/hooks/usePlans.ts`** (novo): `useQuery` para `subscription_plans where is_active=true`.
+- **`src/hooks/useCheckout.ts`** (novo): `useMutation` que chama `supabase.functions.invoke('subscription-checkout', { body })` e retorna `invoice_url`.
+- **`src/components/landing/Pricing.tsx`**: trocar `<Link to="/auth">` por `<Link to={`/auth?plan=${plan.id}`}>` e carregar planos dinamicamente do banco (substitui o array hardcoded). Mantém visual atual.
+- **`src/pages/Auth.tsx`**: ao logar/cadastrar com `?plan=` no querystring, redireciona para `/dashboard/settings?checkout=<plan_id>`.
+- **`src/pages/DashboardSettings.tsx`**: o botão **Fazer Upgrade** (linha 580) abre `PlanCheckoutModal`. Lê `?checkout=` para abrir automaticamente.
+- Tela final do modal: "Pagamento gerado" com `invoiceUrl` (botão "Abrir fatura Asaas" em nova aba) + "Atualizar status" que refaz query da `tenant_subscriptions`.
 
-### Pontos a confirmar
-1. Quando **entrada parcelada**, as parcelas da entrada têm o **mesmo ciclo** da recorrência ou são sempre **mensais consecutivas**?
-2. Se **não houver entrada** (valor 0), pular direto para recorrência?
-3. No **parcelamento fixo** (não recorrente), as parcelas seguem o mesmo ciclo (semanal/quinzenal/mensal) ou são sempre mensais?
+### Banco
+Adicionar colunas se faltarem em `profiles`: `cpf_cnpj text` (já existe `phone`). Migração simples com GRANTs.
+
+## Estrutura visual do modal
+
+```text
+┌─ Contratar plano ──────────────────────────┐
+│ ① Plano   ② Dados   ③ Pagamento   ④ OK     │
+├────────────────────────────────────────────┤
+│ [Starter R$97]  [Pro R$247 ★]  [Ent R$497] │
+│                                            │
+│ CPF/CNPJ: [___.___.___-__]                 │
+│ Telefone: [(__) _____-____]                │
+│                                            │
+│ Forma de pagamento:                        │
+│  (•) PIX     ( ) Cartão de crédito         │
+│                                            │
+│           [Cancelar]   [Continuar]         │
+└────────────────────────────────────────────┘
+```
+
+## Itens fora deste plano
+- Tela interna de QR PIX embutida (decisão: usa `invoiceUrl` do Asaas).
+- Boleto como método (decisão: só PIX e Cartão).
+- Trocas de plano com proração (upgrade troca o `plan_id`; ciclo segue o próximo vencimento).
