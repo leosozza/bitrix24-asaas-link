@@ -861,6 +861,7 @@ export default function DashboardSettings() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+      <PlanCheckoutModal open={showCheckout} onOpenChange={setShowCheckout} initialPlanId={checkoutPlanId} />
       </DashboardLayout>
     </>
   );
