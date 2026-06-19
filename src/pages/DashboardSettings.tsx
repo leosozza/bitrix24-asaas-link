@@ -599,7 +599,7 @@ export default function DashboardSettings() {
                         {planCurrent.period_end ? new Date(planCurrent.period_end).toLocaleDateString('pt-BR') : '—'}
                       </p>
                     </div>
-                    <Button>Fazer Upgrade</Button>
+                    <Button onClick={() => { setCheckoutPlanId(null); setShowCheckout(true); }}>Fazer Upgrade</Button>
                   </div>
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-sm">
