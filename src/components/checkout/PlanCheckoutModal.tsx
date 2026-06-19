@@ -42,7 +42,7 @@ function maskPhone(v: string) {
   return d.replace(/(\d{2})(\d)/, '($1) $2').replace(/(\d{5})(\d)/, '$1-$2');
 }
 
-export function PlanCheckoutModal({ open, onOpenChange, initialPlanId }: Props) {
+export function PlanCheckoutModal({ open, onOpenChange, initialPlanId, onCheckoutComplete }: Props) {
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loadingPlans, setLoadingPlans] = useState(false);
