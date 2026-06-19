@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
+import { PlanCheckoutModal } from '@/components/checkout/PlanCheckoutModal';
 import { DashboardLayout, StatusBadge } from '@/components/dashboard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -91,6 +93,26 @@ export default function DashboardSettings() {
   const [savingPwd, setSavingPwd] = useState(false);
   const [delConfirm, setDelConfirm] = useState('');
   const [deletingAccount, setDeletingAccount] = useState(false);
+
+  // ===== Checkout =====
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [showCheckout, setShowCheckout] = useState(false);
+  const [checkoutPlanId, setCheckoutPlanId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const slug = searchParams.get('checkout');
+    if (!slug) return;
+    (async () => {
+      const { data } = await supabase.from('subscription_plans').select('id, name').eq('is_active', true);
+      const match = (data || []).find((p: any) => p.name.toLowerCase() === slug.toLowerCase()) || (data || []).find((p: any) => p.id === slug);
+      setCheckoutPlanId(match?.id || null);
+      setShowCheckout(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete('checkout');
+      setSearchParams(next, { replace: true });
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ============= LOAD =============
   useEffect(() => {
@@ -577,7 +599,7 @@ export default function DashboardSettings() {
                         {planCurrent.period_end ? new Date(planCurrent.period_end).toLocaleDateString('pt-BR') : '—'}
                       </p>
                     </div>
-                    <Button>Fazer Upgrade</Button>
+                    <Button onClick={() => { setCheckoutPlanId(null); setShowCheckout(true); }}>Fazer Upgrade</Button>
                   </div>
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-sm">
@@ -839,6 +861,7 @@ export default function DashboardSettings() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+      <PlanCheckoutModal open={showCheckout} onOpenChange={setShowCheckout} initialPlanId={checkoutPlanId} />
       </DashboardLayout>
     </>
   );

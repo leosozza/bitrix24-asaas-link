@@ -572,6 +572,7 @@ export type Database = {
           address: string | null
           bitrix_domain: string | null
           company_name: string
+          cpf_cnpj: string | null
           created_at: string
           email: string
           id: string
@@ -582,6 +583,7 @@ export type Database = {
           address?: string | null
           bitrix_domain?: string | null
           company_name: string
+          cpf_cnpj?: string | null
           created_at?: string
           email: string
           id: string
@@ -592,6 +594,7 @@ export type Database = {
           address?: string | null
           bitrix_domain?: string | null
           company_name?: string
+          cpf_cnpj?: string | null
           created_at?: string
           email?: string
           id?: string

@@ -141,7 +141,7 @@ export function Pricing() {
                 variant={plan.popular ? "default" : "secondary"}
                 asChild
               >
-                <Link to="/auth">{plan.cta}</Link>
+                <Link to={`/auth?plan=${plan.name.toLowerCase()}`}>{plan.cta}</Link>
               </Button>
             </div>
           ))}
