@@ -21,6 +21,7 @@ interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   initialPlanId?: string | null;
+  onCheckoutComplete?: () => void;
 }
 
 function formatBRL(v: number) {
