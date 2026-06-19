@@ -164,16 +164,25 @@ export default function DashboardSettings() {
       // Plan
       const { data: sub } = await supabase
         .from('tenant_subscriptions')
-        .select('plan_id, status, current_period_end, transactions_used, subscription_plans(name, transaction_limit)')
+        .select('plan_id, status, current_period_start, current_period_end, trial_ends_at, transactions_used, asaas_subscription_id, asaas_customer_id, cancel_at_period_end, canceled_at, invoice_url, subscription_plans(name, price, transaction_limit)')
         .eq('tenant_id', user.id)
         .maybeSingle();
       if (sub) {
         setPlanCurrent({
+          plan_id: sub.plan_id,
           plan_name: (sub as any).subscription_plans?.name,
+          plan_price: (sub as any).subscription_plans?.price,
           status: sub.status,
+          period_start: sub.current_period_start,
           period_end: sub.current_period_end,
+          trial_ends_at: sub.trial_ends_at,
           used: sub.transactions_used || 0,
           limit: (sub as any).subscription_plans?.transaction_limit ?? 0,
+          asaas_subscription_id: sub.asaas_subscription_id,
+          asaas_customer_id: sub.asaas_customer_id,
+          cancel_at_period_end: sub.cancel_at_period_end,
+          canceled_at: sub.canceled_at,
+          invoice_url: (sub as any).invoice_url,
         });
       }
       // Notifications
