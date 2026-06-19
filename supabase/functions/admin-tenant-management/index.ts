@@ -37,24 +37,36 @@ const webhookUrl = `${SUPABASE_URL}/functions/v1/thoth-asaas-webhook`;
 
 async function registerThothWebhook() {
   if (!THOTH_ASAAS_API_KEY) return { ok: false, error: 'THOTH_ASAAS_API_KEY not configured' };
-  const res = await asaas('/webhooks', {
-    method: 'POST',
-    body: JSON.stringify({
-      name: 'ConnectPay Thoth24 Billing',
-      url: webhookUrl,
-      email: 'contato@thoth24.com',
-      enabled: true,
-      interrupted: false,
-      apiVersion: 3,
-      sendType: 'SEQUENTIALLY',
-      events: ['PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED', 'PAYMENT_OVERDUE', 'SUBSCRIPTION_UPDATED', 'SUBSCRIPTION_DELETED'],
-    }),
-  });
-  // Asaas returns 409 when webhook already exists with same URL
-  if (!res.ok && res.status !== 409) {
-    return { ok: false, status: res.status, data: res.data };
+  const events = ['PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED', 'PAYMENT_OVERDUE', 'SUBSCRIPTION_UPDATED', 'SUBSCRIPTION_DELETED'];
+  const payload = {
+    name: 'ConnectPay Thoth24 Billing',
+    url: webhookUrl,
+    email: 'contato@thoth24.com',
+    enabled: true,
+    interrupted: false,
+    apiVersion: 3,
+    sendType: 'SEQUENTIALLY',
+    events,
+  };
+  const res = await asaas('/webhooks', { method: 'POST', body: JSON.stringify(payload) });
+  if (res.ok || res.status === 409) return { ok: true, status: res.status, data: res.data };
+
+  // Asaas returns 400 "Já existe uma configuração..." when a webhook with same events exists.
+  // Find the existing one (by URL, else first) and update it to point to our current webhookUrl.
+  const errText = JSON.stringify(res.data || '');
+  const isDuplicate = errText.includes('Já existe') || errText.includes('invalid_object');
+  if (isDuplicate) {
+    const list = await asaas('/webhooks');
+    const items = (list.data?.data || []) as Array<{ id: string; url: string }>;
+    const match = items.find(w => w.url === webhookUrl) || items[0];
+    if (match?.id) {
+      const upd = await asaas(`/webhooks/${match.id}`, { method: 'PUT', body: JSON.stringify(payload) });
+      if (upd.ok) return { ok: true, status: upd.status, data: upd.data, updated: true };
+      return { ok: false, status: upd.status, data: upd.data };
+    }
+    return { ok: true, status: 200, data: { message: 'Webhook already configured' } };
   }
-  return { ok: true, status: res.status, data: res.data };
+  return { ok: false, status: res.status, data: res.data };
 }
 
 
