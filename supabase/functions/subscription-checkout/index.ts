@@ -167,6 +167,7 @@ serve(async (req) => {
       plan_id,
       asaas_customer_id: customerId,
       asaas_subscription_id: asaasSubId,
+      invoice_url: invoiceUrl,
       cancel_at_period_end: false,
       canceled_at: null,
       updated_at: new Date().toISOString(),
