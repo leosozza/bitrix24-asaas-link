@@ -94,6 +94,26 @@ export default function DashboardSettings() {
   const [delConfirm, setDelConfirm] = useState('');
   const [deletingAccount, setDeletingAccount] = useState(false);
 
+  // ===== Checkout =====
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [showCheckout, setShowCheckout] = useState(false);
+  const [checkoutPlanId, setCheckoutPlanId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const slug = searchParams.get('checkout');
+    if (!slug) return;
+    (async () => {
+      const { data } = await supabase.from('subscription_plans').select('id, name').eq('is_active', true);
+      const match = (data || []).find((p: any) => p.name.toLowerCase() === slug.toLowerCase()) || (data || []).find((p: any) => p.id === slug);
+      setCheckoutPlanId(match?.id || null);
+      setShowCheckout(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete('checkout');
+      setSearchParams(next, { replace: true });
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ============= LOAD =============
   useEffect(() => {
     if (!user) return;
