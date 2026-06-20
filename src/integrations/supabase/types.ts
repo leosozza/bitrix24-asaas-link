@@ -316,6 +316,7 @@ export type Database = {
           customer_email: string | null
           customer_name: string
           customer_phone: string | null
+          document_hash: string | null
           extra_vars: Json
           id: string
           payment_schedule: Json
@@ -324,6 +325,9 @@ export type Database = {
           rendered_html: string
           salesperson_name: string | null
           sent_at: string | null
+          signature_attempts: number
+          signature_doc_masked: string | null
+          signature_evidence: Json
           signature_hash: string | null
           signature_name: string | null
           signed_at: string | null
@@ -349,6 +353,7 @@ export type Database = {
           customer_email?: string | null
           customer_name: string
           customer_phone?: string | null
+          document_hash?: string | null
           extra_vars?: Json
           id?: string
           payment_schedule?: Json
@@ -357,6 +362,9 @@ export type Database = {
           rendered_html: string
           salesperson_name?: string | null
           sent_at?: string | null
+          signature_attempts?: number
+          signature_doc_masked?: string | null
+          signature_evidence?: Json
           signature_hash?: string | null
           signature_name?: string | null
           signed_at?: string | null
@@ -382,6 +390,7 @@ export type Database = {
           customer_email?: string | null
           customer_name?: string
           customer_phone?: string | null
+          document_hash?: string | null
           extra_vars?: Json
           id?: string
           payment_schedule?: Json
@@ -390,6 +399,9 @@ export type Database = {
           rendered_html?: string
           salesperson_name?: string | null
           sent_at?: string | null
+          signature_attempts?: number
+          signature_doc_masked?: string | null
+          signature_evidence?: Json
           signature_hash?: string | null
           signature_name?: string | null
           signed_at?: string | null
