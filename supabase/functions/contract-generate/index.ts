@@ -40,13 +40,20 @@ serve(async (req) => {
     const token = authHeader.replace("Bearer ", "");
     if (!token) return json({ error: "Unauthorized" }, 401);
 
-    const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { headers: { Authorization: `Bearer ${token}` } } });
-    const { data: userData, error: ue } = await userClient.auth.getUser(token);
-    if (ue || !userData.user) return json({ error: "Unauthorized" }, 401);
-    const tenantId = userData.user.id;
-
     const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const body = await req.json();
+
+    // Service-role internal call (from robot handler) — passes tenant explicitly
+    let tenantId: string;
+    if (token === SUPABASE_SERVICE_ROLE_KEY && body.__service_tenant) {
+      tenantId = String(body.__service_tenant);
+    } else {
+      const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { headers: { Authorization: `Bearer ${token}` } } });
+      const { data: userData, error: ue } = await userClient.auth.getUser(token);
+      if (ue || !userData.user) return json({ error: "Unauthorized" }, 401);
+      tenantId = userData.user.id;
+    }
+
 
     const {
       template_id,
