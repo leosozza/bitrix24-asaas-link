@@ -1,16 +1,18 @@
 import { NavLink, useLocation } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  Receipt, 
-  Plug, 
-  Settings, 
+import {
+  LayoutDashboard,
+  Receipt,
+  Plug,
+  Settings,
   Zap,
   LogOut,
   CalendarDays,
   GitBranch,
   FileText,
+  ScrollText,
   Shield
 } from 'lucide-react';
+
 import { useIsSuperAdmin } from '@/hooks/useIsSuperAdmin';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
@@ -34,7 +36,9 @@ const menuItems = [
   { title: 'Assinaturas', url: '/dashboard/subscriptions', icon: CalendarDays },
   { title: 'Split de Pagamento', url: '/dashboard/splits', icon: GitBranch },
   { title: 'Notas Fiscais', url: '/dashboard/invoices', icon: FileText },
+  { title: 'Contratos', url: '/dashboard/contracts', icon: ScrollText },
   { title: 'Integrações', url: '/dashboard/integrations', icon: Plug },
+
   { title: 'Servidores MCP', url: '/dashboard/mcp', icon: Zap },
   { title: 'Configurações', url: '/dashboard/settings', icon: Settings },
 ];
