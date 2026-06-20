@@ -266,6 +266,152 @@ export type Database = {
         }
         Relationships: []
       }
+      contract_templates: {
+        Row: {
+          body_html: string
+          created_at: string
+          description: string | null
+          id: string
+          is_default: boolean
+          name: string
+          tenant_id: string
+          updated_at: string
+          variables: Json
+        }
+        Insert: {
+          body_html: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_default?: boolean
+          name: string
+          tenant_id: string
+          updated_at?: string
+          variables?: Json
+        }
+        Update: {
+          body_html?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_default?: boolean
+          name?: string
+          tenant_id?: string
+          updated_at?: string
+          variables?: Json
+        }
+        Relationships: []
+      }
+      contracts: {
+        Row: {
+          asaas_customer_id: string | null
+          asaas_subscription_id: string | null
+          bitrix_entity_id: string | null
+          bitrix_entity_type: string | null
+          company_name: string | null
+          contract_term: string | null
+          created_at: string
+          customer_address: string | null
+          customer_doc: string | null
+          customer_email: string | null
+          customer_name: string
+          customer_phone: string | null
+          extra_vars: Json
+          id: string
+          payment_schedule: Json
+          pdf_storage_path: string | null
+          public_token: string
+          rendered_html: string
+          salesperson_name: string | null
+          sent_at: string | null
+          signature_hash: string | null
+          signature_name: string | null
+          signed_at: string | null
+          signed_ip: string | null
+          signed_user_agent: string | null
+          status: string
+          template_id: string | null
+          tenant_id: string
+          total_value: number
+          updated_at: string
+          viewed_at: string | null
+        }
+        Insert: {
+          asaas_customer_id?: string | null
+          asaas_subscription_id?: string | null
+          bitrix_entity_id?: string | null
+          bitrix_entity_type?: string | null
+          company_name?: string | null
+          contract_term?: string | null
+          created_at?: string
+          customer_address?: string | null
+          customer_doc?: string | null
+          customer_email?: string | null
+          customer_name: string
+          customer_phone?: string | null
+          extra_vars?: Json
+          id?: string
+          payment_schedule?: Json
+          pdf_storage_path?: string | null
+          public_token?: string
+          rendered_html: string
+          salesperson_name?: string | null
+          sent_at?: string | null
+          signature_hash?: string | null
+          signature_name?: string | null
+          signed_at?: string | null
+          signed_ip?: string | null
+          signed_user_agent?: string | null
+          status?: string
+          template_id?: string | null
+          tenant_id: string
+          total_value?: number
+          updated_at?: string
+          viewed_at?: string | null
+        }
+        Update: {
+          asaas_customer_id?: string | null
+          asaas_subscription_id?: string | null
+          bitrix_entity_id?: string | null
+          bitrix_entity_type?: string | null
+          company_name?: string | null
+          contract_term?: string | null
+          created_at?: string
+          customer_address?: string | null
+          customer_doc?: string | null
+          customer_email?: string | null
+          customer_name?: string
+          customer_phone?: string | null
+          extra_vars?: Json
+          id?: string
+          payment_schedule?: Json
+          pdf_storage_path?: string | null
+          public_token?: string
+          rendered_html?: string
+          salesperson_name?: string | null
+          sent_at?: string | null
+          signature_hash?: string | null
+          signature_name?: string | null
+          signed_at?: string | null
+          signed_ip?: string | null
+          signed_user_agent?: string | null
+          status?: string
+          template_id?: string | null
+          tenant_id?: string
+          total_value?: number
+          updated_at?: string
+          viewed_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contracts_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "contract_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fiscal_configurations: {
         Row: {
           auto_emit_on_payment: boolean
