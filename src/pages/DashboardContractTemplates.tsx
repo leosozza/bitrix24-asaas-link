@@ -66,7 +66,7 @@ export default function DashboardContractTemplates() {
   }
 
   return (
-    <DashboardLayout>
+    <DashboardLayout title="Templates de contrato" description="Modelos reutilizáveis com placeholders">
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
