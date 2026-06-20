@@ -1,6 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
+export type BitrixFieldRef = { entity: "deal" | "lead" | "contact" | "company"; field: string };
+export type BitrixFieldMap = Record<string, BitrixFieldRef>;
+
 export interface ContractTemplate {
   id: string;
   tenant_id: string;
@@ -9,8 +12,17 @@ export interface ContractTemplate {
   body_html: string;
   variables: unknown;
   is_default: boolean;
+  cover_style: string | null;
+  bitrix_field_map: BitrixFieldMap;
   created_at: string;
   updated_at: string;
+}
+
+export interface BitrixField {
+  id: string;
+  label: string;
+  type: string;
+  is_custom: boolean;
 }
 
 export interface Contract {
@@ -66,13 +78,15 @@ export function useSaveTemplate() {
     mutationFn: async (input: Partial<ContractTemplate> & { id?: string }) => {
       const { data: u } = await supabase.auth.getUser();
       if (!u.user) throw new Error("Não autenticado");
-      const payload = {
+      const payload: Record<string, unknown> = {
         tenant_id: u.user.id,
         name: input.name || "Novo template",
         description: input.description ?? null,
         body_html: input.body_html || "",
         is_default: !!input.is_default,
+        bitrix_field_map: input.bitrix_field_map ?? {},
       };
+      if (input.cover_style !== undefined) payload.cover_style = input.cover_style;
       if (input.id) {
         const { error } = await supabase.from("contract_templates").update(payload).eq("id", input.id);
         if (error) throw error;
@@ -84,6 +98,48 @@ export function useSaveTemplate() {
       }
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["contract_templates"] }),
+  });
+}
+
+export function useSeedDefaultTemplates() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke("contract-templates-seed", { body: {} });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return data as { success: boolean; inserted: number; message?: string };
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["contract_templates"] }),
+  });
+}
+
+export function useBitrixEntityFields(entityType: "deal" | "lead" | "contact" | "company" | null) {
+  return useQuery({
+    queryKey: ["bitrix_entity_fields", entityType],
+    enabled: !!entityType,
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("bitrix-contract-fields", {
+        body: { action: "list_fields", entity_type: entityType },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return (data.fields || []) as BitrixField[];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useResolveBitrixContract() {
+  return useMutation({
+    mutationFn: async (input: { template_id: string; entity_type: string; entity_id: string }) => {
+      const { data, error } = await supabase.functions.invoke("bitrix-contract-fields", {
+        body: { action: "resolve", ...input },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return data as { success: boolean; customer: Record<string, string>; extra_vars: Record<string, string>; mapped_count: number };
+    },
   });
 }
 
