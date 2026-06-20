@@ -185,33 +185,6 @@ export default function DashboardContractTemplates() {
               </div>
             </div>
           )}
-        </div>
-      </div>
-
-      <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editing?.id ? "Editar template" : "Novo template"}</DialogTitle></DialogHeader>
-          {editing && (
-            <div className="grid md:grid-cols-[1fr_240px] gap-4">
-              <div className="space-y-3">
-                <div><Label>Nome *</Label><Input value={editing.name || ""} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></div>
-                <div><Label>Descrição</Label><Input value={editing.description || ""} onChange={(e) => setEditing({ ...editing, description: e.target.value })} /></div>
-                <div><Label>Corpo (HTML)</Label><Textarea rows={20} className="font-mono text-xs" value={editing.body_html || ""} onChange={(e) => setEditing({ ...editing, body_html: e.target.value })} /></div>
-                <div className="flex items-center gap-2"><Switch checked={!!editing.is_default} onCheckedChange={(v) => setEditing({ ...editing, is_default: v })} /><Label>Definir como padrão</Label></div>
-              </div>
-              <div className="space-y-2">
-                <Label className="text-xs uppercase tracking-wide">Placeholders</Label>
-                <div className="space-y-1 max-h-[500px] overflow-y-auto pr-1">
-                  {PLACEHOLDERS.map(([code, desc]) => (
-                    <button key={code} onClick={() => { navigator.clipboard.writeText(code); toast({ title: "Copiado", description: code }); }} className="w-full text-left p-2 rounded border border-border hover:bg-muted text-xs">
-                      <div className="font-mono text-primary">{code}</div>
-                      <div className="text-muted-foreground">{desc}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
           <DialogFooter>
             <Button variant="ghost" onClick={() => setEditing(null)}>Cancelar</Button>
             <Button onClick={handleSave} disabled={save.isPending}>Salvar</Button>
