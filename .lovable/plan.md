@@ -1,127 +1,143 @@
-# Assinatura eletrônica avançada — Lei 14.063/2020 (DOC-ICP-15 nível básico)
+# 5 Templates de contrato + mapeamento de campos do Bitrix
 
-## Contexto
+## Objetivo
 
-Hoje a assinatura captura apenas nome + IP + UA + hash de metadados. Para se qualificar como **assinatura eletrônica avançada** (Lei 14.063, art. 4º, II) precisamos de:
-
-1. Vínculo unívoco entre assinante e assinatura
-2. Capacidade de identificar o assinante
-3. Controle exclusivo do meio de assinatura
-4. Detecção de qualquer alteração posterior no documento
-
-Como o envio de OTP por e-mail/SMS é feito pelo Bitrix (não pelo nosso sistema), o segundo fator será **validação do CPF/CNPJ** do contrato, combinada a evidências adicionais.
+1. Pré-carregar **5 templates prontos**, incluindo o **Delivery Real** (do .docx anexado) com a seção de pagamento adicionada, o modelo **azul "Pacheco e Lacerda"** e o estilo **"Italnet" Telecom**.
+2. No **editor de template**, permitir mapear cada placeholder a um **campo do Bitrix** (padrão ou UF_CRM_*) de Deal/Lead/Contact/Company.
+3. Ao gerar contrato a partir de uma entidade Bitrix, os valores são buscados via REST e o contrato é preenchido automaticamente.
 
 ---
 
-## Fluxo de assinatura (público `/contrato/:token`)
+## Os 5 templates
+
+1. **Delivery Real — Consultoria/Serviços** (baseado no .docx enviado: tabela de DADOS CONTRATUAIS, 11 cláusulas + Anexo I, **agora com a Cláusula 4 expandida para incluir `{{parcelas_tabela}}`** mostrando vencimentos, valores e forma de pagamento)
+2. **Prestação de Serviços — Azul Elegante** (header azul listrado, blocos CONTRATANTE/CONTRATADO lado a lado)
+3. **Provedor de Internet / Telecom** (numeração hierárquica 1, 1.1, 2, 2.1...)
+4. **Assinatura Recorrente / SaaS** (renovação automática, política de cancelamento, SLA)
+5. **Venda de Produto / Licença** (entrega, garantia, suporte)
+
+Todos com placeholders Mustache `{{...}}` e o bloco de evidência da assinatura eletrônica é injetado pela função `contract-public` (já implementado).
+
+### Adição de pagamento ao template Delivery Real
+
+A Cláusula 4 atual é genérica. Será expandida para:
 
 ```text
-1. Cliente abre o link  →  registra viewed_at + IP + UA + Accept-Language + timezone
-2. Clica "Assinar"
-3. Modal pede:
-   • Nome completo
-   • CPF ou CNPJ (deve bater com customer_doc do contrato, normalizando)
-   • Permissão de geolocalização (opcional, mas registrada se aceita)
-   • Checkbox "Li e aceito os termos"
-   • Checkbox "Declaro, sob as penas da lei, ser o titular do documento informado"
-4. Envia POST → backend valida:
-   • CPF/CNPJ confere (normalizado, só dígitos)
-   • Hash do documento (rendered_html) calculado e armazenado
-   • Status muda para "signed"
-5. Tela exibe bloco verde "Assinado" + botão "Baixar PDF assinado"
-```
+CLÁUSULA 4 – VALORES E PAGAMENTO
 
-Se o CPF não bater: erro "Documento informado não confere com o titular do contrato" e contador de tentativas (`signature_attempts`), bloqueio após 5.
+Valor total contratado: {{valor_total}}
+Quantidade de parcelas: {{qtd_parcelas}}
+Forma de pagamento conforme cronograma abaixo:
+
+{{parcelas_tabela}}    ← tabela renderizada # / TIPO / VENCIMENTO / VALOR / MÉTODO
+
+Em caso de inadimplência:
+• multa de 2% sobre o valor em aberto;
+• juros de 1% ao mês pró-rata;
+• possibilidade de suspensão dos serviços após 7 dias de atraso.
+```
 
 ---
 
-## Bloco de evidências no PDF assinado
+## Mapeamento de campos do Bitrix
 
-Anexado ao final do contrato (substitui o bloco atual):
+### UI (editor de template)
+
+Painel "Campos do Bitrix" como 3ª coluna do editor:
 
 ```text
+Placeholder              Origem (Bitrix)
 ─────────────────────────────────────────────────
-ASSINATURA ELETRÔNICA AVANÇADA — Lei 14.063/2020
-─────────────────────────────────────────────────
-Signatário:        João da Silva
-Documento:         123.***.***-90  (validado)
-Data e hora:       20/06/2026 14:32:11 (UTC-03:00, fuso America/Sao_Paulo)
-IP de origem:      189.45.xx.xx
-Navegador:         Chrome 142 / macOS 14
-Idioma do cliente: pt-BR
-Geolocalização:    -23.5505, -46.6333  (precisão 35m)  [ou "não autorizada"]
-Token público:     7f3a...e92c
-Hash SHA-256 do documento:
-  9a7c4f8e2b1d6033a5b8f1e7c0d2e9a4b6f3c5d8e1a0b2c4d6e8f0a1b3c5d7e9
-Identificador da evidência:
-  ev_01HX...  (UUID v7)
-
-Este documento foi assinado eletronicamente conforme art. 4º, II da
-Lei 14.063/2020. Qualquer alteração posterior invalidará o hash acima.
-─────────────────────────────────────────────────
+{{cliente_nome}}    ←   Deal → CONTACT_ID → NAME + LAST_NAME
+{{cliente_doc}}     ←   Contact → UF_CRM_CPF
+{{cliente_email}}   ←   Contact → EMAIL[0].VALUE
+{{cliente_empresa}} ←   Company → TITLE
+{{cliente_endereco}}←   Company → ADDRESS
+{{valor_total}}     ←   Deal → OPPORTUNITY
+{{vendedor}}        ←   Deal → ASSIGNED_BY (resolvido para nome)
+{{prazo_contrato}}  ←   Deal → UF_CRM_PRAZO
 ```
+
+Para cada placeholder detectado no `body_html`, o usuário escolhe:
+- **Entidade origem** (Deal | Lead | Contact | Company)
+- **Campo** (lista carregada dinamicamente via REST do Bitrix)
+
+Salvo no template como:
+```json
+"bitrix_field_map": {
+  "{{cliente_doc}}": { "entity": "contact", "field": "UF_CRM_CPF" },
+  "{{cliente_empresa}}": { "entity": "company", "field": "TITLE" }
+}
+```
+
+### Geração a partir do CRM
+
+Quando o `ContractWizard` recebe `prefill.bitrix_entity_type + bitrix_entity_id`:
+1. Após escolher template, botão **"Buscar dados do Bitrix"** aparece no passo 2.
+2. Backend (`bitrix-contract-fields?action=resolve`) busca a entidade, resolve relacionadas (Deal→Contact/Company), aplica `bitrix_field_map`, devolve `{ customer, extra_vars, mapped_count }`.
+3. UI preenche os campos e mostra "X campos vindos do Bitrix".
 
 ---
 
 ## Mudanças técnicas
 
-### 1. Migration — tabela `contracts`
+### 1. Migration
+- `contract_templates`: adicionar `bitrix_field_map jsonb NOT NULL DEFAULT '{}'`
+- `contract_templates`: adicionar `cover_style text` (chave do estilo visual, ex: `delivery_real` / `blue_elegant`)
 
-Adicionar colunas:
-- `document_hash` text — SHA-256 do `rendered_html` no momento da assinatura
-- `signature_evidence` jsonb — trilha completa (timezone, accept-language, geolocation, screen, plataforma, attempts, etc.)
-- `signature_attempts` int default 0
-- `signature_doc_masked` text — CPF/CNPJ mascarado para exibição
-- Manter `signature_hash` como hash da própria assinatura (token+doc+ip+timestamp)
+### 2. Edge functions
 
-### 2. `supabase/functions/contract-public/index.ts`
+**`contract-templates-seed`** (auth)
+- Cria os 5 templates para o tenant logado se não existirem.
+- Botão "Carregar 5 modelos prontos" na página de templates.
 
-- POST `action=sign` passa a exigir `customer_doc` no body
-- Normaliza ambos (só dígitos) e compara com `contract.customer_doc`
-- Se não bater → incrementa `signature_attempts`, retorna 422
-- Se ≥ 5 tentativas → 429 e bloqueia
-- Calcula `document_hash = SHA-256(rendered_html_pre_signature)`
-- Monta `signature_evidence` com headers + body fields (geo, tz, locale, screen)
-- Substitui bloco simples atual pelo novo bloco de evidências (formato acima)
-- Atualiza Bitrix mantendo lógica existente
+**`bitrix-contract-fields`** (auth)
+- `action: "list_fields", entity_type: deal|lead|contact|company` → usa `crm.<entity>.fields` e retorna `[{ id, label, type }]`.
+- `action: "resolve", template_id, entity_type, entity_id` → busca entidade + relacionadas, aplica mapping, devolve `{ customer, extra_vars }`.
 
-### 3. `src/pages/PublicContract.tsx`
+### 3. Frontend
 
-- Modal de assinatura ganha:
-  - Input CPF/CNPJ com máscara (`@/lib/utils` para formatar)
-  - Botão "Compartilhar minha localização" (opcional) — usa `navigator.geolocation`
-  - Segundo checkbox de declaração de titularidade
-  - Coleta `Intl.DateTimeFormat().resolvedOptions().timeZone`, `navigator.language`, `screen.width/height`, `navigator.platform`
-- Mensagem de erro específica para CPF inválido
-- Após assinar, mostra evidências resumidas na tela
+**`DashboardContractTemplates.tsx`**
+- Botão "Carregar 5 modelos prontos" (visível se < 5 templates).
+- Editor ganha **3ª coluna "Bitrix"** com `BitrixFieldMapper`:
+  - Detecta placeholders no `body_html` via regex `{{(\w+)}}`
+  - Para cada um: dois Selects (Entidade + Campo) populados via React Query
+  - Indicador "X de Y mapeados"
+- Botão "Pré-visualizar" abre nova aba com HTML renderizado com dados de exemplo.
 
-### 4. `src/integrations/supabase/types.ts`
+**`ContractWizard.tsx`**
+- Quando `prefill.bitrix_entity_type` existe e o template tem `bitrix_field_map`, mostra botão **"Buscar dados do Bitrix"** no passo 2.
+- Toast: "X campos preenchidos automaticamente".
 
-Regenerado automaticamente após migration.
+**`hooks/useContracts.ts`**
+- `useBitrixEntityFields(entityType)`
+- `useResolveBitrixContract()`
+- `useSeedTemplates()`
 
-### 5. Nenhuma mudança em
-
-- `contract-generate` — só gera, não assina
-- `bitrix-contract-robot` — idem
-- `bitrix-contract-setup` — campos do CRM continuam iguais
-
----
-
-## O que NÃO é coberto neste plano (deixar explícito)
-
-- **Não é assinatura qualificada ICP-Brasil** (não há certificado digital A1/A3)
-- Não há **carimbo do tempo** de Autoridade de Carimbo do Tempo (ACT) — usamos `now()` do servidor
-- Não há assinatura **PAdES** embutida no PDF (o PDF é gerado client-side via `window.print()`)
-
-Esses pontos exigiriam provedor externo (Clicksign/D4Sign) ou certificado ICP-Brasil — fora do escopo escolhido (nível 1 da pergunta anterior).
+### 4. Renderer
+- `_shared/contract-renderer.ts` já suporta `<style>` embutido — sem mudanças.
+- Cada template traz CSS próprio com `-webkit-print-color-adjust: exact` para preservar cores em PDF.
 
 ---
 
 ## Arquivos
 
 **Editar:**
-- `supabase/functions/contract-public/index.ts`
-- `src/pages/PublicContract.tsx`
+- `src/pages/DashboardContractTemplates.tsx`
+- `src/components/contracts/ContractWizard.tsx`
+- `src/hooks/useContracts.ts`
 
 **Criar:**
-- `supabase/migrations/<timestamp>_contract_advanced_signature.sql`
+- `supabase/migrations/<ts>_template_bitrix_field_map.sql`
+- `supabase/functions/contract-templates-seed/index.ts`
+- `supabase/functions/bitrix-contract-fields/index.ts`
+- `supabase/functions/_shared/contract-default-templates.ts` (HTML+CSS dos 5 modelos, incluindo Delivery Real completo com Cláusula 4 expandida)
+- `src/components/contracts/BitrixFieldMapper.tsx`
+
+---
+
+## Fora de escopo
+
+- Sem editor WYSIWYG nesta entrega (segue textarea HTML + botão "Pré-visualizar").
+- Não criamos campos UF_CRM_* automaticamente no Bitrix — o tenant mapeia para os que já existem na conta dele.
+- Os placeholders do .docx (`{ContactName}`, `{CompanyUfCrm1781051230426}`, etc.) são convertidos para nossos placeholders Mustache (`{{cliente_nome}}`, `{{cliente_doc}}`); o tenant configura o mapeamento Bitrix para apontar para os UF_CRM corretos da conta dele.

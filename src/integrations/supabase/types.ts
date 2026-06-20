@@ -268,7 +268,9 @@ export type Database = {
       }
       contract_templates: {
         Row: {
+          bitrix_field_map: Json
           body_html: string
+          cover_style: string | null
           created_at: string
           description: string | null
           id: string
@@ -279,7 +281,9 @@ export type Database = {
           variables: Json
         }
         Insert: {
+          bitrix_field_map?: Json
           body_html: string
+          cover_style?: string | null
           created_at?: string
           description?: string | null
           id?: string
@@ -290,7 +294,9 @@ export type Database = {
           variables?: Json
         }
         Update: {
+          bitrix_field_map?: Json
           body_html?: string
+          cover_style?: string | null
           created_at?: string
           description?: string | null
           id?: string
