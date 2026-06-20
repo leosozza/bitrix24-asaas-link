@@ -180,15 +180,32 @@ export function ContractWizard({ open, onOpenChange, templates, prefill }: Props
         )}
 
         {step === 2 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="md:col-span-2"><Label>Nome completo *</Label><Input value={customer.name} onChange={(e) => setCustomer({ ...customer, name: e.target.value })} /></div>
-            <div><Label>CPF / CNPJ</Label><Input value={customer.doc} onChange={(e) => setCustomer({ ...customer, doc: e.target.value })} /></div>
-            <div><Label>Empresa</Label><Input value={customer.company_name} onChange={(e) => setCustomer({ ...customer, company_name: e.target.value })} /></div>
-            <div><Label>E-mail</Label><Input type="email" value={customer.email} onChange={(e) => setCustomer({ ...customer, email: e.target.value })} /></div>
-            <div><Label>Telefone</Label><Input value={customer.phone} onChange={(e) => setCustomer({ ...customer, phone: e.target.value })} /></div>
-            <div className="md:col-span-2"><Label>Endereço</Label><Textarea value={customer.address} onChange={(e) => setCustomer({ ...customer, address: e.target.value })} /></div>
-            <div><Label>Prazo do contrato</Label><Input value={contractTerm} onChange={(e) => setContractTerm(e.target.value)} /></div>
-            <div><Label>Vendedor responsável</Label><Input value={salesperson} onChange={(e) => setSalesperson(e.target.value)} /></div>
+          <div className="space-y-3">
+            {hasBitrixContext && (
+              <div className="flex items-center justify-between gap-3 p-3 rounded-lg border border-primary/30 bg-primary/5">
+                <div className="text-sm">
+                  <div className="font-medium">Contexto Bitrix detectado</div>
+                  <div className="text-xs text-muted-foreground">
+                    {prefill?.bitrix_entity_type?.toUpperCase()} #{prefill?.bitrix_entity_id}
+                    {!hasFieldMap && " — configure o mapeamento no template para preenchimento automático"}
+                  </div>
+                </div>
+                <Button size="sm" variant="outline" onClick={handleFetchFromBitrix} disabled={resolveBitrix.isPending || !hasFieldMap}>
+                  {resolveBitrix.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
+                  Buscar dados do Bitrix
+                </Button>
+              </div>
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="md:col-span-2"><Label>Nome completo *</Label><Input value={customer.name} onChange={(e) => setCustomer({ ...customer, name: e.target.value })} /></div>
+              <div><Label>CPF / CNPJ</Label><Input value={customer.doc} onChange={(e) => setCustomer({ ...customer, doc: e.target.value })} /></div>
+              <div><Label>Empresa</Label><Input value={customer.company_name} onChange={(e) => setCustomer({ ...customer, company_name: e.target.value })} /></div>
+              <div><Label>E-mail</Label><Input type="email" value={customer.email} onChange={(e) => setCustomer({ ...customer, email: e.target.value })} /></div>
+              <div><Label>Telefone</Label><Input value={customer.phone} onChange={(e) => setCustomer({ ...customer, phone: e.target.value })} /></div>
+              <div className="md:col-span-2"><Label>Endereço</Label><Textarea value={customer.address} onChange={(e) => setCustomer({ ...customer, address: e.target.value })} /></div>
+              <div><Label>Prazo do contrato</Label><Input value={contractTerm} onChange={(e) => setContractTerm(e.target.value)} /></div>
+              <div><Label>Vendedor responsável</Label><Input value={salesperson} onChange={(e) => setSalesperson(e.target.value)} /></div>
+            </div>
           </div>
         )}
 
