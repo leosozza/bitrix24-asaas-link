@@ -6,10 +6,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { ContractTemplate, useGenerateContract } from "@/hooks/useContracts";
+import { ContractTemplate, useGenerateContract, useResolveBitrixContract } from "@/hooks/useContracts";
 import { PaymentScheduleTable, ScheduleRow } from "./PaymentScheduleTable";
 import { toast } from "@/hooks/use-toast";
-import { Copy, ExternalLink, FileText, Loader2, Plus, Trash2 } from "lucide-react";
+import { Copy, ExternalLink, FileText, Loader2, Sparkles } from "lucide-react";
 
 interface Props {
   open: boolean;
@@ -50,6 +50,34 @@ export function ContractWizard({ open, onOpenChange, templates, prefill }: Props
   const [result, setResult] = useState<{ public_url: string; pdf_url: string; contract_id: string } | null>(null);
 
   const generate = useGenerateContract();
+  const resolveBitrix = useResolveBitrixContract();
+
+  const selectedTemplate = templates.find((t) => t.id === templateId);
+  const hasBitrixContext = !!(prefill?.bitrix_entity_type && prefill?.bitrix_entity_id);
+  const hasFieldMap = !!selectedTemplate?.bitrix_field_map && Object.keys(selectedTemplate.bitrix_field_map).length > 0;
+
+  async function handleFetchFromBitrix() {
+    if (!templateId || !prefill?.bitrix_entity_type || !prefill?.bitrix_entity_id) return;
+    try {
+      const res = await resolveBitrix.mutateAsync({
+        template_id: templateId,
+        entity_type: prefill.bitrix_entity_type,
+        entity_id: prefill.bitrix_entity_id,
+      });
+      setCustomer((c) => ({
+        ...c,
+        name: res.customer.name || c.name,
+        doc: res.customer.doc || c.doc,
+        email: res.customer.email || c.email,
+        phone: res.customer.phone || c.phone,
+        address: res.customer.address || c.address,
+        company_name: res.customer.company_name || c.company_name,
+      }));
+      toast({ title: "Dados importados", description: `${res.mapped_count} campo(s) preenchidos a partir do Bitrix.` });
+    } catch (e) {
+      toast({ title: "Erro ao buscar do Bitrix", description: e instanceof Error ? e.message : "Falhou", variant: "destructive" });
+    }
+  }
 
   useEffect(() => {
     if (!open) {
