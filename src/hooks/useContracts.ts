@@ -78,15 +78,15 @@ export function useSaveTemplate() {
     mutationFn: async (input: Partial<ContractTemplate> & { id?: string }) => {
       const { data: u } = await supabase.auth.getUser();
       if (!u.user) throw new Error("Não autenticado");
-      const payload: Record<string, unknown> = {
+      const payload = {
         tenant_id: u.user.id,
         name: input.name || "Novo template",
         description: input.description ?? null,
         body_html: input.body_html || "",
         is_default: !!input.is_default,
-        bitrix_field_map: input.bitrix_field_map ?? {},
+        bitrix_field_map: (input.bitrix_field_map ?? {}) as any,
+        ...(input.cover_style !== undefined ? { cover_style: input.cover_style } : {}),
       };
-      if (input.cover_style !== undefined) payload.cover_style = input.cover_style;
       if (input.id) {
         const { error } = await supabase.from("contract_templates").update(payload).eq("id", input.id);
         if (error) throw error;
