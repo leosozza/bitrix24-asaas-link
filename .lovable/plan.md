@@ -1,78 +1,82 @@
-## Objetivo
 
-Finalizar a contratação e pagamento dos planos ConnectPay. O cliente poderá escolher um plano (no cadastro OU via "Fazer Upgrade" nas Configurações), informar CPF/CNPJ e método de pagamento (PIX ou Cartão), e será redirecionado para a fatura do Asaas (`invoiceUrl`) para concluir o pagamento. O webhook Asaas já existente (`thoth-asaas-webhook`) ativa a assinatura automaticamente.
+# Sistema de Contratos ConnectPay + Robot Bizproc
 
-## Fluxos de usuário
+Geração de contratos com templates múltiplos, PDF, link público, assinatura digital simples, **robot de automação Bitrix** e **campos customizados na entidade CRM** atualizados automaticamente.
 
-### A) No cadastro (novo cliente)
-1. Landing → CTA do plano leva para `/auth?plan=<id>&action=signup`.
-2. Após criar conta (trigger `handle_new_user` já cria trial Pro de 14 dias).
-3. Se houver `?plan=` na URL, exibe modal de checkout direto após login.
-4. Cliente pode também clicar "Continuar com Trial" para pular.
+## 1. Banco de dados
 
-### B) Upgrade depois do trial
-1. Em `/dashboard/settings`, botão **Fazer Upgrade** abre o mesmo modal de checkout, listando os 3 planos ativos.
-2. Cliente escolhe plano e segue o mesmo fluxo.
+**`contract_templates`** — tenant_id, name, body_html (com placeholders `{{cliente_nome}}`, `{{parcelas_tabela}}`, etc.), variables jsonb, is_default. RLS por tenant.
 
-### Checkout (modal compartilhado)
-Passo 1 — Escolher plano (cards Starter/Pro/Enterprise com preço e features).
-Passo 2 — Dados de cobrança: CPF/CNPJ (validação básica), telefone (pré-preenchido do perfil).
-Passo 3 — Método: **PIX** (padrão) ou **Cartão de crédito**.
-Passo 4 — Confirmar → chama edge function → recebe `invoiceUrl` → abre em nova aba e mostra tela "Aguardando pagamento" com botão "Já paguei / Atualizar status".
+**`contracts`** — tenant_id, template_id, asaas_subscription_id?, asaas_customer_id?, bitrix_entity_type/id?, dados do cliente, total_value, contract_term, payment_schedule jsonb `[{n,tipo,vencimento,valor,metodo}]`, rendered_html, pdf_storage_path, public_token (uuid), status (`draft|sent|viewed|signed|canceled`), signed_at, signed_ip, signed_user_agent, signature_hash, signature_name. RLS por tenant.
 
-## Mudanças técnicas
+**Storage bucket** `contracts` (privado) com signed URLs para PDFs.
 
-### Backend — edge function `subscription-checkout` (nova, pública para usuários autenticados)
-Ação única: `create_checkout`. Recebe `{ plan_id, cpf_cnpj, billing_type, phone? }`.
+## 2. Edge Functions
 
-Reaproveita a lógica existente em `admin-tenant-management/create_asaas_subscription` mas:
-- Roda como o próprio tenant (valida JWT, não exige super_admin).
-- Atualiza/cria customer no Asaas Thoth24 (busca por CPF/CNPJ, cria se não existir).
-- Cria assinatura mensal no Asaas com `value = plan.price`, `cycle: 'MONTHLY'`, `nextDueDate = hoje + 1 dia`.
-- Busca a 1ª fatura da assinatura (`GET /subscriptions/{id}/payments`) para obter o `invoiceUrl` retornável.
-- Atualiza `tenant_subscriptions`: `plan_id`, `asaas_customer_id`, `asaas_subscription_id`, status mantém `trial` até o webhook confirmar pagamento (e então vira `active`).
-- Salva CPF/CNPJ e telefone em `profiles` se ainda não houver.
-- Retorna `{ subscription_id, invoice_url, payment_id }`.
+**`contract-generate`** (auth) — recebe template+cliente+schedule (ou puxa do Asaas via `/subscriptions/{id}/payments`), renderiza HTML, gera PDF server-side com `npm:@react-pdf/renderer`, salva no bucket, retorna `{contract_id, public_url, pdf_signed_url}`. Se vier de Bitrix (entity_type/id), também grava nos campos CRM (ver §5).
 
-Garantia: registra o webhook Thoth24 se ainda não estiver (chama `registerThothWebhook` na primeira execução do tenant — já é idempotente após o fix anterior).
+**`contract-public`** (no auth) — GET `?token=` registra `viewed_at` e renderiza HTML público. POST `action=sign` registra IP/UA/timestamp, gera SHA256, regenera PDF com bloco "Assinado por X em DD/MM HH:MM • IP", status=`signed`, e **dispara update dos campos Bitrix** (campo "Contrato Assinado" → Sim).
 
-### Webhook `thoth-asaas-webhook` (já existe)
-Sem alteração funcional necessária. Apenas confirmar que, ao receber `PAYMENT_CONFIRMED`/`PAYMENT_RECEIVED`, ele:
-- Encontra `tenant_subscriptions` pelo `asaas_subscription_id`.
-- Atualiza `status='active'`, `current_period_start/end` para o ciclo de 30 dias.
-- Em `PAYMENT_OVERDUE` → `past_due`. Em `SUBSCRIPTION_DELETED` → `canceled`.
+**`bitrix-contract-robot`** (no auth, recebe POST do bizproc) — payload Bitrix bizproc padrão (event_token, document_id, properties: template_id, billing_type, valor, parcelas etc.), chama `contract-generate` internamente, responde imediato 200 OK e usa `bizproc.event.send` para retornar resultado (link + pdf) ao workflow após geração.
 
-### Frontend
-- **`src/components/checkout/PlanCheckoutModal.tsx`** (novo): wizard de 3 passos (plano → dados → método → confirmação) usando `Dialog`, `RadioGroup`, `Input` com máscara CPF/CNPJ.
-- **`src/hooks/usePlans.ts`** (novo): `useQuery` para `subscription_plans where is_active=true`.
-- **`src/hooks/useCheckout.ts`** (novo): `useMutation` que chama `supabase.functions.invoke('subscription-checkout', { body })` e retorna `invoice_url`.
-- **`src/components/landing/Pricing.tsx`**: trocar `<Link to="/auth">` por `<Link to={`/auth?plan=${plan.id}`}>` e carregar planos dinamicamente do banco (substitui o array hardcoded). Mantém visual atual.
-- **`src/pages/Auth.tsx`**: ao logar/cadastrar com `?plan=` no querystring, redireciona para `/dashboard/settings?checkout=<plan_id>`.
-- **`src/pages/DashboardSettings.tsx`**: o botão **Fazer Upgrade** (linha 580) abre `PlanCheckoutModal`. Lê `?checkout=` para abrir automaticamente.
-- Tela final do modal: "Pagamento gerado" com `invoiceUrl` (botão "Abrir fatura Asaas" em nova aba) + "Atualizar status" que refaz query da `tenant_subscriptions`.
+## 3. Robot Bizproc + Campos CRM (Bitrix)
 
-### Banco
-Adicionar colunas se faltarem em `profiles`: `cpf_cnpj text` (já existe `phone`). Migração simples com GRANTs.
+**Robot** "ConnectPay: Gerar Contrato" — registrado via `bizproc.robot.add` (lazy registration, padrão masterguide):
+- **Parâmetros:** template (lista), tipo_pagamento (PIX/Boleto/Cartão), valor_total, qtd_parcelas, dia_vencimento, enviar_email (S/N), enviar_whatsapp (S/N)
+- **Retorno:** `contract_url` (string), `contract_pdf_url` (string), `contract_id` (string)
+- **Handler URL:** `contract-bizproc-robot`
+- **USE_SUBSCRIPTION:** Y (workflow espera resposta async)
 
-## Estrutura visual do modal
+**Campos customizados** criados via `userfieldconfig.add` / `crm.deal.userfield.add` na instalação (lazy, idempotente) — tanto em Deal quanto em Lead:
+- `UF_CRM_CONTRATO_PDF` (file)
+- `UF_CRM_CONTRATO_LINK` (string)
+- `UF_CRM_CONTRATO_ASSINADO` (enum Sim/Não, default Não)
+- `UF_CRM_CONTRATO_ID` (string, oculto)
 
-```text
-┌─ Contratar plano ──────────────────────────┐
-│ ① Plano   ② Dados   ③ Pagamento   ④ OK     │
-├────────────────────────────────────────────┤
-│ [Starter R$97]  [Pro R$247 ★]  [Ent R$497] │
-│                                            │
-│ CPF/CNPJ: [___.___.___-__]                 │
-│ Telefone: [(__) _____-____]                │
-│                                            │
-│ Forma de pagamento:                        │
-│  (•) PIX     ( ) Cartão de crédito         │
-│                                            │
-│           [Cancelar]   [Continuar]         │
-└────────────────────────────────────────────┘
-```
+**Auto-criação** na função `bitrix-install` + endpoint manual de reparo em `bitrix-iframe-management-hub` ("Recriar campos de contrato").
 
-## Itens fora deste plano
-- Tela interna de QR PIX embutida (decisão: usa `invoiceUrl` do Asaas).
-- Boleto como método (decisão: só PIX e Cartão).
-- Trocas de plano com proração (upgrade troca o `plan_id`; ciclo segue o próximo vencimento).
+**Atualização automática:**
+- Após `contract-generate` com entity vinculada → seta `UF_CRM_CONTRATO_PDF` (upload file via `disk.folder.uploadfile` + attach) + `UF_CRM_CONTRATO_LINK` + `UF_CRM_CONTRATO_ID` + assinado=Não, via `crm.deal.update` / `crm.lead.update`
+- Após `contract-public` sign → atualiza `UF_CRM_CONTRATO_ASSINADO=Sim` + posta timeline activity "Contrato assinado por X"
+
+## 4. Frontend Dashboard
+
+**`/dashboard/contracts`** (sidebar item novo) — lista com filtros, botão "Novo contrato" abre wizard:
+1. Template
+2. Cliente (auto-fill se vier de assinatura/CRM)
+3. Pagamento: toggle "Importar de assinatura Asaas" OU formulário manual (entradas N×valor + recorrentes N×valor×método) → preview tabela
+4. Preview HTML
+5. Gera → mostra link copiar + download PDF + botões enviar email/WhatsApp
+
+**`/dashboard/contracts/templates`** — CRUD templates com editor (TipTap), painel lateral com placeholders disponíveis, marcar padrão.
+
+## 5. Página pública `/contrato/:token`
+
+Renderiza HTML estilizado (logo tenant, dados, cláusulas, **tabela de parcelas** replicando o print: header cinza, `# | TIPO | VENCIMENTO | VALOR | MÉTODO`, badges coloridos PIX/BOLETO/CARTÃO). Botão "Assinar": modal pede nome completo + checkbox "Li e aceito" → POST sign → mostra confirmação com IP/timestamp + download PDF assinado.
+
+## 6. Integração Bitrix CRM (aba)
+
+Adicionar botão "Gerar contrato" na aba Asaas (`bitrix-crm-detail-tab`) — abre wizard pré-preenchido com contato/empresa/deal.
+
+## 7. Componentes compartilhados
+
+`<PaymentScheduleTable>` usado em preview, página pública e PDF (estilo do print).
+
+## Arquivos
+
+**Migrations:** tables + RLS + GRANTs + bucket
+**Edge functions (novas):**
+- `contract-generate/index.ts`
+- `contract-public/index.ts`
+- `contract-bizproc-robot/index.ts`
+**Edge functions (editar):**
+- `bitrix-install/index.ts` — criar campos CRM + registrar robot
+- `bitrix-iframe-management-hub/index.ts` (ou tool de reparo) — botão recriar campos/robot
+- `bitrix-crm-detail-tab/index.ts` — botão gerar contrato
+**Frontend:**
+- páginas: `DashboardContracts.tsx`, `DashboardContractTemplates.tsx`, `PublicContract.tsx`
+- components: `ContractWizard.tsx`, `PaymentScheduleTable.tsx`, `TemplateEditor.tsx`, `ContractStatusBadge.tsx`
+- hooks: `useContracts.ts`, `useContractTemplates.ts`
+- editar: `App.tsx` (rotas), `DashboardSidebar.tsx`
+
+**Seed:** template padrão (versão genérica do Delivery Real com placeholders) inserido para tenants existentes.
