@@ -54,10 +54,14 @@ export default function DashboardContracts() {
             <h1 className="text-2xl font-bold text-foreground">Contratos</h1>
             <p className="text-sm text-muted-foreground">Gere e gerencie contratos com seus clientes.</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
+            <Button variant="outline" onClick={setupBitrix} disabled={settingUp} title="Cria os campos UF_CRM_CONTRATO_* e registra o robot no Bitrix">
+              {settingUp ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wrench className="w-4 h-4 mr-2" />}Configurar Bitrix
+            </Button>
             <Link to="/dashboard/contracts/templates"><Button variant="outline"><ScrollText className="w-4 h-4 mr-2" />Templates</Button></Link>
             <Button onClick={() => setOpen(true)}><Plus className="w-4 h-4 mr-2" />Novo contrato</Button>
           </div>
+
         </div>
 
         <Card className="overflow-hidden">
