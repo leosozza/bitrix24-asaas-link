@@ -29,7 +29,7 @@ export default function DashboardContracts() {
   }
 
   return (
-    <DashboardLayout>
+    <DashboardLayout title="Contratos" description="Gere e gerencie contratos com seus clientes">
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
