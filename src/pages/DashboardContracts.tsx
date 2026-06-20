@@ -3,11 +3,13 @@ import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Plus, Copy, ExternalLink, ScrollText } from "lucide-react";
+import { FileText, Plus, Copy, ExternalLink, ScrollText, Wrench, Loader2 } from "lucide-react";
 import { useContracts, useContractTemplates } from "@/hooks/useContracts";
 import { ContractWizard } from "@/components/contracts/ContractWizard";
 import { toast } from "@/hooks/use-toast";
 import { Link } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+
 
 const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
   draft: { label: "Rascunho", cls: "bg-muted text-muted-foreground" },
@@ -19,6 +21,7 @@ const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
 
 export default function DashboardContracts() {
   const [open, setOpen] = useState(false);
+  const [settingUp, setSettingUp] = useState(false);
   const { data: templates = [] } = useContractTemplates();
   const { data: contracts = [], isLoading } = useContracts();
 
@@ -27,6 +30,21 @@ export default function DashboardContracts() {
     navigator.clipboard.writeText(url);
     toast({ title: "Link copiado" });
   }
+
+  async function setupBitrix() {
+    setSettingUp(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("bitrix-contract-setup", { body: { action: "setup_fields" } });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      toast({ title: "Bitrix configurado", description: "Campos do CRM e robot de automação instalados." });
+    } catch (e) {
+      toast({ title: "Erro ao configurar Bitrix", description: e instanceof Error ? e.message : "Falhou", variant: "destructive" });
+    } finally {
+      setSettingUp(false);
+    }
+  }
+
 
   return (
     <DashboardLayout title="Contratos" description="Gere e gerencie contratos com seus clientes">
