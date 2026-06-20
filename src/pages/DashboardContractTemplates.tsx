@@ -110,7 +110,14 @@ export default function DashboardContractTemplates() {
             <h1 className="text-2xl font-bold text-foreground mt-1">Templates de contrato</h1>
             <p className="text-sm text-muted-foreground">Crie e edite modelos reutilizáveis com placeholders.</p>
           </div>
-          <Button onClick={() => setEditing({ name: "", body_html: DEFAULT_BODY, is_default: templates.length === 0 })}><Plus className="w-4 h-4 mr-2" />Novo template</Button>
+          <div className="flex gap-2">
+            {templates.length < 5 && (
+              <Button variant="outline" onClick={handleSeed} disabled={seed.isPending}>
+                <Sparkles className="w-4 h-4 mr-2" />Carregar 5 modelos prontos
+              </Button>
+            )}
+            <Button onClick={() => setEditing({ name: "", body_html: DEFAULT_BODY, is_default: templates.length === 0, bitrix_field_map: {} })}><Plus className="w-4 h-4 mr-2" />Novo template</Button>
+          </div>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
@@ -119,17 +126,65 @@ export default function DashboardContractTemplates() {
             templates.map((t) => (
               <Card key={t.id} className="p-4">
                 <div className="flex items-start justify-between">
-                  <div>
-                    <div className="font-semibold flex items-center gap-2">{t.name}{t.is_default && <span className="text-[10px] uppercase bg-primary/15 text-primary px-1.5 rounded">Padrão</span>}</div>
+                  <div className="min-w-0">
+                    <div className="font-semibold flex items-center gap-2 flex-wrap">
+                      {t.name}
+                      {t.is_default && <span className="text-[10px] uppercase bg-primary/15 text-primary px-1.5 rounded">Padrão</span>}
+                      {t.cover_style && <span className="text-[10px] uppercase bg-muted text-muted-foreground px-1.5 rounded">{t.cover_style}</span>}
+                    </div>
                     {t.description && <p className="text-sm text-muted-foreground mt-1">{t.description}</p>}
+                    {t.bitrix_field_map && Object.keys(t.bitrix_field_map).length > 0 && (
+                      <p className="text-xs text-primary mt-1">{Object.keys(t.bitrix_field_map).length} campo(s) mapeado(s) do Bitrix</p>
+                    )}
                   </div>
-                  <div className="flex gap-1">
+                  <div className="flex gap-1 shrink-0">
+                    <Button size="sm" variant="ghost" onClick={() => handlePreview(t.body_html)} title="Pré-visualizar"><ExternalLink className="w-4 h-4" /></Button>
                     <Button size="sm" variant="ghost" onClick={() => setEditing(t)}><Pencil className="w-4 h-4" /></Button>
                     <Button size="sm" variant="ghost" onClick={() => { if (confirm("Excluir template?")) del.mutate(t.id); }}><Trash2 className="w-4 h-4" /></Button>
                   </div>
                 </div>
               </Card>
             ))}
+        </div>
+      </div>
+
+      <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>{editing?.id ? "Editar template" : "Novo template"}</DialogTitle></DialogHeader>
+          {editing && (
+            <div className="grid lg:grid-cols-[1fr_220px_280px] md:grid-cols-[1fr_240px] gap-4">
+              <div className="space-y-3">
+                <div><Label>Nome *</Label><Input value={editing.name || ""} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></div>
+                <div><Label>Descrição</Label><Input value={editing.description || ""} onChange={(e) => setEditing({ ...editing, description: e.target.value })} /></div>
+                <div>
+                  <div className="flex items-center justify-between">
+                    <Label>Corpo (HTML)</Label>
+                    <Button size="sm" variant="ghost" type="button" onClick={() => handlePreview(editing.body_html || "")}><ExternalLink className="w-3 h-3 mr-1" />Pré-visualizar</Button>
+                  </div>
+                  <Textarea rows={20} className="font-mono text-xs" value={editing.body_html || ""} onChange={(e) => setEditing({ ...editing, body_html: e.target.value })} />
+                </div>
+                <div className="flex items-center gap-2"><Switch checked={!!editing.is_default} onCheckedChange={(v) => setEditing({ ...editing, is_default: v })} /><Label>Definir como padrão</Label></div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs uppercase tracking-wide">Placeholders</Label>
+                <div className="space-y-1 max-h-[500px] overflow-y-auto pr-1">
+                  {PLACEHOLDERS.map(([code, desc]) => (
+                    <button key={code} onClick={() => { navigator.clipboard.writeText(code); toast({ title: "Copiado", description: code }); }} className="w-full text-left p-2 rounded border border-border hover:bg-muted text-xs">
+                      <div className="font-mono text-primary">{code}</div>
+                      <div className="text-muted-foreground">{desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="lg:block hidden">
+                <BitrixFieldMapper
+                  bodyHtml={editing.body_html || ""}
+                  value={(editing.bitrix_field_map || {}) as BitrixFieldMap}
+                  onChange={(v) => setEditing({ ...editing, bitrix_field_map: v })}
+                />
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
