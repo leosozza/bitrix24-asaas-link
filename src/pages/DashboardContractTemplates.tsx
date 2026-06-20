@@ -7,10 +7,11 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { ContractTemplate, useContractTemplates, useDeleteTemplate, useSaveTemplate } from "@/hooks/useContracts";
-import { Plus, Pencil, Trash2, FileText, ArrowLeft } from "lucide-react";
+import { ContractTemplate, useContractTemplates, useDeleteTemplate, useSaveTemplate, useSeedDefaultTemplates, BitrixFieldMap } from "@/hooks/useContracts";
+import { Plus, Pencil, Trash2, FileText, ArrowLeft, Sparkles, ExternalLink } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { Link } from "react-router-dom";
+import { BitrixFieldMapper } from "@/components/contracts/BitrixFieldMapper";
 
 const PLACEHOLDERS = [
   ["{{cliente_nome}}", "Nome do cliente"],
@@ -52,6 +53,7 @@ export default function DashboardContractTemplates() {
   const { data: templates = [], isLoading } = useContractTemplates();
   const save = useSaveTemplate();
   const del = useDeleteTemplate();
+  const seed = useSeedDefaultTemplates();
   const [editing, setEditing] = useState<Partial<ContractTemplate> | null>(null);
 
   async function handleSave() {
@@ -63,6 +65,40 @@ export default function DashboardContractTemplates() {
     } catch (e) {
       toast({ title: "Erro", description: e instanceof Error ? e.message : "Falhou", variant: "destructive" });
     }
+  }
+
+  async function handleSeed() {
+    try {
+      const res = await seed.mutateAsync();
+      toast({ title: res.inserted > 0 ? `${res.inserted} modelos adicionados` : "Tudo certo", description: res.message || `Modelos prontos disponíveis.` });
+    } catch (e) {
+      toast({ title: "Erro", description: e instanceof Error ? e.message : "Falhou", variant: "destructive" });
+    }
+  }
+
+  function handlePreview(html: string) {
+    const sample = html
+      .replace(/\{\{\s*cliente_nome\s*\}\}/g, "João da Silva")
+      .replace(/\{\{\s*cliente_doc\s*\}\}/g, "123.456.789-00")
+      .replace(/\{\{\s*cliente_email\s*\}\}/g, "joao@exemplo.com")
+      .replace(/\{\{\s*cliente_empresa\s*\}\}/g, "Empresa do João Ltda")
+      .replace(/\{\{\s*cliente_endereco\s*\}\}/g, "Rua das Flores, 123 — São Paulo/SP")
+      .replace(/\{\{\s*valor_total\s*\}\}/g, "R$ 5.500,00")
+      .replace(/\{\{\s*qtd_parcelas\s*\}\}/g, "12")
+      .replace(/\{\{\s*prazo_contrato\s*\}\}/g, "12 meses")
+      .replace(/\{\{\s*data_contrato\s*\}\}/g, new Date().toLocaleDateString("pt-BR"))
+      .replace(/\{\{\s*contratado_nome\s*\}\}/g, "Sua Empresa LTDA")
+      .replace(/\{\{\s*contratado_cnpj\s*\}\}/g, "00.000.000/0001-00")
+      .replace(/\{\{\s*contratado_endereco\s*\}\}/g, "Curitiba/PR")
+      .replace(/\{\{\s*contratado_representante\s*\}\}/g, "Representante Legal")
+      .replace(/\{\{\s*foro_cidade\s*\}\}/g, "Curitiba/PR")
+      .replace(/\{\{\s*vendedor\s*\}\}/g, "Maria Vendas")
+      .replace(/\{\{\s*parcelas_tabela\s*\}\}/g, '<div style="padding:16px;border:1px dashed #cbd5e1;border-radius:6px;color:#64748b;text-align:center;margin:12px 0;">Tabela de parcelas (preenchida na geração)</div>')
+      .replace(/\{\{\s*[\w_]+\s*\}\}/g, '<span style="background:#fef3c7;padding:0 4px;border-radius:3px;color:#92400e;">(placeholder)</span>');
+    const w = window.open("", "_blank");
+    if (!w) return;
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Preview</title></head><body style="margin:0;padding:24px;background:#f8fafc;font-family:Inter,Arial,sans-serif"><div style="max-width:860px;margin:0 auto;background:white;padding:48px;box-shadow:0 4px 24px rgba(0,0,0,.06);border-radius:8px;">${sample}</div></body></html>`);
+    w.document.close();
   }
 
   return (
