@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { DEFAULT_TEMPLATES } from "../_shared/contract-default-templates.ts";
+import { buildContractRobotParams, loadTenantContractTemplates, CONTRACT_ROBOT_CODE } from "../_shared/contract-robot-def.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
