@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { DEFAULT_TEMPLATES } from "../_shared/contract-default-templates.ts";
 import { buildContractRobotParams, loadTenantContractTemplates, CONTRACT_ROBOT_CODE } from "../_shared/contract-robot-def.ts";
+import { listBitrixInvoiceStages } from "../_shared/bitrix-invoice.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -2426,7 +2427,7 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
     case 'get_config': {
       const { data: asaasConf } = await supabase
         .from('asaas_configurations')
-        .select('environment, is_active, webhook_configured, webhook_secret, api_key')
+        .select('environment, is_active, webhook_configured, webhook_secret, api_key, sync_bitrix_invoices, bitrix_invoice_paid_stage_id, bitrix_invoice_pending_stage_id, bitrix_invoice_overdue_stage_id' as any)
         .eq('tenant_id', tenantId)
         .eq('is_active', true)
         .maybeSingle();
@@ -2451,24 +2452,67 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
         'INVOICE_AUTHORIZED', 'INVOICE_ERROR', 'INVOICE_CANCELED',
       ];
       
+      const ac: any = asaasConf || {};
       return jsonSuccess({
         profile: profile || null,
         asaas: asaasConf ? {
-          environment: asaasConf.environment,
-          webhook_configured: asaasConf.webhook_configured,
-          webhook_secret: asaasConf.webhook_secret,
-          has_api_key: !!asaasConf.api_key,
-          api_key_masked: asaasConf.api_key ? asaasConf.api_key.substring(0, 10) + '...' : null,
+          environment: ac.environment,
+          webhook_configured: ac.webhook_configured,
+          webhook_secret: ac.webhook_secret,
+          has_api_key: !!ac.api_key,
+          api_key_masked: ac.api_key ? ac.api_key.substring(0, 10) + '...' : null,
         } : null,
         webhook: {
           url: webhookUrl,
           events: webhookEvents,
-          configured: !!asaasConf?.webhook_configured,
-          secret: asaasConf?.webhook_secret || null,
+          configured: !!ac.webhook_configured,
+          secret: ac.webhook_secret || null,
         },
         fiscal: fiscalConf,
+        invoiceSync: {
+          enabled: !!ac.sync_bitrix_invoices,
+          pendingStageId: ac.bitrix_invoice_pending_stage_id || '',
+          overdueStageId: ac.bitrix_invoice_overdue_stage_id || '',
+          paidStageId: ac.bitrix_invoice_paid_stage_id || '',
+        },
       });
     }
+
+    case 'get_invoice_stages': {
+      try {
+        const endpoint = (inst as any).client_endpoint || ((inst as any).domain ? `https://${(inst as any).domain}/rest/` : '');
+        const token = (inst as any).access_token;
+        if (!endpoint || !token) return jsonError('Bitrix installation sem endpoint/token');
+        const stages = await listBitrixInvoiceStages(endpoint, token);
+        return jsonSuccess({ stages });
+      } catch (e: any) {
+        return jsonError(e?.message || 'Erro ao buscar estágios');
+      }
+    }
+
+    case 'save_invoice_sync': {
+      if (!data) return jsonError('data required');
+      const enabled = !!data.enabled;
+      const pendingStageId = (data.pendingStageId || '').toString();
+      const overdueStageId = (data.overdueStageId || '').toString();
+      const paidStageId = (data.paidStageId || '').toString();
+      if (enabled && (!pendingStageId || !overdueStageId || !paidStageId)) {
+        return jsonError('Selecione as três etapas (A Receber, Em Atraso e Recebidas)');
+      }
+      const { error } = await supabase
+        .from('asaas_configurations')
+        .update({
+          sync_bitrix_invoices: enabled,
+          bitrix_invoice_pending_stage_id: enabled ? pendingStageId : null,
+          bitrix_invoice_overdue_stage_id: enabled ? overdueStageId : null,
+          bitrix_invoice_paid_stage_id: enabled ? paidStageId : null,
+        } as any)
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true);
+      if (error) return jsonError(error.message);
+      return jsonSuccess({ message: 'Integração com Faturas Bitrix24 salva' });
+    }
+
     
     case 'save_profile': {
       if (!data) return jsonError('data required');
@@ -4048,6 +4092,29 @@ async function generateDashboardPage(
       html += '<label style="margin:0;">Emitir NF automaticamente ao receber pagamento</label></div>';
       html += '<button class="btn btn-primary" style="margin-top:16px;" onclick="saveFiscalConfig()">Salvar Config Fiscal</button>';
       html += '</div></div>';
+
+      // Integração com Faturas do Bitrix24 — colapsável
+      const inv = result.invoiceSync || { enabled: false, pendingStageId: '', overdueStageId: '', paidStageId: '' };
+      html += '<div class="card" style="margin-bottom:24px;">';
+      html += '<div class="card-header" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;" onclick="toggleInvoiceSyncCard()">';
+      html += '<h3 style="display:inline-flex;align-items:center;gap:8px;margin:0;">' + icn('file', 16) + ' Integração com Faturas do Bitrix24' + (inv.enabled ? ' <span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;">Ativa</span>' : '') + '</h3>';
+      html += '<span id="invsync-caret" style="color:#64748b;font-size:14px;">▼</span>';
+      html += '</div>';
+      html += '<div id="invsync-body" style="display:none;padding:20px;">';
+      html += '<p style="margin:0 0 14px;color:#64748b;font-size:13px;">Para cada cobrança Asaas, criamos uma Fatura (SmartInvoice) no Bitrix24 vinculada ao Negócio. A Fatura é movida entre etapas conforme o status do pagamento.</p>';
+      html += '<div class="form-group" style="display:flex;align-items:center;gap:12px;">';
+      html += '<button class="toggle ' + (inv.enabled ? 'on' : '') + '" id="cfg-sync-invoices" onclick="onToggleSyncInvoices(this)"></button>';
+      html += '<label style="margin:0;">Criar Fatura no Bitrix24 para cada cobrança</label></div>';
+      html += '<div id="cfg-invoice-stages" style="display:' + (inv.enabled ? 'block' : 'none') + ';">';
+      html += '<div class="form-group"><label>Etapa "A Receber" (cobrança criada)</label><select id="cfg-stage-pending" class="filter-select" style="width:100%;"><option value="">— carregando estágios —</option></select></div>';
+      html += '<div class="form-group"><label>Etapa "Em Atraso" (vencida)</label><select id="cfg-stage-overdue" class="filter-select" style="width:100%;"><option value="">— carregando estágios —</option></select></div>';
+      html += '<div class="form-group"><label>Etapa "Recebidas" (pago / convertido)</label><select id="cfg-stage-paid" class="filter-select" style="width:100%;"><option value="">— carregando estágios —</option></select></div>';
+      html += '<button type="button" class="btn btn-secondary btn-sm" style="margin-right:8px;" onclick="reloadInvoiceStages()">Recarregar estágios</button>';
+      html += '</div>';
+      html += '<button class="btn btn-primary" style="margin-top:16px;" onclick="saveInvoiceSync()">Salvar integração de Faturas</button>';
+      html += '</div></div>';
+      
+
       
       // ===== Modais =====
       // Modal: Editar Empresa
@@ -4147,6 +4214,82 @@ async function generateDashboardPage(
       body.style.display = isOpen ? 'none' : 'block';
       if (caret) caret.textContent = isOpen ? '▼' : '▲';
     }
+
+    function toggleInvoiceSyncCard() {
+      const body = document.getElementById('invsync-body');
+      const caret = document.getElementById('invsync-caret');
+      if (!body) return;
+      const isOpen = body.style.display !== 'none';
+      body.style.display = isOpen ? 'none' : 'block';
+      if (caret) caret.textContent = isOpen ? '▼' : '▲';
+      if (!isOpen) ensureInvoiceStagesLoaded();
+    }
+
+    let __invoiceStages = null;
+    async function ensureInvoiceStagesLoaded(force) {
+      if (__invoiceStages && !force) { populateInvoiceStageSelects(); return; }
+      const result = await apiCall('get_invoice_stages');
+      if (!result || !result.success) {
+        showToast(result?.error || 'Erro ao carregar estágios das Faturas Bitrix', 'error');
+        return;
+      }
+      __invoiceStages = result.stages || [];
+      populateInvoiceStageSelects();
+    }
+    function populateInvoiceStageSelects() {
+      const inv = (settingsData && settingsData.invoiceSync) || {};
+      const map = [
+        { id: 'cfg-stage-pending', selected: inv.pendingStageId, sem: 'P' },
+        { id: 'cfg-stage-overdue', selected: inv.overdueStageId, sem: 'F' },
+        { id: 'cfg-stage-paid', selected: inv.paidStageId, sem: 'S' },
+      ];
+      map.forEach((m) => {
+        const sel = document.getElementById(m.id);
+        if (!sel) return;
+        const options = (__invoiceStages || []).map((s) => {
+          const isSel = (m.selected && s.statusId === m.selected) ? ' selected' : '';
+          const mark = ((s.semantics || '').toUpperCase() === m.sem) ? ' ✓' : '';
+          return '<option value="' + escapeHtml(s.statusId) + '"' + isSel + '>' + escapeHtml(s.name) + mark + '</option>';
+        }).join('');
+        sel.innerHTML = '<option value="">— selecione —</option>' + options;
+        // auto-pick by semantics when nothing selected
+        if (!m.selected) {
+          const auto = (__invoiceStages || []).find((s) => (s.semantics || '').toUpperCase() === m.sem);
+          if (auto) sel.value = auto.statusId;
+        }
+      });
+    }
+    function reloadInvoiceStages() {
+      __invoiceStages = null;
+      ensureInvoiceStagesLoaded(true);
+    }
+    function onToggleSyncInvoices(btn) {
+      btn.classList.toggle('on');
+      const on = btn.classList.contains('on');
+      const wrap = document.getElementById('cfg-invoice-stages');
+      if (wrap) wrap.style.display = on ? 'block' : 'none';
+      if (on) ensureInvoiceStagesLoaded();
+    }
+    async function saveInvoiceSync() {
+      const enabled = document.getElementById('cfg-sync-invoices').classList.contains('on');
+      const pendingStageId = (document.getElementById('cfg-stage-pending') || {}).value || '';
+      const overdueStageId = (document.getElementById('cfg-stage-overdue') || {}).value || '';
+      const paidStageId = (document.getElementById('cfg-stage-paid') || {}).value || '';
+      if (enabled && (!pendingStageId || !overdueStageId || !paidStageId)) {
+        showToast('Selecione as três etapas', 'error');
+        return;
+      }
+      const result = await apiCall('save_invoice_sync', { data: { enabled, pendingStageId, overdueStageId, paidStageId } });
+      if (result.success) {
+        showToast(result.message || 'Integração de Faturas salva');
+        tabLoaded['settings'] = false;
+        loadSettings();
+      } else {
+        showToast(result.error || 'Erro', 'error');
+      }
+    }
+    
+
     
     function openCompanyModal() { openModal('company-modal'); }
     function openAsaasModal() { openModal('asaas-modal'); }
