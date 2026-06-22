@@ -19,6 +19,16 @@ const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
   canceled: { label: "Cancelado", cls: "bg-destructive/15 text-destructive" },
 };
 
+const PAYMENT_LABEL: Record<string, { label: string; cls: string }> = {
+  pending: { label: "Pendente", cls: "bg-muted text-muted-foreground" },
+  paid: { label: "Pago", cls: "bg-emerald-500/15 text-emerald-700" },
+  overdue: { label: "Atrasado", cls: "bg-amber-500/15 text-amber-700" },
+  refunded: { label: "Estornado", cls: "bg-destructive/15 text-destructive" },
+  canceled: { label: "Cancelado", cls: "bg-destructive/15 text-destructive" },
+};
+
+const WEBHOOK_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/asaas-contract-webhook`;
+
 export default function DashboardContracts() {
   const [open, setOpen] = useState(false);
   const [settingUp, setSettingUp] = useState(false);
@@ -64,6 +74,19 @@ export default function DashboardContracts() {
 
         </div>
 
+        <Card className="p-4 border-primary/20 bg-primary/5">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div className="min-w-0">
+              <div className="text-sm font-semibold">URL do webhook Asaas</div>
+              <p className="text-xs text-muted-foreground mb-2">Cole esta URL no painel da sua conta Asaas em <em>Integrações → Notificações via Webhook</em> para atualizar automaticamente o status dos contratos.</p>
+              <code className="text-xs bg-background border rounded px-2 py-1 break-all inline-block">{WEBHOOK_URL}</code>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => { navigator.clipboard.writeText(WEBHOOK_URL); toast({ title: "URL copiada" }); }}>
+              <Copy className="w-4 h-4 mr-2" />Copiar
+            </Button>
+          </div>
+        </Card>
+
         <Card className="overflow-hidden">
           {isLoading ? (
             <div className="p-8 text-center text-sm text-muted-foreground">Carregando…</div>
@@ -77,7 +100,7 @@ export default function DashboardContracts() {
             <table className="w-full text-sm">
               <thead className="bg-muted">
                 <tr>
-                  {["Cliente", "Valor", "Parcelas", "Status", "Criado em", "Ações"].map((h) => (
+                  {["Cliente", "Valor", "Parcelas", "Contrato", "Pagamento", "Criado em", "Ações"].map((h) => (
                     <th key={h} className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{h}</th>
                   ))}
                 </tr>
@@ -85,6 +108,7 @@ export default function DashboardContracts() {
               <tbody>
                 {contracts.map((c) => {
                   const st = STATUS_LABEL[c.status] || STATUS_LABEL.draft;
+                  const ps = PAYMENT_LABEL[c.payment_status] || PAYMENT_LABEL.pending;
                   return (
                     <tr key={c.id} className="border-t border-border">
                       <td className="px-4 py-3">
@@ -94,11 +118,15 @@ export default function DashboardContracts() {
                       <td className="px-4 py-3 font-medium">{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(c.total_value || 0))}</td>
                       <td className="px-4 py-3">{Array.isArray(c.payment_schedule) ? c.payment_schedule.length : 0}</td>
                       <td className="px-4 py-3"><Badge className={st.cls}>{st.label}</Badge></td>
+                      <td className="px-4 py-3"><Badge className={ps.cls}>{ps.label}</Badge></td>
                       <td className="px-4 py-3 text-muted-foreground">{new Date(c.created_at).toLocaleDateString("pt-BR")}</td>
                       <td className="px-4 py-3">
                         <div className="flex gap-1">
                           <Button size="sm" variant="ghost" title="Copiar link" onClick={() => copyLink(c.public_token)}><Copy className="w-4 h-4" /></Button>
                           <Button size="sm" variant="ghost" title="Abrir" onClick={() => window.open(`/contrato/${c.public_token}`, "_blank")}><ExternalLink className="w-4 h-4" /></Button>
+                          {c.asaas_invoice_url && (
+                            <Button size="sm" variant="ghost" title="Link de pagamento Asaas" onClick={() => window.open(c.asaas_invoice_url!, "_blank")}>$</Button>
+                          )}
                         </div>
                       </td>
                     </tr>
