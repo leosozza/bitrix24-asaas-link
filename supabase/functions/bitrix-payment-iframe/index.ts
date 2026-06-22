@@ -2484,8 +2484,10 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
         const token = (inst as any).access_token;
         if (!endpoint || !token) return jsonError('Bitrix installation sem endpoint/token');
         const stages = await listBitrixInvoiceStages(endpoint, token);
-        return jsonSuccess({ stages });
+        console.log('[get_invoice_stages] returning', stages.length, 'stages');
+        return jsonSuccess({ stages, count: stages.length });
       } catch (e: any) {
+        console.error('[get_invoice_stages] exception:', e);
         return jsonError(e?.message || 'Erro ao buscar estágios');
       }
     }
@@ -4231,9 +4233,14 @@ async function generateDashboardPage(
       const result = await apiCall('get_invoice_stages');
       if (!result || !result.success) {
         showToast(result?.error || 'Erro ao carregar estágios das Faturas Bitrix', 'error');
+        __invoiceStages = [];
+        populateInvoiceStageSelects();
         return;
       }
       __invoiceStages = result.stages || [];
+      if (__invoiceStages.length === 0) {
+        showToast('Nenhum estágio de Fatura (SmartInvoice) encontrado. Verifique se o módulo de Faturas está ativo no Bitrix24.', 'error');
+      }
       populateInvoiceStageSelects();
     }
     function populateInvoiceStageSelects() {
