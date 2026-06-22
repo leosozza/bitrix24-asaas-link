@@ -12,6 +12,7 @@ import { Plus, Pencil, Trash2, FileText, ArrowLeft, Sparkles, ExternalLink } fro
 import { toast } from "@/hooks/use-toast";
 import { Link } from "react-router-dom";
 import { BitrixFieldMapper } from "@/components/contracts/BitrixFieldMapper";
+import { AsaasBillingFieldMapper } from "@/components/contracts/AsaasBillingFieldMapper";
 
 const PLACEHOLDERS = [
   ["{{cliente_nome}}", "Nome do cliente"],
@@ -116,7 +117,7 @@ export default function DashboardContractTemplates() {
                 <Sparkles className="w-4 h-4 mr-2" />Carregar 5 modelos prontos
               </Button>
             )}
-            <Button onClick={() => setEditing({ name: "", body_html: DEFAULT_BODY, is_default: templates.length === 0, bitrix_field_map: {} })}><Plus className="w-4 h-4 mr-2" />Novo template</Button>
+            <Button onClick={() => setEditing({ name: "", body_html: DEFAULT_BODY, is_default: templates.length === 0, bitrix_field_map: {}, asaas_billing_map: {} })}><Plus className="w-4 h-4 mr-2" />Novo template</Button>
           </div>
         </div>
 
@@ -149,10 +150,10 @@ export default function DashboardContractTemplates() {
       </div>
 
       <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
-        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-7xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editing?.id ? "Editar template" : "Novo template"}</DialogTitle></DialogHeader>
           {editing && (
-            <div className="grid lg:grid-cols-[1fr_220px_280px] md:grid-cols-[1fr_240px] gap-4">
+            <div className="grid lg:grid-cols-[1fr_200px_260px_280px] md:grid-cols-[1fr_240px] gap-4">
               <div className="space-y-3">
                 <div><Label>Nome *</Label><Input value={editing.name || ""} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></div>
                 <div><Label>Descrição</Label><Input value={editing.description || ""} onChange={(e) => setEditing({ ...editing, description: e.target.value })} /></div>
@@ -181,6 +182,12 @@ export default function DashboardContractTemplates() {
                   bodyHtml={editing.body_html || ""}
                   value={(editing.bitrix_field_map || {}) as BitrixFieldMap}
                   onChange={(v) => setEditing({ ...editing, bitrix_field_map: v })}
+                />
+              </div>
+              <div className="lg:block hidden">
+                <AsaasBillingFieldMapper
+                  value={(editing.asaas_billing_map || {}) as BitrixFieldMap}
+                  onChange={(v) => setEditing({ ...editing, asaas_billing_map: v })}
                 />
               </div>
             </div>
