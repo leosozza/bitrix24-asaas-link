@@ -8,7 +8,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { ContractTemplate, useContractTemplates, useDeleteTemplate, useSaveTemplate, useSeedDefaultTemplates, BitrixFieldMap } from "@/hooks/useContracts";
-import { Plus, Pencil, Trash2, FileText, ArrowLeft, Sparkles, ExternalLink } from "lucide-react";
+import { Plus, Pencil, Trash2, FileText, ArrowLeft, Sparkles, ExternalLink, PanelRightOpen, PanelRightClose } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "@/hooks/use-toast";
 import { Link } from "react-router-dom";
 import { BitrixFieldMapper } from "@/components/contracts/BitrixFieldMapper";
@@ -57,6 +58,7 @@ export default function DashboardContractTemplates() {
   const del = useDeleteTemplate();
   const seed = useSeedDefaultTemplates();
   const [editing, setEditing] = useState<Partial<ContractTemplate> | null>(null);
+  const [mappingsOpen, setMappingsOpen] = useState(false);
 
   async function handleSave() {
     if (!editing?.name) return;
@@ -151,48 +153,82 @@ export default function DashboardContractTemplates() {
       </div>
 
       <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
-        <DialogContent className="max-w-7xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editing?.id ? "Editar template" : "Novo template"}</DialogTitle></DialogHeader>
+        <DialogContent className="max-w-[98vw] w-[98vw] h-[95vh] p-0 flex flex-col gap-0 overflow-hidden">
           {editing && (
-            <div className="grid lg:grid-cols-[1fr_260px_280px] gap-4">
-              <div className="space-y-3 min-w-0">
-                <div className="grid grid-cols-2 gap-3">
-                  <div><Label>Nome *</Label><Input value={editing.name || ""} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></div>
-                  <div><Label>Descrição</Label><Input value={editing.description || ""} onChange={(e) => setEditing({ ...editing, description: e.target.value })} /></div>
+            <>
+              {/* Header */}
+              <div className="border-b border-border bg-card px-4 py-3 flex items-center gap-3 flex-wrap shrink-0">
+                <DialogHeader className="flex-shrink-0">
+                  <DialogTitle className="text-base">{editing.id ? "Editar template" : "Novo template"}</DialogTitle>
+                </DialogHeader>
+                <div className="flex items-center gap-2 flex-1 min-w-[300px]">
+                  <Input
+                    placeholder="Nome do template *"
+                    value={editing.name || ""}
+                    onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+                    className="max-w-xs h-9"
+                  />
+                  <Input
+                    placeholder="Descrição"
+                    value={editing.description || ""}
+                    onChange={(e) => setEditing({ ...editing, description: e.target.value })}
+                    className="max-w-md h-9"
+                  />
+                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap">
+                    <Switch checked={!!editing.is_default} onCheckedChange={(v) => setEditing({ ...editing, is_default: v })} />
+                    Padrão
+                  </label>
                 </div>
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <Label>Editor do contrato</Label>
-                    <Button size="sm" variant="ghost" type="button" onClick={() => handlePreview(editing.body_html || "")}><ExternalLink className="w-3 h-3 mr-1" />Pré-visualizar</Button>
-                  </div>
+                <div className="flex items-center gap-2 ml-auto">
+                  <Button size="sm" variant="ghost" type="button" onClick={() => handlePreview(editing.body_html || "")}>
+                    <ExternalLink className="w-3.5 h-3.5 mr-1" />Pré-visualizar
+                  </Button>
+                  <Button size="sm" variant="outline" type="button" onClick={() => setMappingsOpen((v) => !v)}>
+                    {mappingsOpen ? <PanelRightClose className="w-3.5 h-3.5 mr-1" /> : <PanelRightOpen className="w-3.5 h-3.5 mr-1" />}
+                    Mapeamentos
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setEditing(null)}>Cancelar</Button>
+                  <Button size="sm" onClick={handleSave} disabled={save.isPending}>Salvar</Button>
+                </div>
+              </div>
+
+              {/* Body */}
+              <div className="flex-1 min-h-0 flex overflow-hidden">
+                <div className="flex-1 min-w-0 overflow-auto p-4">
                   <ContractTemplateEditor
                     value={editing.body_html || ""}
                     onChange={(html) => setEditing({ ...editing, body_html: html })}
                   />
                 </div>
-                <div className="flex items-center gap-2"><Switch checked={!!editing.is_default} onCheckedChange={(v) => setEditing({ ...editing, is_default: v })} /><Label>Definir como padrão</Label></div>
+                {mappingsOpen && (
+                  <aside className="w-[340px] shrink-0 border-l border-border bg-muted/30 overflow-y-auto">
+                    <Tabs defaultValue="bitrix" className="w-full">
+                      <TabsList className="w-full rounded-none border-b border-border h-10 sticky top-0 bg-card z-10">
+                        <TabsTrigger value="bitrix" className="flex-1">Bitrix</TabsTrigger>
+                        <TabsTrigger value="asaas" className="flex-1">Asaas</TabsTrigger>
+                      </TabsList>
+                      <TabsContent value="bitrix" className="p-3 m-0">
+                        <BitrixFieldMapper
+                          bodyHtml={editing.body_html || ""}
+                          value={(editing.bitrix_field_map || {}) as BitrixFieldMap}
+                          onChange={(v) => setEditing({ ...editing, bitrix_field_map: v })}
+                        />
+                      </TabsContent>
+                      <TabsContent value="asaas" className="p-3 m-0">
+                        <AsaasBillingFieldMapper
+                          value={(editing.asaas_billing_map || {}) as BitrixFieldMap}
+                          onChange={(v) => setEditing({ ...editing, asaas_billing_map: v })}
+                        />
+                      </TabsContent>
+                    </Tabs>
+                  </aside>
+                )}
               </div>
-              <div className="lg:block hidden">
-                <BitrixFieldMapper
-                  bodyHtml={editing.body_html || ""}
-                  value={(editing.bitrix_field_map || {}) as BitrixFieldMap}
-                  onChange={(v) => setEditing({ ...editing, bitrix_field_map: v })}
-                />
-              </div>
-              <div className="lg:block hidden">
-                <AsaasBillingFieldMapper
-                  value={(editing.asaas_billing_map || {}) as BitrixFieldMap}
-                  onChange={(v) => setEditing({ ...editing, asaas_billing_map: v })}
-                />
-              </div>
-            </div>
+            </>
           )}
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setEditing(null)}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={save.isPending}>Salvar</Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     </DashboardLayout>
+
   );
 }
