@@ -67,7 +67,7 @@ export default function AdminOverview() {
   ];
 
   return (
-    <AdminLayout title="Visão Geral" description="Métricas dos tenants ConnectPay">
+    <AdminLayout title="Visão Geral" description="Métricas dos tenants Assas Pay by Thoth">
       <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
         <div />
         <div className="flex gap-2">

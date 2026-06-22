@@ -58,7 +58,7 @@ export default function Dashboard() {
   return (
     <>
       <Helmet>
-        <title>Dashboard | ConnectPay</title>
+        <title>Dashboard | Assas Pay by Thoth</title>
       </Helmet>
 
       <DashboardLayout title="Visão Geral" description="Acompanhe suas métricas e transações">

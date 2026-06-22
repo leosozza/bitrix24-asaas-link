@@ -87,7 +87,7 @@ export default function DashboardTransactions() {
   return (
     <>
       <Helmet>
-        <title>Transações | ConnectPay</title>
+        <title>Transações | Assas Pay by Thoth</title>
       </Helmet>
 
       <DashboardLayout title="Transações" description="Gerencie todas as suas transações">
