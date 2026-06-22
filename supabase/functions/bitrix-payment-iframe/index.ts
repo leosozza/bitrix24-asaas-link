@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { DEFAULT_TEMPLATES } from "../_shared/contract-default-templates.ts";
+import { buildContractRobotParams, loadTenantContractTemplates, CONTRACT_ROBOT_CODE } from "../_shared/contract-robot-def.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -332,7 +333,7 @@ async function updatePaySystemsLogo(clientEndpoint: string, accessToken: string,
 
 // Register automation robots (Asaas: Criar Cobrança, Asaas: Verificar Pagamento)
 // forceReregister: if true, always delete and re-add robots (for repair/reinstall scenarios)
-async function registerAutomationRobots(clientEndpoint: string, accessToken: string, forceReregister: boolean = false): Promise<{ success: boolean; registered: string[] }> {
+async function registerAutomationRobots(clientEndpoint: string, accessToken: string, forceReregister: boolean = false, supabase?: any, tenantId?: string): Promise<{ success: boolean; registered: string[] }> {
   console.log('[Robots] Starting automation robots registration...');
   console.log('[Robots] Using endpoint:', clientEndpoint);
   console.log('[Robots] Force reregister:', forceReregister);
@@ -579,6 +580,29 @@ async function registerAutomationRobots(clientEndpoint: string, accessToken: str
   }
   
   console.log(`[Robots] Registration complete: ${registered.length}/${robots.length} robots registered`);
+
+  // Register contract robot (asaas_contract_generate) with tenant templates
+  if (supabase && tenantId) {
+    try {
+      const templates = await loadTenantContractTemplates(supabase, tenantId);
+      const contractParams = buildContractRobotParams(templates, SUPABASE_URL);
+      console.log(`[Robots] Deleting existing contract robot ${CONTRACT_ROBOT_CODE}...`);
+      await callBitrixApi(clientEndpoint, 'bizproc.robot.delete', { CODE: CONTRACT_ROBOT_CODE }, accessToken);
+      console.log(`[Robots] Registering contract robot ${CONTRACT_ROBOT_CODE} with ${templates.length} templates...`);
+      const addRes = await callBitrixApi(clientEndpoint, 'bizproc.robot.add', contractParams, accessToken);
+      if (addRes?.error) {
+        console.error(`[Robots] Failed to register contract robot:`, addRes.error, addRes.error_description);
+      } else {
+        console.log(`[Robots] Successfully registered contract robot:`, addRes.result);
+        registered.push(CONTRACT_ROBOT_CODE);
+      }
+    } catch (e) {
+      console.error('[Robots] Contract robot registration error:', e);
+    }
+  } else {
+    console.log('[Robots] Skipping contract robot (no supabase/tenantId provided)');
+  }
+
   return { success: registered.length > 0, registered };
 }
 
@@ -594,7 +618,20 @@ async function ensureAutomationRobots(
   console.log('[Robots Ensure] Client endpoint:', clientEndpoint);
   console.log('[Robots Ensure] Force repair:', forceRepair);
   
-  const expectedRobots = ['asaas_create_charge', 'asaas_check_payment', 'asaas_create_subscription', 'asaas_cancel_subscription', 'asaas_create_invoice'];
+  const expectedRobots = ['asaas_create_charge', 'asaas_check_payment', 'asaas_create_subscription', 'asaas_cancel_subscription', 'asaas_create_invoice', CONTRACT_ROBOT_CODE];
+
+  // Resolve tenant_id from installation for contract robot template options
+  let tenantId: string | undefined;
+  try {
+    const { data: inst } = await supabase
+      .from('bitrix_installations')
+      .select('tenant_id')
+      .eq('id', installationId)
+      .maybeSingle();
+    tenantId = inst?.tenant_id || undefined;
+  } catch (e) {
+    console.log('[Robots Ensure] Could not resolve tenant_id:', e);
+  }
   
   // Step 1: Call bizproc.robot.list to check which robots exist
   console.log('[Robots Ensure] Calling bizproc.robot.list...');
@@ -635,7 +672,7 @@ async function ensureAutomationRobots(
   
   // Step 3: Register missing robots (or all if forceRepair)
   console.log('[Robots Ensure] Registering robots...');
-  const registerResult = await registerAutomationRobots(clientEndpoint, accessToken, true);
+  const registerResult = await registerAutomationRobots(clientEndpoint, accessToken, true, supabase, tenantId);
   
   if (registerResult.success) {
     // Update database to mark robots as registered
