@@ -54,6 +54,8 @@ export default function DashboardSettings() {
   // Bitrix invoice sync
   const [syncBitrixInvoices, setSyncBitrixInvoices] = useState(false);
   const [invoicePaidStageId, setInvoicePaidStageId] = useState<string>('');
+  const [invoicePendingStageId, setInvoicePendingStageId] = useState<string>('');
+  const [invoiceOverdueStageId, setInvoiceOverdueStageId] = useState<string>('');
   const [invoiceStages, setInvoiceStages] = useState<Array<{ statusId: string; name: string; semantics?: string | null }>>([]);
   const [loadingStages, setLoadingStages] = useState(false);
   const [savingInvoiceSync, setSavingInvoiceSync] = useState(false);
