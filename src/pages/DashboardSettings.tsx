@@ -922,6 +922,56 @@ export default function DashboardSettings() {
               </div>
               <Separator />
               <div>
+                <h4 className="font-medium mb-1">Integração com Faturas do Bitrix24</h4>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Ao criar uma cobrança no Asaas, geramos automaticamente uma Fatura vinculada ao Deal.
+                  Quando o cliente pagar, a Fatura é movida para "Pago/Convertido".
+                </p>
+                <div className="flex items-center justify-between mb-3">
+                  <Label htmlFor="sync-bitrix-invoices" className="text-sm">Criar Fatura no Bitrix24 para cada cobrança</Label>
+                  <Switch
+                    id="sync-bitrix-invoices"
+                    checked={syncBitrixInvoices}
+                    onCheckedChange={(v) => {
+                      setSyncBitrixInvoices(v);
+                      if (v && invoiceStages.length === 0) loadInvoiceStages();
+                    }}
+                  />
+                </div>
+                {syncBitrixInvoices && (
+                  <div className="space-y-2">
+                    <Label className="text-xs">Estágio "Pago / Convertido" da Fatura</Label>
+                    <div className="flex gap-2">
+                      <Select value={invoicePaidStageId} onValueChange={setInvoicePaidStageId} disabled={loadingStages || invoiceStages.length === 0}>
+                        <SelectTrigger>
+                          <SelectValue placeholder={loadingStages ? 'Carregando estágios...' : 'Selecione o estágio'} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {invoiceStages.map(s => (
+                            <SelectItem key={s.statusId} value={s.statusId}>
+                              {s.name} {(s.semantics || '').toUpperCase() === 'S' ? '✓' : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button type="button" variant="outline" size="sm" onClick={loadInvoiceStages} disabled={loadingStages}>
+                        {loadingStages ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Recarregar'}
+                      </Button>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Estágios são lidos do Bitrix24 (SmartInvoice). Marcamos automaticamente o que tem semântica de sucesso.
+                    </p>
+                  </div>
+                )}
+                <div className="flex justify-end mt-3">
+                  <Button onClick={saveInvoiceSync} disabled={savingInvoiceSync} size="sm">
+                    {savingInvoiceSync ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                    Salvar integração de Faturas
+                  </Button>
+                </div>
+              </div>
+              <Separator />
+              <div>
                 <h4 className="font-medium mb-3 flex items-center gap-2"><Webhook className="h-4 w-4" />Webhook</h4>
                 <div className="space-y-3">
                   <div className="space-y-1">
