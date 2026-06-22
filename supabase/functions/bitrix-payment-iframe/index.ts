@@ -580,6 +580,29 @@ async function registerAutomationRobots(clientEndpoint: string, accessToken: str
   }
   
   console.log(`[Robots] Registration complete: ${registered.length}/${robots.length} robots registered`);
+
+  // Register contract robot (asaas_contract_generate) with tenant templates
+  if (supabase && tenantId) {
+    try {
+      const templates = await loadTenantContractTemplates(supabase, tenantId);
+      const contractParams = buildContractRobotParams(templates, SUPABASE_URL);
+      console.log(`[Robots] Deleting existing contract robot ${CONTRACT_ROBOT_CODE}...`);
+      await callBitrixApi(clientEndpoint, 'bizproc.robot.delete', { CODE: CONTRACT_ROBOT_CODE }, accessToken);
+      console.log(`[Robots] Registering contract robot ${CONTRACT_ROBOT_CODE} with ${templates.length} templates...`);
+      const addRes = await callBitrixApi(clientEndpoint, 'bizproc.robot.add', contractParams, accessToken);
+      if (addRes?.error) {
+        console.error(`[Robots] Failed to register contract robot:`, addRes.error, addRes.error_description);
+      } else {
+        console.log(`[Robots] Successfully registered contract robot:`, addRes.result);
+        registered.push(CONTRACT_ROBOT_CODE);
+      }
+    } catch (e) {
+      console.error('[Robots] Contract robot registration error:', e);
+    }
+  } else {
+    console.log('[Robots] Skipping contract robot (no supabase/tenantId provided)');
+  }
+
   return { success: registered.length > 0, registered };
 }
 
