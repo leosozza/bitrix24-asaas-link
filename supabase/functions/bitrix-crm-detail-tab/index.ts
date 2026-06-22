@@ -1149,6 +1149,7 @@ serve(async (req) => {
           memberId, domain, accessToken: 'preview_token',
           customer: { name: 'João Silva', email: 'joao@ex.com', document: '', phone: '' },
           dealFields: {}, dealProducts: { rows: [], total: 0 },
+          templates: [], contracts: [],
         });
         return new Response(h, { headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' } });
       }
