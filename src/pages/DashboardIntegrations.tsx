@@ -110,7 +110,7 @@ export default function DashboardIntegrations() {
   return (
     <>
       <Helmet>
-        <title>Integrações | Assas Pay by Thoth</title>
+        <title>Integrações | Asaas Pay by Thoth</title>
       </Helmet>
 
       <DashboardLayout title="Integrações" description="Configure suas integrações com Bitrix24 e Asaas">

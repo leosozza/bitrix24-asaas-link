@@ -1,12 +1,12 @@
-import { 
-  CreditCard, 
-  RefreshCw, 
-  Bell, 
-  Zap, 
-  Users, 
+import {
+  CreditCard,
+  RefreshCw,
+  Bell,
+  Zap,
+  Users,
   BarChart3,
-  FileText,
-  Building2
+  ScrollText,
+  AppWindow,
 } from "lucide-react";
 
 const features = [
@@ -23,6 +23,18 @@ const features = [
     color: "accent",
   },
   {
+    icon: ScrollText,
+    title: "Contratos Inteligentes",
+    description: "Modelos prontos, geração automática, assinatura digital e cobrança vinculada ao Deal.",
+    color: "primary",
+  },
+  {
+    icon: AppWindow,
+    title: "Painel dentro do Bitrix24",
+    description: "Configure credenciais, templates de contrato e automações sem sair do CRM, via placement embutido.",
+    color: "accent",
+  },
+  {
     icon: Bell,
     title: "Notificações Real-time",
     description: "Receba alertas de pagamento confirmado, vencido ou cancelado direto no CRM.",
@@ -31,7 +43,7 @@ const features = [
   {
     icon: Zap,
     title: "Automações Inteligentes",
-    description: "Crie cobranças automáticas quando um deal mudar de status ou for fechado.",
+    description: "Robôs Bizproc para criar cobranças, assinaturas, NFS-e e contratos a partir de mudanças no Deal.",
     color: "accent",
   },
   {
@@ -44,18 +56,6 @@ const features = [
     icon: BarChart3,
     title: "Dashboard Financeiro",
     description: "Visualize métricas de pagamento, inadimplência e receita dentro do Bitrix24.",
-    color: "accent",
-  },
-  {
-    icon: FileText,
-    title: "Integração com Faturas",
-    description: "Gere cobranças a partir de Invoices do Bitrix24 com um clique.",
-    color: "primary",
-  },
-  {
-    icon: Building2,
-    title: "Multi-empresa",
-    description: "Gerencie múltiplas contas Asaas em uma única instalação do Bitrix24.",
     color: "accent",
   },
 ];

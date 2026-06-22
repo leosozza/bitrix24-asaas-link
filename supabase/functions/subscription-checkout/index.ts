@@ -44,7 +44,7 @@ async function ensureWebhook() {
   await asaas('/webhooks', {
     method: 'POST',
     body: JSON.stringify({
-      name: 'Assas Pay by Thoth Thoth24 Billing',
+      name: 'Asaas Pay by Thoth Thoth24 Billing',
       url: webhookUrl, email: 'contato@thoth24.com',
       enabled: true, interrupted: false, apiVersion: 3, sendType: 'SEQUENTIALLY', events,
     }),
@@ -144,7 +144,7 @@ serve(async (req) => {
         value: Number(plan.price),
         cycle: 'MONTHLY',
         nextDueDate: nextDue,
-        description: `Assas Pay by Thoth - Plano ${plan.name}`,
+        description: `Asaas Pay by Thoth - Plano ${plan.name}`,
         externalReference: userId,
       }),
     });

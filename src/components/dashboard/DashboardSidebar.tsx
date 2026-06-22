@@ -65,7 +65,7 @@ export function DashboardSidebar() {
             <Zap className="w-5 h-5 text-primary-foreground" />
           </div>
           {!collapsed && (
-            <span className="text-lg font-bold text-foreground">Assas Pay by Thoth</span>
+            <span className="text-lg font-bold text-foreground">Asaas Pay by Thoth</span>
           )}
         </NavLink>
       </SidebarHeader>

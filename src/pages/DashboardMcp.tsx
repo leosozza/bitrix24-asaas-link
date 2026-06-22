@@ -313,7 +313,7 @@ export default function DashboardMcp() {
   return (
     <>
       <Helmet>
-        <title>Servidores MCP | Assas Pay by Thoth</title>
+        <title>Servidores MCP | Asaas Pay by Thoth</title>
       </Helmet>
 
       <DashboardLayout 

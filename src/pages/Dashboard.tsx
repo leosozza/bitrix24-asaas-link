@@ -58,7 +58,7 @@ export default function Dashboard() {
   return (
     <>
       <Helmet>
-        <title>Dashboard | Assas Pay by Thoth</title>
+        <title>Dashboard | Asaas Pay by Thoth</title>
       </Helmet>
 
       <DashboardLayout title="Visão Geral" description="Acompanhe suas métricas e transações">

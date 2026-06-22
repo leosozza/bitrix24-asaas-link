@@ -13,10 +13,11 @@ export function Header() {
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2.5 group">
             <div className="w-9 h-9 rounded-xl gradient-primary flex items-center justify-center shadow-md group-hover:shadow-glow transition-shadow">
-              <span className="text-primary-foreground font-bold text-sm">C</span>
+              <span className="text-primary-foreground font-bold text-sm">A</span>
             </div>
             <span className="font-display font-bold text-xl text-foreground">
-              Connect<span className="text-primary">Pay</span>
+              Asaas <span className="text-primary">Pay</span>
+              <span className="text-muted-foreground font-normal text-sm ml-1">by Thoth</span>
             </span>
           </Link>
 

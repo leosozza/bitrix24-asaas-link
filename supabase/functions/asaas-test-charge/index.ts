@@ -62,7 +62,7 @@ serve(async (req) => {
       method: 'POST',
       headers: { access_token: cfg.api_key, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name: 'Cliente Teste Assas Pay by Thoth',
+        name: 'Cliente Teste Asaas Pay by Thoth',
         cpfCnpj: '24971563792', // CPF de teste válido
         email: 'teste@connectpay.app',
       }),
@@ -88,7 +88,7 @@ serve(async (req) => {
         billingType: billing_type,
         value: 5.00,
         dueDate: due.toISOString().slice(0, 10),
-        description: 'Cobrança de teste - Assas Pay by Thoth (Lovable)',
+        description: 'Cobrança de teste - Asaas Pay by Thoth (Lovable)',
         externalReference: `test-${Date.now()}`,
       }),
     });
