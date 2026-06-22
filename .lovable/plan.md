@@ -1,40 +1,32 @@
-## Reestruturar diálogo de edição do template
+# Problema
 
-O problema: o diálogo tem 3 colunas (`[1fr_260px_280px]`) — editor + Mapeamento Bitrix + Cobrança Asaas — que espremem a folha A4 (21cm ≈ 794px) e tornam o contrato ilegível.
+O robô de Bizproc `asaas_contract_generate` (ConnectPay: Gerar Contrato) só é registrado quando alguém chama explicitamente `bitrix-contract-setup` (ação `setup_fields` ou `sync_robot_templates`). Os fluxos automáticos de registro de robôs — usados na instalação do app e na auto‑reparação — registram apenas os 5 robôs antigos (`asaas_create_charge`, `asaas_check_payment`, `asaas_create_subscription`, `asaas_cancel_subscription`, `asaas_create_invoice`). Resultado: no tenant Delivery Real (e em qualquer tenant que não passou pelo setup manual), o robô de gerar contrato não aparece na lista do Bizproc.
 
-### Solução: layout em abas com folha em destaque
+# Solução
 
-**1) Diálogo full-screen (ou quase)**
-- `DashboardContractTemplates.tsx`: `DialogContent` passa de `max-w-7xl` para `max-w-[98vw] w-[98vw] h-[95vh]` com `p-0` e flex column.
-- Cabeçalho fixo no topo (nome + descrição + ações Salvar/Cancelar/Pré-visualizar/Padrão).
+Incluir o robô `asaas_contract_generate` em todos os pontos onde os robôs são registrados/verificados, carregando dinamicamente os templates do tenant para preencher o select `template_id`.
 
-**2) Layout de 2 áreas com mapeadores em painel lateral colapsável**
-```
-┌─────────────────────────────────────────────────────────┐
-│ Editar template · [Nome] [Descrição]    [Salvar][X]     │
-├──────────────────────────────────────┬──────────────────┤
-│                                      │ ▸ Mapeamentos    │ ← drawer
-│         FOLHA A4 (centralizada)      │   (Bitrix 0/8)   │   colapsável
-│         + ribbon + blocos/variáveis  │   (Asaas 0/8)    │   (toggle)
-│                                      │                  │
-└──────────────────────────────────────┴──────────────────┘
-```
-- Botão **"Mapeamentos"** no header alterna o painel lateral direito (300px) — fechado por padrão para dar foco total ao documento.
-- Quando fechado: a folha A4 ocupa toda a largura útil (~95vw), com canvas centralizada e bastante respiro.
-- Quando aberto: painel à direita com **abas** "Bitrix" e "Asaas", scroll vertical próprio.
+## Mudanças
 
-**3) Ajustes no ContractTemplateEditor**
-- Default zoom passa de `1` para `1` mas com folha cabendo confortavelmente; manter botões 60/75/100/125%.
-- Canvas: `max-height` recalculado para `calc(95vh - 240px)` (mais altura disponível).
-- Manter a barra horizontal de Blocos+Variáveis já adicionada.
+1. **`supabase/functions/_shared/contract-robot-def.ts`** (novo)
+   - Exportar uma função `buildContractRobotParams(templates, supabaseUrl)` que devolve o objeto `PROPERTIES`/`RETURN_PROPERTIES`/`HANDLER` idêntico ao já usado em `bitrix-contract-setup` (CODE `asaas_contract_generate`, handler `${SUPABASE_URL}/functions/v1/bitrix-contract-robot`).
+   - Fallback `__default__` quando o tenant ainda não tem templates.
 
-### Arquivos a editar
-- `src/pages/DashboardContractTemplates.tsx` — substituir o `DialogContent` grid de 3 colunas por: header sticky + área principal com folha + drawer lateral colapsável contendo `BitrixFieldMapper` e `AsaasBillingFieldMapper` em abas (`Tabs` do shadcn).
-- `src/index.css` — ajustar `.docx-canvas` max-height para o novo layout.
+2. **`supabase/functions/bitrix-contract-setup/index.ts`**
+   - Substituir o `registerRobot` local pela chamada à nova função compartilhada (sem mudar comportamento externo).
 
-### Fora de escopo
-- Alterar a lógica dos mapeadores ou do editor.
-- Mudar o look "Word" da folha (mantém serifa, sombra, margens).
+3. **`supabase/functions/bitrix-payment-iframe/index.ts`**
+   - Em `registerAutomationRobots(...)`: após registrar os 5 robôs existentes, carregar os templates do tenant (`contract_templates` por `tenant_id`) e registrar também o `asaas_contract_generate` (delete + add).
+   - Em `ensureAutomationRobots(...)`: adicionar `'asaas_contract_generate'` ao array `expectedRobots`, para que a verificação periódica detecte ausência e force re‑registro.
 
-### Resultado
-Folha A4 do contrato fica **claramente legível**, ocupando o centro de um diálogo amplo. Os mapeamentos ficam acessíveis num painel lateral que abre só quando necessário, sem competir por espaço com o documento.
+4. **`supabase/functions/bitrix-install/index.ts`**
+   - No bloco que registra robôs durante a instalação, incluir o `asaas_contract_generate` (usando a função compartilhada e os templates do tenant, ou o fallback `__default__` se a instalação ainda não tiver templates).
+
+5. **Migração manual única (via supabase--insert opcional)**
+   - Para os tenants já instalados (incluindo Delivery Real `42bacd0a-...`), basta acionar o `ensureAutomationRobots` (já chamado pelo iframe na primeira abertura) — não é necessário script extra; o novo `expectedRobots` cuidará do registro.
+
+## Observações
+
+- Nenhuma mudança de schema.
+- Nenhuma alteração no frontend.
+- Comportamento do robô já existe e funciona (rota `bitrix-contract-robot`); este plano apenas garante que ele seja registrado para todos os tenants automaticamente.
