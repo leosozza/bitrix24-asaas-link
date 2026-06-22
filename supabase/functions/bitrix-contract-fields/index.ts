@@ -84,6 +84,9 @@ serve(async (req) => {
     const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const install = await getInstallation(admin, tenantId);
     if (!install) return json({ error: "Instalação Bitrix24 não encontrada para este tenant." }, 404);
+    if (!install.client_endpoint || !install.access_token) {
+      return json({ error: "Instalação Bitrix24 sem endpoint/token válidos. Reinstale o app no Bitrix24." }, 400);
+    }
 
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || "");
