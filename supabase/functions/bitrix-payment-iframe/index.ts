@@ -333,7 +333,7 @@ async function updatePaySystemsLogo(clientEndpoint: string, accessToken: string,
 
 // Register automation robots (Asaas: Criar Cobrança, Asaas: Verificar Pagamento)
 // forceReregister: if true, always delete and re-add robots (for repair/reinstall scenarios)
-async function registerAutomationRobots(clientEndpoint: string, accessToken: string, forceReregister: boolean = false): Promise<{ success: boolean; registered: string[] }> {
+async function registerAutomationRobots(clientEndpoint: string, accessToken: string, forceReregister: boolean = false, supabase?: any, tenantId?: string): Promise<{ success: boolean; registered: string[] }> {
   console.log('[Robots] Starting automation robots registration...');
   console.log('[Robots] Using endpoint:', clientEndpoint);
   console.log('[Robots] Force reregister:', forceReregister);
