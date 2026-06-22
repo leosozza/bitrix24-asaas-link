@@ -3176,6 +3176,85 @@ async function generateDashboardPage(
       </div>
     </div>
     
+    <!-- CONTRACTS TAB -->
+    <div id="tab-contracts" class="tab-content">
+      <div id="contracts-list-view">
+        <div class="card">
+          <div class="card-header">
+            <h3>Templates de Contrato</h3>
+            <div style="display:flex;gap:8px;">
+              <button class="btn btn-outline" onclick="openAdvancedTemplateEditor()" title="Abre o editor visual completo no app">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                Editor avançado
+              </button>
+              <button class="btn btn-primary" onclick="openContractEditor()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Novo Template
+              </button>
+            </div>
+          </div>
+          <div class="card-body" id="contracts-table">
+            <div class="loading-overlay"><div class="spinner-sm"></div> Carregando...</div>
+          </div>
+        </div>
+      </div>
+      <div id="contracts-editor-view" style="display:none;">
+        <div class="card">
+          <div class="card-header">
+            <h3 id="contract-editor-title">Novo Template</h3>
+            <div style="display:flex;gap:8px;">
+              <button class="btn btn-outline" onclick="closeContractEditor()">Voltar</button>
+              <button class="btn btn-primary" onclick="saveContractTemplate()">Salvar</button>
+            </div>
+          </div>
+          <div class="card-body">
+            <input type="hidden" id="ct-id" />
+            <div class="form-grid" style="display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-bottom:12px;">
+              <div class="form-group">
+                <label>Nome</label>
+                <input type="text" id="ct-name" placeholder="Ex: Contrato de Prestação" />
+              </div>
+              <div class="form-group" style="display:flex;align-items:flex-end;gap:8px;">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:8px;">
+                  <input type="checkbox" id="ct-default" /> Padrão
+                </label>
+              </div>
+            </div>
+            <div class="form-group" style="margin-bottom:12px;">
+              <label>Descrição</label>
+              <input type="text" id="ct-description" placeholder="Descrição curta" />
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 260px;gap:12px;">
+              <div>
+                <div style="display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap;">
+                  <button type="button" class="btn-chip" onclick="ctTab('edit')" id="ct-tab-edit">HTML</button>
+                  <button type="button" class="btn-chip" onclick="ctTab('preview')" id="ct-tab-preview">Preview</button>
+                  <button type="button" class="btn-chip" onclick="ctTab('map')" id="ct-tab-map">Mapeamento Bitrix</button>
+                </div>
+                <div id="ct-pane-edit">
+                  <textarea id="ct-body" rows="22" style="width:100%;font-family:monospace;font-size:12px;padding:10px;border:1px solid #e5e7eb;border-radius:8px;" placeholder="<h1>Contrato</h1><p>Use {{cliente_nome}}, {{valor_total}}, etc.</p>"></textarea>
+                </div>
+                <div id="ct-pane-preview" style="display:none;">
+                  <iframe id="ct-preview" style="width:100%;height:540px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;"></iframe>
+                </div>
+                <div id="ct-pane-map" style="display:none;">
+                  <p style="font-size:12px;color:#6b7280;margin-bottom:8px;">Mapeie cada variável de cliente para um campo do Bitrix (Deal/Lead/Contact/Company).</p>
+                  <div id="ct-map-rows"></div>
+                </div>
+              </div>
+              <div style="max-height:600px;overflow-y:auto;padding-right:4px;">
+                <p style="font-size:11px;font-weight:600;text-transform:uppercase;color:#6b7280;margin-bottom:6px;">Blocos prontos</p>
+                <div id="ct-blocks" style="display:flex;flex-direction:column;gap:4px;margin-bottom:14px;"></div>
+                <p style="font-size:11px;font-weight:600;text-transform:uppercase;color:#6b7280;margin-bottom:6px;">Variáveis</p>
+                <div id="ct-vars"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
     <!-- PLAN TAB -->
     <div id="tab-plan" class="tab-content">
       <div id="plan-content">
