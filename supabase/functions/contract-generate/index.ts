@@ -67,6 +67,7 @@ serve(async (req) => {
       bitrix_entity_type,
       bitrix_entity_id,
       extra_vars = {},
+      asaas_payment = null,
     } = body;
 
     if (!template_id) return json({ error: "template_id required" }, 400);
@@ -126,6 +127,14 @@ serve(async (req) => {
         rendered_html: fullHtml,
         status: "sent",
         sent_at: new Date().toISOString(),
+        asaas_billing_type: asaas_payment?.billing_type || null,
+        asaas_charge_mode: asaas_payment?.charge_mode || null,
+        asaas_subscription_cycle: asaas_payment?.cycle || null,
+        asaas_customer_payload: asaas_payment?.customer || {},
+        auto_create_charge: asaas_payment?.auto_create ?? false,
+        payment_due_date: asaas_payment?.due_date || null,
+        installment_count: asaas_payment?.installment_count || null,
+        payment_status: "pending",
       })
       .select()
       .maybeSingle();
