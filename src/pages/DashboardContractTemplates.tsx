@@ -13,6 +13,7 @@ import { toast } from "@/hooks/use-toast";
 import { Link } from "react-router-dom";
 import { BitrixFieldMapper } from "@/components/contracts/BitrixFieldMapper";
 import { AsaasBillingFieldMapper } from "@/components/contracts/AsaasBillingFieldMapper";
+import { ContractTemplateEditor } from "@/components/contracts/ContractTemplateEditor";
 
 const PLACEHOLDERS = [
   ["{{cliente_nome}}", "Nome do cliente"],
@@ -153,16 +154,21 @@ export default function DashboardContractTemplates() {
         <DialogContent className="max-w-7xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editing?.id ? "Editar template" : "Novo template"}</DialogTitle></DialogHeader>
           {editing && (
-            <div className="grid lg:grid-cols-[1fr_200px_260px_280px] md:grid-cols-[1fr_240px] gap-4">
-              <div className="space-y-3">
-                <div><Label>Nome *</Label><Input value={editing.name || ""} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></div>
-                <div><Label>Descrição</Label><Input value={editing.description || ""} onChange={(e) => setEditing({ ...editing, description: e.target.value })} /></div>
+            <div className="grid lg:grid-cols-[1fr_260px_280px] gap-4">
+              <div className="space-y-3 min-w-0">
+                <div className="grid grid-cols-2 gap-3">
+                  <div><Label>Nome *</Label><Input value={editing.name || ""} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></div>
+                  <div><Label>Descrição</Label><Input value={editing.description || ""} onChange={(e) => setEditing({ ...editing, description: e.target.value })} /></div>
+                </div>
                 <div>
-                  <div className="flex items-center justify-between">
-                    <Label>Corpo (HTML)</Label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <Label>Editor do contrato</Label>
                     <Button size="sm" variant="ghost" type="button" onClick={() => handlePreview(editing.body_html || "")}><ExternalLink className="w-3 h-3 mr-1" />Pré-visualizar</Button>
                   </div>
-                  <Textarea rows={20} className="font-mono text-xs" value={editing.body_html || ""} onChange={(e) => setEditing({ ...editing, body_html: e.target.value })} />
+                  <ContractTemplateEditor
+                    value={editing.body_html || ""}
+                    onChange={(html) => setEditing({ ...editing, body_html: html })}
+                  />
                 </div>
                 <div className="flex items-center gap-2"><Switch checked={!!editing.is_default} onCheckedChange={(v) => setEditing({ ...editing, is_default: v })} /><Label>Definir como padrão</Label></div>
               </div>
