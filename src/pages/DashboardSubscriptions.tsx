@@ -154,7 +154,7 @@ export default function DashboardSubscriptions() {
   return (
     <>
       <Helmet>
-        <title>Assinaturas | ConnectPay</title>
+        <title>Assinaturas | Assas Pay by Thoth</title>
       </Helmet>
 
       <DashboardLayout title="Assinaturas" description="Gerencie suas cobranças recorrentes">

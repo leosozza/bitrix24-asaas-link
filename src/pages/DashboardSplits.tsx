@@ -140,7 +140,7 @@ export default function DashboardSplits() {
   return (
     <DashboardLayout title="Split de Pagamento" description="Configure a divisão automática de valores entre carteiras">
       <Helmet>
-        <title>Split de Pagamento | ConnectPay</title>
+        <title>Split de Pagamento | Assas Pay by Thoth</title>
       </Helmet>
 
       <div className="space-y-6">
