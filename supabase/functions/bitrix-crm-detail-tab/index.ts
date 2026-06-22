@@ -366,6 +366,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
   <button class="tab" data-tab="subs">${ICONS.subs}<span>Assinaturas</span></button>
   <button class="tab" data-tab="nfse">${ICONS.nfse}<span>NFSe</span></button>
   <button class="tab" data-tab="split">${ICONS.split}<span>Split</span></button>
+  <button class="tab" data-tab="contract-gen">${ICONS.contract}<span>Gerar Contrato</span></button>
 </div>
 
 <!-- DADOS DO CONTRATO -->
