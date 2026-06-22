@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ContractTemplate, useGenerateContract, useResolveBitrixContract } from "@/hooks/useContracts";
 import { PaymentScheduleTable, ScheduleRow } from "./PaymentScheduleTable";
+import { AsaasPaymentStep, AsaasPaymentConfig } from "./AsaasPaymentStep";
 import { toast } from "@/hooks/use-toast";
 import { Copy, ExternalLink, FileText, Loader2, Sparkles } from "lucide-react";
 
@@ -27,14 +28,25 @@ interface Props {
   }>;
 }
 
-type Step = 1 | 2 | 3 | 4 | 5;
+// 1: template, 2: dados, 3: parcelas, 4: pagamento Asaas, 5: revisão, 6: resultado
+type Step = 1 | 2 | 3 | 4 | 5 | 6;
+
+const defaultPayment: AsaasPaymentConfig = {
+  mode: "assinatura_mensal",
+  billingType: "PIX",
+  value: 0,
+  dueDate: new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10),
+  installmentCount: 12,
+  cycle: "MONTHLY",
+  autoCreate: true,
+  customer: { name: "", cpfCnpj: "", email: "", mobilePhone: "", postalCode: "", address: "", addressNumber: "", province: "" },
+  fromBitrixKeys: [],
+};
 
 export function ContractWizard({ open, onOpenChange, templates, prefill }: Props) {
   const [step, setStep] = useState<Step>(1);
   const [templateId, setTemplateId] = useState<string>("");
-  const [customer, setCustomer] = useState({
-    name: "", doc: "", email: "", phone: "", address: "", company_name: "",
-  });
+  const [customer, setCustomer] = useState({ name: "", doc: "", email: "", phone: "", address: "", company_name: "" });
   const [contractTerm, setContractTerm] = useState("12 meses");
   const [salesperson, setSalesperson] = useState("");
   const [scheduleMode, setScheduleMode] = useState<"manual" | "asaas">("manual");
@@ -47,6 +59,7 @@ export function ContractWizard({ open, onOpenChange, templates, prefill }: Props
   const [recorrMetodo, setRecorrMetodo] = useState("BOLETO");
   const [startDate, setStartDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [intervalDays, setIntervalDays] = useState(7);
+  const [payment, setPayment] = useState<AsaasPaymentConfig>(defaultPayment);
   const [result, setResult] = useState<{ public_url: string; pdf_url: string; contract_id: string } | null>(null);
 
   const generate = useGenerateContract();
@@ -55,6 +68,7 @@ export function ContractWizard({ open, onOpenChange, templates, prefill }: Props
   const selectedTemplate = templates.find((t) => t.id === templateId);
   const hasBitrixContext = !!(prefill?.bitrix_entity_type && prefill?.bitrix_entity_id);
   const hasFieldMap = !!selectedTemplate?.bitrix_field_map && Object.keys(selectedTemplate.bitrix_field_map).length > 0;
+  const hasAsaasMap = !!selectedTemplate?.asaas_billing_map && Object.keys(selectedTemplate.asaas_billing_map).length > 0;
 
   async function handleFetchFromBitrix() {
     if (!templateId || !prefill?.bitrix_entity_type || !prefill?.bitrix_entity_id) return;
@@ -73,18 +87,30 @@ export function ContractWizard({ open, onOpenChange, templates, prefill }: Props
         address: res.customer.address || c.address,
         company_name: res.customer.company_name || c.company_name,
       }));
-      toast({ title: "Dados importados", description: `${res.mapped_count} campo(s) preenchidos a partir do Bitrix.` });
+      // Apply Asaas billing
+      const ab = res.asaas_billing || {};
+      setPayment((p) => ({
+        ...p,
+        customer: {
+          name: ab.name || p.customer.name,
+          cpfCnpj: ab.cpfCnpj || p.customer.cpfCnpj,
+          email: ab.email || p.customer.email,
+          mobilePhone: ab.mobilePhone || p.customer.mobilePhone,
+          postalCode: ab.postalCode || p.customer.postalCode,
+          address: ab.address || p.customer.address,
+          addressNumber: ab.addressNumber || p.customer.addressNumber,
+          province: ab.province || p.customer.province,
+        },
+        fromBitrixKeys: res.asaas_billing_keys || [],
+      }));
+      toast({ title: "Dados importados", description: `${res.mapped_count} contrato + ${(res.asaas_billing_keys || []).length} Asaas.` });
     } catch (e) {
       toast({ title: "Erro ao buscar do Bitrix", description: e instanceof Error ? e.message : "Falhou", variant: "destructive" });
     }
   }
 
   useEffect(() => {
-    if (!open) {
-      setStep(1);
-      setResult(null);
-      return;
-    }
+    if (!open) { setStep(1); setResult(null); return; }
     if (prefill) {
       setCustomer((c) => ({
         ...c,
@@ -119,10 +145,28 @@ export function ContractWizard({ open, onOpenChange, templates, prefill }: Props
 
   const totalValue = schedule.reduce((s, r) => s + r.valor, 0);
 
+  // Sync customer + total to payment defaults on first arrival in step 4
+  useEffect(() => {
+    if (step !== 4) return;
+    setPayment((p) => ({
+      ...p,
+      value: p.value || (p.mode === "assinatura_mensal" ? recorrValor : totalValue),
+      customer: {
+        ...p.customer,
+        name: p.customer.name || customer.company_name || customer.name,
+        cpfCnpj: p.customer.cpfCnpj || customer.doc,
+        email: p.customer.email || customer.email,
+        mobilePhone: p.customer.mobilePhone || customer.phone,
+      },
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
+
   const canNext = () => {
     if (step === 1) return !!templateId;
     if (step === 2) return !!customer.name;
     if (step === 3) return scheduleMode === "asaas" ? !!asaasSubId : schedule.length > 0;
+    if (step === 4) return !payment.autoCreate || (!!payment.customer.name && !!payment.customer.cpfCnpj && payment.value > 0);
     return true;
   };
 
@@ -131,16 +175,25 @@ export function ContractWizard({ open, onOpenChange, templates, prefill }: Props
       const res = await generate.mutateAsync({
         template_id: templateId,
         customer,
-        total_value: totalValue,
+        total_value: totalValue || payment.value,
         contract_term: contractTerm,
         salesperson_name: salesperson,
         payment_schedule: scheduleMode === "manual" ? schedule : undefined,
         asaas_subscription_id: scheduleMode === "asaas" ? asaasSubId : undefined,
         bitrix_entity_type: prefill?.bitrix_entity_type,
         bitrix_entity_id: prefill?.bitrix_entity_id,
+        asaas_payment: {
+          charge_mode: payment.mode,
+          billing_type: payment.billingType,
+          cycle: payment.mode === "assinatura_mensal" ? payment.cycle : null,
+          due_date: payment.dueDate,
+          installment_count: payment.mode === "parcelada" ? payment.installmentCount : (payment.mode === "assinatura_mensal" ? payment.maxPayments : null),
+          customer: payment.customer,
+          auto_create: payment.autoCreate,
+        },
       });
       setResult({ public_url: res.public_url, pdf_url: res.pdf_url, contract_id: res.contract_id });
-      setStep(5);
+      setStep(6);
       toast({ title: "Contrato gerado", description: "Link público pronto para envio." });
     } catch (e) {
       toast({ title: "Erro ao gerar contrato", description: e instanceof Error ? e.message : "Tente novamente", variant: "destructive" });
@@ -151,13 +204,14 @@ export function ContractWizard({ open, onOpenChange, templates, prefill }: Props
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{result ? "Contrato pronto" : `Novo contrato — Passo ${step}/4`}</DialogTitle>
+          <DialogTitle>{result ? "Contrato pronto" : `Novo contrato — Passo ${step}/5`}</DialogTitle>
           <DialogDescription>
             {step === 1 && "Escolha o template do contrato."}
             {step === 2 && "Dados do cliente que vai assinar."}
-            {step === 3 && "Cronograma de pagamento."}
-            {step === 4 && "Revise antes de gerar."}
-            {step === 5 && "Compartilhe o link com o cliente."}
+            {step === 3 && "Cronograma de pagamento (texto do contrato)."}
+            {step === 4 && "Cobrança Asaas — gerada automaticamente ao assinar."}
+            {step === 5 && "Revise antes de gerar."}
+            {step === 6 && "Compartilhe o link com o cliente."}
           </DialogDescription>
         </DialogHeader>
 
@@ -187,10 +241,10 @@ export function ContractWizard({ open, onOpenChange, templates, prefill }: Props
                   <div className="font-medium">Contexto Bitrix detectado</div>
                   <div className="text-xs text-muted-foreground">
                     {prefill?.bitrix_entity_type?.toUpperCase()} #{prefill?.bitrix_entity_id}
-                    {!hasFieldMap && " — configure o mapeamento no template para preenchimento automático"}
+                    {!hasFieldMap && !hasAsaasMap && " — configure o mapeamento no template"}
                   </div>
                 </div>
-                <Button size="sm" variant="outline" onClick={handleFetchFromBitrix} disabled={resolveBitrix.isPending || !hasFieldMap}>
+                <Button size="sm" variant="outline" onClick={handleFetchFromBitrix} disabled={resolveBitrix.isPending || (!hasFieldMap && !hasAsaasMap)}>
                   {resolveBitrix.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
                   Buscar dados do Bitrix
                 </Button>
@@ -258,6 +312,10 @@ export function ContractWizard({ open, onOpenChange, templates, prefill }: Props
         )}
 
         {step === 4 && (
+          <AsaasPaymentStep value={payment} onChange={setPayment} />
+        )}
+
+        {step === 5 && (
           <div className="space-y-3 text-sm">
             <div className="grid grid-cols-2 gap-2">
               <div><span className="text-muted-foreground">Cliente:</span> <strong>{customer.name}</strong></div>
@@ -266,16 +324,23 @@ export function ContractWizard({ open, onOpenChange, templates, prefill }: Props
               <div><span className="text-muted-foreground">Prazo:</span> {contractTerm}</div>
               <div><span className="text-muted-foreground">Total:</span> <strong>{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(totalValue)}</strong></div>
               <div><span className="text-muted-foreground">Parcelas:</span> {scheduleMode === "asaas" ? "Importar do Asaas" : schedule.length}</div>
+              <div className="col-span-2 pt-2 border-t">
+                <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Cobrança Asaas</div>
+                <div><strong>{payment.mode}</strong> · {payment.billingType} · R$ {payment.value.toFixed(2)} · venc. {payment.dueDate}</div>
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  {payment.autoCreate ? "Cobrança será criada automaticamente quando assinar." : "Apenas o contrato será gerado (sem cobrança)."}
+                </div>
+              </div>
             </div>
             {scheduleMode === "manual" && <PaymentScheduleTable rows={schedule} />}
           </div>
         )}
 
-        {step === 5 && result && (
+        {step === 6 && result && (
           <div className="space-y-4">
             <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4">
               <div className="font-semibold text-emerald-700">✓ Contrato gerado com sucesso</div>
-              <p className="text-sm text-muted-foreground mt-1">Envie o link abaixo ao cliente para visualizar e assinar.</p>
+              <p className="text-sm text-muted-foreground mt-1">Envie o link abaixo ao cliente para visualizar e assinar. A cobrança Asaas será criada automaticamente quando assinar.</p>
             </div>
             <div className="space-y-2">
               <Label>Link público</Label>
@@ -291,20 +356,19 @@ export function ContractWizard({ open, onOpenChange, templates, prefill }: Props
                 <Input readOnly value={result.pdf_url} />
                 <Button variant="outline" onClick={() => window.open(result.pdf_url, "_blank")}>Abrir PDF</Button>
               </div>
-              <p className="text-xs text-muted-foreground">Use "Imprimir → Salvar como PDF" no navegador.</p>
             </div>
           </div>
         )}
 
         <DialogFooter>
-          {step > 1 && step < 5 && <Button variant="ghost" onClick={() => setStep((s) => (s - 1) as Step)}>Voltar</Button>}
-          {step < 4 && <Button disabled={!canNext()} onClick={() => setStep((s) => (s + 1) as Step)}>Continuar</Button>}
-          {step === 4 && (
+          {step > 1 && step < 6 && <Button variant="ghost" onClick={() => setStep((s) => (s - 1) as Step)}>Voltar</Button>}
+          {step < 5 && <Button disabled={!canNext()} onClick={() => setStep((s) => (s + 1) as Step)}>Continuar</Button>}
+          {step === 5 && (
             <Button disabled={generate.isPending} onClick={handleGenerate}>
               {generate.isPending && <Loader2 className="w-4 h-4 animate-spin mr-2" />} Gerar contrato
             </Button>
           )}
-          {step === 5 && <Button onClick={() => onOpenChange(false)}>Concluir</Button>}
+          {step === 6 && <Button onClick={() => onOpenChange(false)}>Concluir</Button>}
         </DialogFooter>
       </DialogContent>
     </Dialog>
