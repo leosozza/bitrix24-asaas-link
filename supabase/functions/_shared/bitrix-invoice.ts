@@ -16,6 +16,7 @@ export interface BitrixInvoiceCreateInput {
   companyId?: number | string | null;
   asaasPaymentId?: string;
   assignedById?: number | string | null;
+  stageId?: string | null;
 }
 
 /**
@@ -39,6 +40,9 @@ export async function createBitrixInvoice(input: BitrixInvoiceCreateInput): Prom
     }
     if (input.asaasPaymentId) {
       fields.accountNumber = input.asaasPaymentId;
+    }
+    if (input.stageId) {
+      fields.stageId = input.stageId;
     }
 
     const res = await callBitrix(input.endpoint, "crm.item.add", {
