@@ -167,24 +167,6 @@ export function ContractTemplateEditor({ value, onChange }: Props) {
     },
   });
 
-      Table.configure({ resizable: true, HTMLAttributes: { class: "tiptap-table" } }),
-      TableRow, TableCell, TableHeader,
-      Image,
-      Link.configure({ openOnClick: false }),
-      Placeholder.configure({ placeholder: "Comece a digitar seu contrato…" }),
-    ],
-    content: value,
-    onUpdate: ({ editor }) => {
-      const html = editor.getHTML();
-      valueRef.current = html;
-      onChange(html);
-    },
-    editorProps: {
-      attributes: {
-        class: "prose prose-sm max-w-none focus:outline-none min-h-[480px] p-6 bg-background border border-border rounded-md",
-      },
-    },
-  });
 
   // sync external value -> editor
   useEffect(() => {
