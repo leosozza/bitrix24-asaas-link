@@ -14,6 +14,7 @@ export interface ContractTemplate {
   is_default: boolean;
   cover_style: string | null;
   bitrix_field_map: BitrixFieldMap;
+  asaas_billing_map: BitrixFieldMap;
   created_at: string;
   updated_at: string;
 }
@@ -29,6 +30,10 @@ export interface Contract {
   id: string;
   template_id: string | null;
   asaas_subscription_id: string | null;
+  asaas_payment_id: string | null;
+  asaas_invoice_url: string | null;
+  asaas_charge_mode: string | null;
+  asaas_billing_type: string | null;
   bitrix_entity_type: string | null;
   bitrix_entity_id: string | null;
   customer_name: string;
@@ -38,6 +43,8 @@ export interface Contract {
   payment_schedule: Array<{ n: number; tipo: string; vencimento: string; valor: number; metodo: string }>;
   public_token: string;
   status: "draft" | "sent" | "viewed" | "signed" | "canceled";
+  payment_status: "pending" | "paid" | "overdue" | "refunded" | "canceled";
+  auto_create_charge: boolean;
   signed_at: string | null;
   signature_name: string | null;
   created_at: string;
