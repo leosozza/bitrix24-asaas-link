@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { DEFAULT_TEMPLATES } from "../_shared/contract-default-templates.ts";
 import { buildContractRobotParams, loadTenantContractTemplates, CONTRACT_ROBOT_CODE } from "../_shared/contract-robot-def.ts";
+import { listBitrixInvoiceStages } from "../_shared/bitrix-invoice.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -2426,7 +2427,7 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
     case 'get_config': {
       const { data: asaasConf } = await supabase
         .from('asaas_configurations')
-        .select('environment, is_active, webhook_configured, webhook_secret, api_key')
+        .select('environment, is_active, webhook_configured, webhook_secret, api_key, sync_bitrix_invoices, bitrix_invoice_paid_stage_id, bitrix_invoice_pending_stage_id, bitrix_invoice_overdue_stage_id' as any)
         .eq('tenant_id', tenantId)
         .eq('is_active', true)
         .maybeSingle();
@@ -2451,24 +2452,67 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
         'INVOICE_AUTHORIZED', 'INVOICE_ERROR', 'INVOICE_CANCELED',
       ];
       
+      const ac: any = asaasConf || {};
       return jsonSuccess({
         profile: profile || null,
         asaas: asaasConf ? {
-          environment: asaasConf.environment,
-          webhook_configured: asaasConf.webhook_configured,
-          webhook_secret: asaasConf.webhook_secret,
-          has_api_key: !!asaasConf.api_key,
-          api_key_masked: asaasConf.api_key ? asaasConf.api_key.substring(0, 10) + '...' : null,
+          environment: ac.environment,
+          webhook_configured: ac.webhook_configured,
+          webhook_secret: ac.webhook_secret,
+          has_api_key: !!ac.api_key,
+          api_key_masked: ac.api_key ? ac.api_key.substring(0, 10) + '...' : null,
         } : null,
         webhook: {
           url: webhookUrl,
           events: webhookEvents,
-          configured: !!asaasConf?.webhook_configured,
-          secret: asaasConf?.webhook_secret || null,
+          configured: !!ac.webhook_configured,
+          secret: ac.webhook_secret || null,
         },
         fiscal: fiscalConf,
+        invoiceSync: {
+          enabled: !!ac.sync_bitrix_invoices,
+          pendingStageId: ac.bitrix_invoice_pending_stage_id || '',
+          overdueStageId: ac.bitrix_invoice_overdue_stage_id || '',
+          paidStageId: ac.bitrix_invoice_paid_stage_id || '',
+        },
       });
     }
+
+    case 'get_invoice_stages': {
+      try {
+        const endpoint = (inst as any).client_endpoint || ((inst as any).domain ? `https://${(inst as any).domain}/rest/` : '');
+        const token = (inst as any).access_token;
+        if (!endpoint || !token) return jsonError('Bitrix installation sem endpoint/token');
+        const stages = await listBitrixInvoiceStages(endpoint, token);
+        return jsonSuccess({ stages });
+      } catch (e: any) {
+        return jsonError(e?.message || 'Erro ao buscar estágios');
+      }
+    }
+
+    case 'save_invoice_sync': {
+      if (!data) return jsonError('data required');
+      const enabled = !!data.enabled;
+      const pendingStageId = (data.pendingStageId || '').toString();
+      const overdueStageId = (data.overdueStageId || '').toString();
+      const paidStageId = (data.paidStageId || '').toString();
+      if (enabled && (!pendingStageId || !overdueStageId || !paidStageId)) {
+        return jsonError('Selecione as três etapas (A Receber, Em Atraso e Recebidas)');
+      }
+      const { error } = await supabase
+        .from('asaas_configurations')
+        .update({
+          sync_bitrix_invoices: enabled,
+          bitrix_invoice_pending_stage_id: enabled ? pendingStageId : null,
+          bitrix_invoice_overdue_stage_id: enabled ? overdueStageId : null,
+          bitrix_invoice_paid_stage_id: enabled ? paidStageId : null,
+        } as any)
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true);
+      if (error) return jsonError(error.message);
+      return jsonSuccess({ message: 'Integração com Faturas Bitrix24 salva' });
+    }
+
     
     case 'save_profile': {
       if (!data) return jsonError('data required');
