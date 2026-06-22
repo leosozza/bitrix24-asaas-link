@@ -1,39 +1,40 @@
-## Diagnóstico
+## Problem
 
-O card "Integração com Faturas do Bitrix24" **já existe no código-fonte** de `supabase/functions/bitrix-payment-iframe/index.ts` (linhas 4096–4115), mas **não está presente na versão publicada** da Edge Function.
+The three dropdowns ("A Receber", "Em Atraso", "Recebidas") in the new Bitrix24 invoice integration card stay empty — `listBitrixInvoiceStages()` returns nothing.
 
-Verificação feita agora:
+Root cause: `crm.category.stage.list` for SmartInvoice (entityTypeId=31) either needs explicit category iteration or returns a different shape than what the helper currently parses. There is also no logging, so we can't see what Bitrix actually returns.
 
-```text
-URL: …/functions/v1/bitrix-payment-iframe?...&PLACEMENT=DEFAULT
-- "Configuração Fiscal"            → 6 ocorrências ✔ (código antigo presente)
-- "Integração com Faturas"         → 0 ocorrências ✘ (código novo ausente)
-- "cfg-sync-invoices" / "invoiceSync" → 0 ocorrências ✘
-```
+## Fix
 
-Ou seja: o deploy da última alteração da função `bitrix-payment-iframe` não foi efetivado. Por isso, mesmo abrindo a aba Configurações dentro do Bitrix24, o card não aparece — o navegador está recebendo o HTML antigo gerado pela função antiga.
+### 1. Make `supabase/functions/_shared/bitrix-invoice.ts → listBitrixInvoiceStages` robust
 
-A migração no banco já está aplicada (colunas `sync_bitrix_invoices`, `bitrix_invoice_pending_stage_id`, `bitrix_invoice_overdue_stage_id`, `bitrix_invoice_paid_stage_id` existem em `asaas_configurations`).
+Try multiple Bitrix endpoints in order until one returns stages:
 
-## O que vou fazer
+1. `crm.category.stage.list` with `entityTypeId: 31` (current behavior, fixed parsing).
+2. If empty: list categories via `crm.category.list { entityTypeId: 31 }`, then call `crm.category.stage.list` for each `categoryId` and merge.
+3. If still empty: fall back to `crm.status.list { filter: { ENTITY_ID: "DYNAMIC_31_STAGE_<categoryId>" } }` per category (legacy shape: `STATUS_ID`, `NAME`, `SEMANTICS`).
 
-1. **Forçar o redeploy** da Edge Function `bitrix-payment-iframe` (toque sem mudança lógica — um comentário/whitespace para disparar o pipeline de deploy automático).
-2. **Validar o deploy** fazendo `curl` no endpoint da função e confirmando que o HTML servido contém:
-   - `"Integração com Faturas do Bitrix24"`
-   - `id="cfg-sync-invoices"`
-   - `function toggleInvoiceSyncCard`
-3. Se o deploy continuar não pegando, investigar erros de build da função (sintaxe / import) e corrigir.
+Normalize every result to `{ statusId, name, semantics, sort, categoryId }` and drop duplicates by `statusId`. Add `console.log` lines tagged `[BitrixInvoice]` for each attempt + the count returned, so the edge-function logs reveal which path produced data.
 
-## O que o usuário precisa fazer
+### 2. Surface errors to the UI
 
-Depois do redeploy confirmado:
+In `supabase/functions/bitrix-payment-iframe/index.ts → case 'get_invoice_stages'`:
 
-- Dentro do Bitrix24, abrir o app Asaas e dar um **refresh forte** no iframe (Ctrl+Shift+R / Cmd+Shift+R) — o Bitrix mantém cache agressivo do HTML do iframe e pode continuar mostrando a versão antiga até o reload.
-- O novo card "Integração com Faturas do Bitrix24" aparecerá entre "Configuração Fiscal" e "Split de Pagamento" na aba **Configurações**, com:
-  - Toggle "Criar Fatura no Bitrix24 para cada cobrança"
-  - 3 selects (A Receber / Em Atraso / Recebidas) para mapear as etapas do pipeline de SmartInvoice do Bitrix
-  - Botão "Salvar integração de Faturas"
+- Return `{ success: true, stages, debug }` where `debug` includes the strategy used and last Bitrix error (if any). Keep `success: true` even when empty so the toast message can be specific: "Nenhum estágio de Fatura encontrado no Bitrix" instead of a generic error.
+- In the client `ensureInvoiceStagesLoaded`, when `stages.length === 0` show a clear toast and render a `<option disabled>` placeholder explaining the issue, so the user sees feedback instead of an empty select.
 
-## Escopo
+### 3. No DB or schema changes
 
-Apenas Edge Function `bitrix-payment-iframe`. Nada de frontend React (você confirmou que todos usam exclusivamente dentro do Bitrix24, então o painel externo `DashboardSettings` não é tocado nesta passada).
+Only the two files above are touched. No migrations.
+
+## Files
+
+- `supabase/functions/_shared/bitrix-invoice.ts` — rewrite `listBitrixInvoiceStages` with fallbacks + logging.
+- `supabase/functions/bitrix-payment-iframe/index.ts` — enrich `get_invoice_stages` response and the front-end toast/placeholder when stages are empty.
+
+## Validation
+
+After deploy:
+1. Hit the function via curl with a real `memberId` and confirm `stages.length > 0` and that logs show which strategy succeeded.
+2. Reload the iframe (Ctrl+Shift+R) in Bitrix24 → open Configurações → confirm dropdowns are populated and the ✓ marker appears on stages whose `semantics` matches P/F/S.
+3. Select one stage per dropdown, click "Salvar integração de Faturas", reload and confirm the values persist.

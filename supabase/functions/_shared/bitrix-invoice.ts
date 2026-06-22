@@ -10,7 +10,7 @@ export interface BitrixInvoiceCreateInput {
   token: string;
   title: string;
   amount: number;
-  dueDate?: string; // YYYY-MM-DD
+  dueDate?: string;
   dealId?: number | string | null;
   contactId?: number | string | null;
   companyId?: number | string | null;
@@ -19,10 +19,6 @@ export interface BitrixInvoiceCreateInput {
   stageId?: string | null;
 }
 
-/**
- * Create a SmartInvoice in Bitrix24 and return its numeric id (or null on failure).
- * Failures are logged but never thrown — invoice sync must never break the main charge flow.
- */
 export async function createBitrixInvoice(input: BitrixInvoiceCreateInput): Promise<number | null> {
   try {
     const fields: Record<string, unknown> = {
@@ -34,16 +30,9 @@ export async function createBitrixInvoice(input: BitrixInvoiceCreateInput): Prom
     if (input.contactId) fields.contactId = Number(input.contactId) || input.contactId;
     if (input.companyId) fields.companyId = Number(input.companyId) || input.companyId;
     if (input.assignedById) fields.assignedById = Number(input.assignedById) || input.assignedById;
-    if (input.dueDate) {
-      // SmartInvoice expects ISO; YYYY-MM-DD is fine for Bitrix DateTime fields
-      fields.ufCrm_SMART_INVOICE_DUE_DATE = input.dueDate;
-    }
-    if (input.asaasPaymentId) {
-      fields.accountNumber = input.asaasPaymentId;
-    }
-    if (input.stageId) {
-      fields.stageId = input.stageId;
-    }
+    if (input.dueDate) fields.ufCrm_SMART_INVOICE_DUE_DATE = input.dueDate;
+    if (input.asaasPaymentId) fields.accountNumber = input.asaasPaymentId;
+    if (input.stageId) fields.stageId = input.stageId;
 
     const res = await callBitrix(input.endpoint, "crm.item.add", {
       entityTypeId: SMART_INVOICE_ENTITY_TYPE_ID,
@@ -62,7 +51,6 @@ export async function createBitrixInvoice(input: BitrixInvoiceCreateInput): Prom
   }
 }
 
-/** Move a SmartInvoice to a stage (typically the "Pago/Convertido" stage). */
 export async function updateBitrixInvoiceStage(
   endpoint: string,
   token: string,
@@ -86,20 +74,115 @@ export async function updateBitrixInvoiceStage(
   }
 }
 
-/** Fetch SmartInvoice stages from Bitrix. */
+export interface InvoiceStage {
+  statusId: string;
+  name: string;
+  semantics: string | null;
+  sort: number;
+  categoryId?: number | string | null;
+}
+
+function normalizeStage(s: any): InvoiceStage | null {
+  const statusId = s?.statusId || s?.STATUS_ID || s?.id || s?.ID;
+  if (!statusId) return null;
+  return {
+    statusId: String(statusId),
+    name: s?.name || s?.NAME || String(statusId),
+    semantics: s?.semantics ?? s?.SEMANTICS ?? null,
+    sort: Number(s?.sort ?? s?.SORT ?? 0) || 0,
+    categoryId: s?.categoryId ?? s?.CATEGORY_ID ?? null,
+  };
+}
+
+function dedupe(stages: InvoiceStage[]): InvoiceStage[] {
+  const seen = new Set<string>();
+  const out: InvoiceStage[] = [];
+  for (const s of stages) {
+    if (seen.has(s.statusId)) continue;
+    seen.add(s.statusId);
+    out.push(s);
+  }
+  return out.sort((a, b) => a.sort - b.sort);
+}
+
+/** Fetch SmartInvoice stages from Bitrix using multiple strategies. */
 export async function listBitrixInvoiceStages(
   endpoint: string,
   token: string,
-): Promise<Array<{ statusId: string; name: string; semantics?: string | null; sort?: number }>> {
-  // Try crm.item.fields → stages live in crm.category.stage.list
-  const res = await callBitrix(endpoint, "crm.category.stage.list", {
-    entityTypeId: SMART_INVOICE_ENTITY_TYPE_ID,
-  }, token);
-  const items = res?.result?.items || res?.result || [];
-  return (Array.isArray(items) ? items : []).map((s: any) => ({
-    statusId: s.statusId || s.STATUS_ID || s.id,
-    name: s.name || s.NAME || s.statusId,
-    semantics: s.semantics ?? s.SEMANTICS ?? null,
-    sort: s.sort ?? s.SORT ?? 0,
-  })).filter((s: any) => s.statusId);
+): Promise<InvoiceStage[]> {
+  const collected: InvoiceStage[] = [];
+
+  // Strategy 1: crm.category.stage.list with entityTypeId
+  try {
+    const res = await callBitrix(endpoint, "crm.category.stage.list", {
+      entityTypeId: SMART_INVOICE_ENTITY_TYPE_ID,
+    }, token);
+    if (res?.error) {
+      console.warn("[BitrixInvoice] strategy1 error:", res.error, res.error_description);
+    } else {
+      const items = res?.result?.items || res?.result || [];
+      const arr = Array.isArray(items) ? items : [];
+      console.log("[BitrixInvoice] strategy1 (crm.category.stage.list) returned", arr.length);
+      for (const s of arr) {
+        const n = normalizeStage(s);
+        if (n) collected.push(n);
+      }
+    }
+  } catch (e) {
+    console.error("[BitrixInvoice] strategy1 exception:", e);
+  }
+
+  if (collected.length > 0) return dedupe(collected);
+
+  // Strategy 2: list categories then iterate stages per category
+  let categoryIds: Array<number | string> = [0];
+  try {
+    const catRes = await callBitrix(endpoint, "crm.category.list", {
+      entityTypeId: SMART_INVOICE_ENTITY_TYPE_ID,
+    }, token);
+    const cats = catRes?.result?.categories || catRes?.result || [];
+    if (Array.isArray(cats) && cats.length > 0) {
+      categoryIds = cats.map((c: any) => c?.id ?? c?.ID ?? 0);
+      console.log("[BitrixInvoice] strategy2 found categories:", categoryIds);
+    } else {
+      console.log("[BitrixInvoice] strategy2 no categories, defaulting to [0]");
+    }
+  } catch (e) {
+    console.warn("[BitrixInvoice] strategy2 category.list exception:", e);
+  }
+
+  // Strategy 3: crm.status.list per category (legacy)
+  for (const catId of categoryIds) {
+    const entityIds = [
+      `DYNAMIC_${SMART_INVOICE_ENTITY_TYPE_ID}_STAGE_${catId}`,
+      `SMART_INVOICE_STAGE_${catId}`,
+    ];
+    for (const entityId of entityIds) {
+      try {
+        const res = await callBitrix(endpoint, "crm.status.list", {
+          filter: { ENTITY_ID: entityId },
+        }, token);
+        if (res?.error) {
+          console.warn(`[BitrixInvoice] strategy3 ${entityId} error:`, res.error_description);
+          continue;
+        }
+        const arr = res?.result || [];
+        const items = Array.isArray(arr) ? arr : [];
+        if (items.length > 0) {
+          console.log(`[BitrixInvoice] strategy3 ${entityId} returned`, items.length);
+          for (const s of items) {
+            const n = normalizeStage(s);
+            if (n) collected.push({ ...n, categoryId: catId });
+          }
+          break; // found stages for this category
+        }
+      } catch (e) {
+        console.error(`[BitrixInvoice] strategy3 ${entityId} exception:`, e);
+      }
+    }
+  }
+
+  const result = dedupe(collected);
+  console.log("[BitrixInvoice] total stages resolved:", result.length);
+  return result;
 }
