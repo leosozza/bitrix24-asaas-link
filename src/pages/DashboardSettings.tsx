@@ -51,6 +51,12 @@ export default function DashboardSettings() {
   const [editApiKey, setEditApiKey] = useState('');
   const [editEnv, setEditEnv] = useState<'sandbox' | 'production'>('production');
   const [savingAsaas, setSavingAsaas] = useState(false);
+  // Bitrix invoice sync
+  const [syncBitrixInvoices, setSyncBitrixInvoices] = useState(false);
+  const [invoicePaidStageId, setInvoicePaidStageId] = useState<string>('');
+  const [invoiceStages, setInvoiceStages] = useState<Array<{ statusId: string; name: string; semantics?: string | null }>>([]);
+  const [loadingStages, setLoadingStages] = useState(false);
+  const [savingInvoiceSync, setSavingInvoiceSync] = useState(false);
 
   // ===== Webhook =====
   const [webhookUrl, setWebhookUrl] = useState('');
@@ -135,7 +141,7 @@ export default function DashboardSettings() {
       setWebhookUrl(`${supaUrl}/functions/v1/asaas-webhook`);
       const { data: cfg } = await supabase
         .from('asaas_configurations')
-        .select('api_key, environment, is_active, webhook_secret, webhook_configured')
+        .select('api_key, environment, is_active, webhook_secret, webhook_configured, sync_bitrix_invoices, bitrix_invoice_paid_stage_id')
         .eq('tenant_id', user.id)
         .eq('is_active', true)
         .maybeSingle();
@@ -145,6 +151,8 @@ export default function DashboardSettings() {
         setAsaasConnected(!!cfg.is_active);
         setWebhookSecret(cfg.webhook_secret || '');
         setWebhookConfigured(!!cfg.webhook_configured);
+        setSyncBitrixInvoices(!!(cfg as any).sync_bitrix_invoices);
+        setInvoicePaidStageId((cfg as any).bitrix_invoice_paid_stage_id || '');
       }
       // Fiscal
       const { data: fc } = await supabase
