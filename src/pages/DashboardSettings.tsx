@@ -143,18 +143,20 @@ export default function DashboardSettings() {
       setWebhookUrl(`${supaUrl}/functions/v1/asaas-webhook`);
       const { data: cfg } = await supabase
         .from('asaas_configurations')
-        .select('api_key, environment, is_active, webhook_secret, webhook_configured, sync_bitrix_invoices, bitrix_invoice_paid_stage_id')
+        .select('api_key, environment, is_active, webhook_secret, webhook_configured, sync_bitrix_invoices, bitrix_invoice_paid_stage_id, bitrix_invoice_pending_stage_id, bitrix_invoice_overdue_stage_id' as any)
         .eq('tenant_id', user.id)
         .eq('is_active', true)
         .maybeSingle();
       if (cfg) {
-        setAsaasApiKey(cfg.api_key || '');
-        setAsaasEnv((cfg.environment as 'sandbox' | 'production') || 'production');
-        setAsaasConnected(!!cfg.is_active);
-        setWebhookSecret(cfg.webhook_secret || '');
-        setWebhookConfigured(!!cfg.webhook_configured);
+        setAsaasApiKey((cfg as any).api_key || '');
+        setAsaasEnv(((cfg as any).environment as 'sandbox' | 'production') || 'production');
+        setAsaasConnected(!!(cfg as any).is_active);
+        setWebhookSecret((cfg as any).webhook_secret || '');
+        setWebhookConfigured(!!(cfg as any).webhook_configured);
         setSyncBitrixInvoices(!!(cfg as any).sync_bitrix_invoices);
         setInvoicePaidStageId((cfg as any).bitrix_invoice_paid_stage_id || '');
+        setInvoicePendingStageId((cfg as any).bitrix_invoice_pending_stage_id || '');
+        setInvoiceOverdueStageId((cfg as any).bitrix_invoice_overdue_stage_id || '');
       }
       // Fiscal
       const { data: fc } = await supabase
