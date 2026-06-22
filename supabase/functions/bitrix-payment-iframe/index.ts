@@ -640,10 +640,10 @@ async function ensureAutomationRobots(
   let existingRobots: string[] = [];
   
   if (listResult.result && Array.isArray(listResult.result)) {
-    // Extract robot codes from the list
+    // bizproc.robot.list may return either strings (codes) or objects with CODE
     existingRobots = listResult.result
-      .filter((r: any) => r.CODE && expectedRobots.includes(r.CODE))
-      .map((r: any) => r.CODE);
+      .map((r: any) => (typeof r === 'string' ? r : r?.CODE))
+      .filter((code: any) => typeof code === 'string' && expectedRobots.includes(code));
     console.log('[Robots Ensure] Found existing robots:', existingRobots);
   } else if (listResult.error) {
     console.log('[Robots Ensure] bizproc.robot.list error:', listResult.error, listResult.error_description);
