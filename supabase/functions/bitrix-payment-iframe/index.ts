@@ -4092,6 +4092,29 @@ async function generateDashboardPage(
       html += '<label style="margin:0;">Emitir NF automaticamente ao receber pagamento</label></div>';
       html += '<button class="btn btn-primary" style="margin-top:16px;" onclick="saveFiscalConfig()">Salvar Config Fiscal</button>';
       html += '</div></div>';
+
+      // Integração com Faturas do Bitrix24 — colapsável
+      const inv = result.invoiceSync || { enabled: false, pendingStageId: '', overdueStageId: '', paidStageId: '' };
+      html += '<div class="card" style="margin-bottom:24px;">';
+      html += '<div class="card-header" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;" onclick="toggleInvoiceSyncCard()">';
+      html += '<h3 style="display:inline-flex;align-items:center;gap:8px;margin:0;">' + icn('file', 16) + ' Integração com Faturas do Bitrix24' + (inv.enabled ? ' <span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;">Ativa</span>' : '') + '</h3>';
+      html += '<span id="invsync-caret" style="color:#64748b;font-size:14px;">▼</span>';
+      html += '</div>';
+      html += '<div id="invsync-body" style="display:none;padding:20px;">';
+      html += '<p style="margin:0 0 14px;color:#64748b;font-size:13px;">Para cada cobrança Asaas, criamos uma Fatura (SmartInvoice) no Bitrix24 vinculada ao Negócio. A Fatura é movida entre etapas conforme o status do pagamento.</p>';
+      html += '<div class="form-group" style="display:flex;align-items:center;gap:12px;">';
+      html += '<button class="toggle ' + (inv.enabled ? 'on' : '') + '" id="cfg-sync-invoices" onclick="onToggleSyncInvoices(this)"></button>';
+      html += '<label style="margin:0;">Criar Fatura no Bitrix24 para cada cobrança</label></div>';
+      html += '<div id="cfg-invoice-stages" style="display:' + (inv.enabled ? 'block' : 'none') + ';">';
+      html += '<div class="form-group"><label>Etapa "A Receber" (cobrança criada)</label><select id="cfg-stage-pending" class="filter-select" style="width:100%;"><option value="">— carregando estágios —</option></select></div>';
+      html += '<div class="form-group"><label>Etapa "Em Atraso" (vencida)</label><select id="cfg-stage-overdue" class="filter-select" style="width:100%;"><option value="">— carregando estágios —</option></select></div>';
+      html += '<div class="form-group"><label>Etapa "Recebidas" (pago / convertido)</label><select id="cfg-stage-paid" class="filter-select" style="width:100%;"><option value="">— carregando estágios —</option></select></div>';
+      html += '<button type="button" class="btn btn-secondary btn-sm" style="margin-right:8px;" onclick="reloadInvoiceStages()">Recarregar estágios</button>';
+      html += '</div>';
+      html += '<button class="btn btn-primary" style="margin-top:16px;" onclick="saveInvoiceSync()">Salvar integração de Faturas</button>';
+      html += '</div></div>';
+      
+
       
       // ===== Modais =====
       // Modal: Editar Empresa
