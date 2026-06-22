@@ -1387,6 +1387,59 @@ serve(async (req) => {
         }
       }
 
+      if (action === 'generate_contract') {
+        if (!j.template_id) return json({ success: false, error: 'Selecione um template' });
+        if (!j.name) return json({ success: false, error: 'Nome do cliente é obrigatório' });
+        try {
+          // Optionally enrich customer from CRM
+          let cust = { name: j.name, email: j.email || '', doc: j.doc || '', phone: j.phone || '' };
+          if (clientEndpoint && j.accessToken && j.entityType && j.entityId) {
+            try {
+              const c = await getCrmCustomer(clientEndpoint, j.accessToken, j.entityType, j.entityId);
+              cust = {
+                name: cust.name || c.name,
+                email: cust.email || c.email,
+                doc: cust.doc || c.document,
+                phone: cust.phone || c.phone,
+              };
+            } catch (_) { /* ignore */ }
+          }
+
+          const asaas_payment = j.mode ? {
+            auto_create: true,
+            charge_mode: j.mode,
+            billing_type: j.billing || 'UNDEFINED',
+            cycle: j.mode === 'assinatura_mensal' ? 'MONTHLY' : null,
+            installment_count: j.mode === 'parcelada' ? (Number(j.count) || 1) : null,
+            customer: cust,
+          } : null;
+
+          const r = await fetch(`${SUPABASE_URL}/functions/v1/contract-generate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+            body: JSON.stringify({
+              __service_tenant: installation.tenant_id,
+              template_id: j.template_id,
+              customer: cust,
+              total_value: Number(j.total) || 0,
+              bitrix_entity_type: j.entityType,
+              bitrix_entity_id: j.entityId,
+              asaas_payment,
+            }),
+          });
+          const d = await r.json();
+          if (!r.ok || d.error) return json({ success: false, error: d.error || 'Falha ao gerar contrato' });
+
+          if (clientEndpoint && j.accessToken) {
+            await addTimelineComment(clientEndpoint, j.accessToken, j.entityType, j.entityId,
+              `📄 Contrato gerado via iframe: ${d.public_url}`);
+          }
+          return json({ success: true, public_url: d.public_url, pdf_url: d.pdf_url, contract_id: d.contract_id });
+        } catch (e: any) {
+          return json({ success: false, error: e.message });
+        }
+      }
+
       return json({ success: false, error: 'Ação desconhecida: ' + action });
     }
 
