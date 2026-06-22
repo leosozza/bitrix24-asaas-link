@@ -1413,12 +1413,13 @@ serve(async (req) => {
         entityType: ei.type, entityId, ownerTypeId: ei.ownerTypeId,
         transactions: [], subscriptions: [], invoices: [], splits: [], contractPlan: null,
         memberId, domain, accessToken, customer: {}, dealFields: {}, dealProducts: { rows: [], total: 0 },
+        templates: [], contracts: [],
       }), { headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' } });
     }
 
     const clientEndpoint = installation.client_endpoint || (installation.domain ? `https://${installation.domain}/rest/` : null);
 
-    const [_, customer, dealFields, dealProducts, txRes, subRes, invRes, splitRes, planRes] = await Promise.all([
+    const [_, customer, dealFields, dealProducts, txRes, subRes, invRes, splitRes, planRes, tplRes, ctrRes] = await Promise.all([
       (clientEndpoint && accessToken && ei.type === 'deal') ? ensureCustomFields(supabase, installation.id, clientEndpoint, accessToken).catch(() => null) : Promise.resolve(null),
       (clientEndpoint && accessToken) ? getCrmCustomer(clientEndpoint, accessToken, ei.type, entityId) : Promise.resolve({}),
       (clientEndpoint && accessToken && ei.type === 'deal') ? getDealFields(clientEndpoint, accessToken, ei.type, entityId) : Promise.resolve({}),
@@ -1428,6 +1429,8 @@ serve(async (req) => {
       supabase.from('invoices').select('*').eq('tenant_id', installation.tenant_id).eq('bitrix_entity_type', ei.type).eq('bitrix_entity_id', entityId).order('created_at', { ascending: false }),
       supabase.from('split_configurations').select('*').eq('tenant_id', installation.tenant_id).eq('is_active', true),
       supabase.from('contract_plans').select('*').eq('tenant_id', installation.tenant_id).eq('bitrix_entity_type', ei.type).eq('bitrix_entity_id', entityId).order('created_at', { ascending: false }).limit(1).maybeSingle(),
+      supabase.from('contract_templates').select('id, name').eq('tenant_id', installation.tenant_id).order('name', { ascending: true }),
+      supabase.from('contracts').select('id, customer_name, total_value, status, payment_status, public_token, created_at').eq('tenant_id', installation.tenant_id).eq('bitrix_entity_type', ei.type).eq('bitrix_entity_id', entityId).order('created_at', { ascending: false }).limit(5),
     ]);
 
     return new Response(html({
@@ -1435,6 +1438,7 @@ serve(async (req) => {
       transactions: txRes.data || [], subscriptions: subRes.data || [], invoices: invRes.data || [], splits: splitRes.data || [],
       contractPlan: planRes.data || null,
       memberId, domain, accessToken, customer, dealFields, dealProducts,
+      templates: tplRes.data || [], contracts: ctrRes.data || [],
     }), { headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' } });
 
   } catch (error: unknown) {
