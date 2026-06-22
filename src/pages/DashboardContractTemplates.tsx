@@ -58,6 +58,7 @@ export default function DashboardContractTemplates() {
   const del = useDeleteTemplate();
   const seed = useSeedDefaultTemplates();
   const [editing, setEditing] = useState<Partial<ContractTemplate> | null>(null);
+  const [mappingsOpen, setMappingsOpen] = useState(false);
 
   async function handleSave() {
     if (!editing?.name) return;
