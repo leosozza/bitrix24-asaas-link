@@ -1,54 +1,46 @@
-## Status atual
+## Objetivo
+Adicionar uma aba "Contratos" no dock do iframe do Bitrix (ao lado de Notas Fiscais / Plano), permitindo listar, criar, editar e excluir templates de contrato direto de dentro do Bitrix24 — sem precisar abrir o dashboard externo.
 
-- `supabase/functions/bitrix-contract-robot/index.ts` — **já existe**, recebe callback do Bizproc, gera o contrato e devolve `contract_url`/`pdf_url` para o workflow.
-- `supabase/functions/bitrix-contract-setup/index.ts` — registra os campos UF_CRM e o robot via `bizproc.robot.add`, mas só roda quando o usuário clica num botão no dashboard. O robot hoje usa `template_id` como string livre e não tem mapeamento Asaas.
-- Editor de template hoje é um `<Textarea>` de HTML puro em `DashboardContractTemplates.tsx`.
+## Onde
+`supabase/functions/bitrix-payment-iframe/index.ts` — é o arquivo que renderiza o dock visto no screenshot. Hoje tem: Visão Geral, Transações, Assinaturas, Notas Fiscais, Plano, Notificações, Segurança, Integrações, Configurações. Falta **Contratos**.
 
-## 1) Editor visual "estilo Canva" (TipTap)
+## O que será feito
 
-**Pacotes**: `@tiptap/react`, `@tiptap/starter-kit`, `@tiptap/extension-table` (+ row/cell/header), `@tiptap/extension-image`, `@tiptap/extension-text-align`, `@tiptap/extension-color`, `@tiptap/extension-text-style`, `@tiptap/extension-link`, `@tiptap/extension-placeholder`.
+### 1) Novo botão "Contratos" no dock
+Inserido entre **Notas Fiscais** e o separador antes de Plano, com ícone de documento (b24-style stroke SVG seguindo o padrão dos outros tabs).
 
-**Novo componente**: `src/components/contracts/ContractTemplateEditor.tsx`
-- Toolbar fixa: H1/H2/H3, B/I/U, alinhamento, listas, citação, cores, tabela, imagem (upload via bucket `contracts`), link, divisor, desfazer/refazer.
-- Painel lateral "Blocos" (arrastar ou clicar para inserir no cursor):
-  - Cabeçalho com logo, Cláusula numerada, Tabela de parcelas (`{{parcelas_tabela}}`), Bloco assinatura, Foro, Dados do contratado/contratante, Bloco pagamento Asaas.
-- Painel "Variáveis": chips de placeholders Bitrix (`{{cliente_*}}`, `{{deal_*}}`) e Asaas (`{{asaas_*}}`) — clique insere `{{...}}` como nó inline com badge colorido (NodeView simples).
-- Toggle "HTML avançado" cai no `<Textarea>` atual (não quebra templates existentes).
-- Seletor de capa (`cover_style`: minimal / azul-elegante / telecom / saas / produto) com preview thumbnail; ao salvar grava no campo já existente `cover_style`.
+### 2) Painel `tab-contracts` server-rendered
+- **Header**: título "Templates de Contrato" + botão "+ Novo Template" + botão "Abrir editor avançado" (link com `BX24.openApplication` para `/dashboard/contract-templates` no app principal, para usar o TipTap completo quando o usuário quiser arrastar blocos visuais).
+- **Lista**: cards com nome, descrição, badge "Padrão", contagem de variáveis Bitrix mapeadas e ações **Editar / Duplicar / Excluir**. Dados vêm de `contract_templates` filtrados por `tenant_id` da instalação (igual ao padrão usado nas outras tabs server-rendered).
+- **Editor inline** (modal/painel expandido): formulário com Nome, Descrição, checkbox "Padrão", `<textarea>` grande de HTML do corpo, e duas seções colapsáveis:
+  - **Blocos prontos**: botões que injetam HTML pré-pronto no textarea na posição do cursor (Cabeçalho com logo, Cláusula, Tabela de parcelas, Bloco Asaas, Partes, Assinatura, Foro).
+  - **Variáveis**: chips clicáveis (`{{cliente_nome}}`, `{{cliente_doc}}`, `{{valor_total}}`, etc.) que inserem o placeholder no cursor.
+- **Mapeamento Bitrix**: tabela simples — para cada chave conhecida (`cliente_nome`, `cliente_doc`, `cliente_email`, `cliente_telefone`, `cliente_endereco`, `cliente_empresa`) um `<select>` com a entidade (Deal/Lead/Contact/Company) + `<input>` para o ID do campo Bitrix (UF_CRM_xxx, EMAIL, etc.). Carrega/salva em `bitrix_field_map`.
+- **Pré-visualização**: iframe `srcdoc` que renderiza o HTML do corpo em tempo real ao lado do textarea (ou em aba "Preview" do editor para caber na largura).
 
-**Integração**: `DashboardContractTemplates.tsx` substitui o textarea pelo `ContractTemplateEditor`, mantendo `BitrixFieldMapper` e `AsaasBillingFieldMapper`. Persistência continua em `contract_templates.body_html`.
+> Não vamos embutir TipTap aqui (é React-only). O editor inline do iframe usa textarea + ajudantes (blocos/variáveis), mantendo a edição plenamente funcional. Para WYSIWYG total, o botão "Abrir editor avançado" leva ao dashboard React.
 
-**Iframe Bitrix**: nova rota `/iframe/contract-templates` (e novo placement opcional `CONTRACT_TEMPLATES_EDITOR` no `bitrix-iframe`) que renderiza a mesma página dentro do iframe, respeitando a regra de full width e ícones `@bitrix24/b24icons`.
+### 3) Ações do backend (mesma edge function)
+Adicionar novos `action`s ao handler POST de `bitrix-payment-iframe` (já é o hub de actions do iframe — ver memória `Iframe API Hub`):
+- `contract_templates_list` → SELECT por tenant_id.
+- `contract_template_save` → INSERT ou UPDATE em `contract_templates` (com `bitrix_field_map`, `asaas_billing_map`, `body_html`, `is_default`).
+- `contract_template_delete` → DELETE por id + tenant_id.
+- `contract_template_duplicate` → INSERT cópia.
+Todos usam `SUPABASE_SERVICE_ROLE_KEY` + filtro por `tenant_id` derivado de `member_id` (mesmo padrão das outras actions). Após save/delete, dispara `sync_robot_templates` via `bitrix-contract-setup` (fire-and-forget), igual ao hook React faz.
 
-## 2) Robot — auto-registro + template dropdown + Asaas
-
-**Auto-registro na instalação**: em `supabase/functions/bitrix-install/index.ts`, após o token ficar ativo, chamar `bitrix-contract-setup` com `action: "setup_fields"` (fire-and-forget, ignora erros conhecidos). Também rodar uma vez por sessão quando o iframe principal abre, como self-healing (já é o padrão do projeto).
-
-**Robot enriquecido** (`bitrix-contract-setup` → `registerRobot`):
-- `template_id` muda para `Type: "select"` com `Options` populado pelos templates do tenant (consulta `contract_templates` antes do `bizproc.robot.add`, regrava o robot sempre que a lista muda).
-- Novos campos do robot: `asaas_auto_charge` (bool), `asaas_billing_type` (select PIX/BOLETO/CREDIT_CARD/UNDEFINED), `asaas_charge_mode` (select unica/parcelada/assinatura_mensal), `asaas_subscription_cycle` (select MONTHLY/WEEKLY/YEARLY).
-- `RETURN_PROPERTIES` ganha `payment_link` e `subscription_id`.
-
-**Handler** (`bitrix-contract-robot`): lê os novos `properties[asaas_*]`, grava em `contracts.auto_create_charge`, `asaas_billing_type`, `asaas_charge_mode`, `asaas_subscription_cycle` ao chamar `contract-generate`. Quando `asaas_auto_charge=Y` e o gerador devolver `payment_url`, retorna ao Bizproc.
-
-**Hook de re-sync**: novo endpoint `action: "sync_robot_templates"` em `bitrix-contract-setup` que regrava o robot com a lista atual de templates; chamado automaticamente após criar/editar/excluir template em `useContracts.ts`.
-
-## 3) Aba iframe "Gerar contrato deste Deal"
-
-- Novo placement Bitrix `CRM_DEAL_DETAIL_TOOLBAR` (ou reaproveitar `CRM_DEAL_DETAIL_TAB` já existente) com um botão/aba "Gerar contrato".
-- Edge function `bitrix-crm-detail-tab` já é a porta; adicionar `mode=contract` que renderiza um mini-wizard: escolhe template, mostra dados resolvidos via `bitrix-contract-fields` (`resolve`), seleciona modo Asaas, e ao confirmar chama `contract-generate` com `bitrix_entity_type=deal`.
-- Após gerar, mostra link + botão "Copiar" e atualiza os UF_CRM via `bitrix-contract-setup` (`update_entity`).
-
-## Detalhes técnicos
-
-- `bun add @tiptap/react @tiptap/starter-kit @tiptap/extension-table @tiptap/extension-table-row @tiptap/extension-table-cell @tiptap/extension-table-header @tiptap/extension-image @tiptap/extension-text-align @tiptap/extension-color @tiptap/extension-text-style @tiptap/extension-link @tiptap/extension-placeholder`.
-- Upload de imagem no editor usa o bucket `contracts` já existente (path `templates/{tenant}/{uuid}.png`); precisa de policy de INSERT/SELECT para `authenticated` no bucket — adicionar migration caso ainda não exista.
-- NodeView de placeholder mantém o texto serializado como `{{nome}}` para o `contract-generate` continuar funcionando sem mudanças.
-- `bizproc.robot.update` para reescrever o robot quando templates mudam; se não existir, fazer `delete` + `add`.
-- Nada muda em `contract_templates` schema (já tem `cover_style`, `bitrix_field_map`, `asaas_billing_map`).
+### 4) JS client-side do iframe
+- `loadContracts()` ao trocar para a aba.
+- `openContractEditor(id?)`, `saveContractTemplate()`, `deleteContractTemplate(id)`, `duplicateContractTemplate(id)`.
+- `insertBlock(html)` / `insertVariable(code)` usando `selectionStart/selectionEnd` do textarea.
+- `updatePreview()` no `input` do textarea (debounce 250ms) atualizando `srcdoc`.
+- Reusa o helper de chamada já existente (`callIframeApi(action, payload)`).
 
 ## Fora de escopo
+- Drag-and-drop visual de blocos (fica só no `/dashboard/contract-templates` React).
+- Upload de imagens dentro do iframe (no editor inline o usuário cola URL).
+- Edição do `asaas_billing_map` aqui (continua no dashboard); a aba do iframe mostra apenas que está configurado.
 
-- Editor canvas livre x/y (não compatível com o renderer HTML/PDF atual).
-- Versionamento/histórico de templates.
-- Editor colaborativo em tempo real.
+## Arquivos
+- **Editado**: `supabase/functions/bitrix-payment-iframe/index.ts` (novo botão de dock, painel `tab-contracts`, CSS específico, 4 novos handlers de action, JS client do editor).
+
+Nenhuma migração nem alteração de schema — a tabela `contract_templates` já tem todos os campos necessários.
