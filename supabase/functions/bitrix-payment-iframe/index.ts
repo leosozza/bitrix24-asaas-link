@@ -2614,6 +2614,83 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
       return jsonSuccess({ message: 'Conta excluída' });
     }
     
+    case 'contract_templates_list': {
+      const { data: rows, error } = await supabase
+        .from('contract_templates')
+        .select('id,name,description,body_html,is_default,bitrix_field_map,asaas_billing_map,cover_style,updated_at')
+        .eq('tenant_id', tenantId)
+        .order('is_default', { ascending: false })
+        .order('updated_at', { ascending: false });
+      if (error) return jsonError(error.message);
+      return jsonSuccess({ templates: rows || [] });
+    }
+    case 'contract_template_save': {
+      const d = data || {};
+      if (!d.name) return jsonError('Nome obrigatório');
+      const payload: any = {
+        tenant_id: tenantId,
+        name: String(d.name),
+        description: d.description ? String(d.description) : null,
+        body_html: String(d.body_html || ''),
+        is_default: !!d.is_default,
+        bitrix_field_map: d.bitrix_field_map || {},
+      };
+      if (d.asaas_billing_map) payload.asaas_billing_map = d.asaas_billing_map;
+      let id = d.id;
+      if (id) {
+        const { error } = await supabase.from('contract_templates').update(payload).eq('id', id).eq('tenant_id', tenantId);
+        if (error) return jsonError(error.message);
+      } else {
+        const { data: ins, error } = await supabase.from('contract_templates').insert(payload).select('id').single();
+        if (error) return jsonError(error.message);
+        id = ins.id;
+      }
+      // If marked default, clear other defaults
+      if (payload.is_default) {
+        await supabase.from('contract_templates').update({ is_default: false }).eq('tenant_id', tenantId).neq('id', id);
+      }
+      // Fire-and-forget robot sync
+      fetch(`${SUPABASE_URL}/functions/v1/bitrix-contract-setup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}` },
+        body: JSON.stringify({ action: 'sync_robot_templates', tenant_id: tenantId, member_id: memberId }),
+      }).catch(() => {});
+      return jsonSuccess({ id });
+    }
+    case 'contract_template_delete': {
+      const id = data?.id;
+      if (!id) return jsonError('id obrigatório');
+      const { error } = await supabase.from('contract_templates').delete().eq('id', id).eq('tenant_id', tenantId);
+      if (error) return jsonError(error.message);
+      fetch(`${SUPABASE_URL}/functions/v1/bitrix-contract-setup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}` },
+        body: JSON.stringify({ action: 'sync_robot_templates', tenant_id: tenantId, member_id: memberId }),
+      }).catch(() => {});
+      return jsonSuccess({ message: 'Excluído' });
+    }
+    case 'contract_template_duplicate': {
+      const id = data?.id;
+      if (!id) return jsonError('id obrigatório');
+      const { data: orig, error: e1 } = await supabase
+        .from('contract_templates')
+        .select('name,description,body_html,bitrix_field_map,asaas_billing_map,cover_style')
+        .eq('id', id).eq('tenant_id', tenantId).single();
+      if (e1) return jsonError(e1.message);
+      const { data: ins, error: e2 } = await supabase.from('contract_templates').insert({
+        tenant_id: tenantId,
+        name: (orig.name || 'Template') + ' (cópia)',
+        description: orig.description,
+        body_html: orig.body_html,
+        is_default: false,
+        bitrix_field_map: orig.bitrix_field_map || {},
+        asaas_billing_map: orig.asaas_billing_map || {},
+        cover_style: orig.cover_style,
+      }).select('id').single();
+      if (e2) return jsonError(e2.message);
+      return jsonSuccess({ id: ins.id });
+    }
+
     default:
       return jsonError(`Unknown action: ${action}`);
   }
@@ -2918,6 +2995,9 @@ async function generateDashboardPage(
     }
     .btn-outline:hover { background: #f9fafb; }
     .btn-sm { padding: 4px 10px; font-size: 12px; }
+    .btn-chip { padding: 4px 10px; font-size: 12px; border: 1px solid #e5e7eb; background: #fff; border-radius: 999px; cursor: pointer; color: #374151; }
+    .btn-chip:hover { background: #f3f4f6; }
+    .btn-chip.active { background: #2FC6F6; color: #fff; border-color: #2FC6F6; }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
     
     /* FORM */
@@ -3024,6 +3104,10 @@ async function generateDashboardPage(
       <button class="dock-tab" onclick="switchTab('invoices')" data-tab="invoices">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
         <span class="dock-label">Notas Fiscais</span>
+      </button>
+      <button class="dock-tab" onclick="switchTab('contracts')" data-tab="contracts">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 13h6M9 17h4M9 9h2"/></svg>
+        <span class="dock-label">Contratos</span>
       </button>
       <div class="dock-separator"></div>
       <button class="dock-tab" onclick="switchTab('plan')" data-tab="plan">
@@ -3168,6 +3252,85 @@ async function generateDashboardPage(
         </div>
         <div class="card-body" id="invoice-table">
           <div class="loading-overlay"><div class="spinner-sm"></div> Carregando...</div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- CONTRACTS TAB -->
+    <div id="tab-contracts" class="tab-content">
+      <div id="contracts-list-view">
+        <div class="card">
+          <div class="card-header">
+            <h3>Templates de Contrato</h3>
+            <div style="display:flex;gap:8px;">
+              <button class="btn btn-outline" onclick="openAdvancedTemplateEditor()" title="Abre o editor visual completo no app">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                Editor avançado
+              </button>
+              <button class="btn btn-primary" onclick="openContractEditor()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Novo Template
+              </button>
+            </div>
+          </div>
+          <div class="card-body" id="contracts-table">
+            <div class="loading-overlay"><div class="spinner-sm"></div> Carregando...</div>
+          </div>
+        </div>
+      </div>
+      <div id="contracts-editor-view" style="display:none;">
+        <div class="card">
+          <div class="card-header">
+            <h3 id="contract-editor-title">Novo Template</h3>
+            <div style="display:flex;gap:8px;">
+              <button class="btn btn-outline" onclick="closeContractEditor()">Voltar</button>
+              <button class="btn btn-primary" onclick="saveContractTemplate()">Salvar</button>
+            </div>
+          </div>
+          <div class="card-body">
+            <input type="hidden" id="ct-id" />
+            <div class="form-grid" style="display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-bottom:12px;">
+              <div class="form-group">
+                <label>Nome</label>
+                <input type="text" id="ct-name" placeholder="Ex: Contrato de Prestação" />
+              </div>
+              <div class="form-group" style="display:flex;align-items:flex-end;gap:8px;">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:8px;">
+                  <input type="checkbox" id="ct-default" /> Padrão
+                </label>
+              </div>
+            </div>
+            <div class="form-group" style="margin-bottom:12px;">
+              <label>Descrição</label>
+              <input type="text" id="ct-description" placeholder="Descrição curta" />
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 260px;gap:12px;">
+              <div>
+                <div style="display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap;">
+                  <button type="button" class="btn-chip" onclick="ctTab('edit')" id="ct-tab-edit">HTML</button>
+                  <button type="button" class="btn-chip" onclick="ctTab('preview')" id="ct-tab-preview">Preview</button>
+                  <button type="button" class="btn-chip" onclick="ctTab('map')" id="ct-tab-map">Mapeamento Bitrix</button>
+                </div>
+                <div id="ct-pane-edit">
+                  <textarea id="ct-body" rows="22" style="width:100%;font-family:monospace;font-size:12px;padding:10px;border:1px solid #e5e7eb;border-radius:8px;" placeholder="<h1>Contrato</h1><p>Use {{cliente_nome}}, {{valor_total}}, etc.</p>"></textarea>
+                </div>
+                <div id="ct-pane-preview" style="display:none;">
+                  <iframe id="ct-preview" style="width:100%;height:540px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;"></iframe>
+                </div>
+                <div id="ct-pane-map" style="display:none;">
+                  <p style="font-size:12px;color:#6b7280;margin-bottom:8px;">Mapeie cada variável de cliente para um campo do Bitrix (Deal/Lead/Contact/Company).</p>
+                  <div id="ct-map-rows"></div>
+                </div>
+              </div>
+              <div style="max-height:600px;overflow-y:auto;padding-right:4px;">
+                <p style="font-size:11px;font-weight:600;text-transform:uppercase;color:#6b7280;margin-bottom:6px;">Blocos prontos</p>
+                <div id="ct-blocks" style="display:flex;flex-direction:column;gap:4px;margin-bottom:14px;"></div>
+                <p style="font-size:11px;font-weight:600;text-transform:uppercase;color:#6b7280;margin-bottom:6px;">Variáveis</p>
+                <div id="ct-vars"></div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -3338,6 +3501,7 @@ async function generateDashboardPage(
           case 'plan': loadPlan(); break;
           case 'notifications': loadNotifications(); break;
           case 'security': loadSecurity(); break;
+          case 'contracts': loadContracts(); break;
         }
       }
       
@@ -4313,8 +4477,170 @@ async function generateDashboardPage(
       else showToast(r.error || 'Erro ao excluir', 'error');
     }
     
-    
-    
+
+    // ============= CONTRACTS TAB =============
+    const CT_BLOCKS = [
+      { label: 'Cabeçalho com logo', html: '<div style="text-align:center;border-bottom:2px solid #1e40af;padding-bottom:16px;margin-bottom:24px;"><h1 style="margin:0;color:#1e40af;">CONTRATO DE PRESTAÇÃO DE SERVIÇOS</h1></div>' },
+      { label: 'Cláusula numerada', html: '<h2>Cláusula X — Título</h2><p>Conteúdo da cláusula aqui.</p>' },
+      { label: 'Tabela de parcelas', html: '<p>{{parcelas_tabela}}</p>' },
+      { label: 'Bloco de pagamento Asaas', html: '<h2>Pagamento</h2><p>Valor total: <strong>{{valor_total}}</strong></p><p>Parcelas: {{qtd_parcelas}}</p>{{parcelas_tabela}}' },
+      { label: 'Dados das partes', html: '<p><strong>CONTRATADO:</strong> {{contratado_nome}}, CNPJ {{contratado_cnpj}}.</p><p><strong>CONTRATANTE:</strong> {{cliente_nome}}, CPF/CNPJ {{cliente_doc}}.</p>' },
+      { label: 'Assinatura', html: '<div style="margin-top:64px;display:flex;justify-content:space-around;gap:24px;"><div style="text-align:center;flex:1;border-top:1px solid #333;padding-top:8px;">{{contratado_nome}}<br/><small>CONTRATADO</small></div><div style="text-align:center;flex:1;border-top:1px solid #333;padding-top:8px;">{{cliente_nome}}<br/><small>CONTRATANTE</small></div></div>' },
+      { label: 'Foro', html: '<h2>Foro</h2><p>Fica eleito o foro da cidade de {{foro_cidade}} para dirimir conflitos.</p>' },
+    ];
+    const CT_VARS = [
+      { group: 'Cliente', items: [['{{cliente_nome}}','Nome'],['{{cliente_doc}}','CPF/CNPJ'],['{{cliente_email}}','E-mail'],['{{cliente_telefone}}','Telefone'],['{{cliente_endereco}}','Endereço'],['{{cliente_empresa}}','Empresa']] },
+      { group: 'Contrato', items: [['{{valor_total}}','Valor'],['{{qtd_parcelas}}','Parcelas'],['{{parcelas_tabela}}','Tabela'],['{{prazo_contrato}}','Prazo'],['{{data_contrato}}','Data']] },
+      { group: 'Contratado', items: [['{{contratado_nome}}','Nome'],['{{contratado_cnpj}}','CNPJ'],['{{foro_cidade}}','Foro']] },
+    ];
+    const CT_MAP_KEYS = [
+      ['cliente_nome','Nome'],['cliente_doc','CPF/CNPJ'],['cliente_email','E-mail'],
+      ['cliente_telefone','Telefone'],['cliente_endereco','Endereço'],['cliente_empresa','Empresa'],
+    ];
+    let contractsCache = [];
+
+    async function loadContracts() {
+      const el = document.getElementById('contracts-table');
+      el.innerHTML = '<div class="loading-overlay"><div class="spinner-sm"></div> Carregando...</div>';
+      const r = await apiCall('contract_templates_list');
+      if (!r.success) { el.innerHTML = '<div class="empty-state"><p>'+(r.error||'Erro')+'</p></div>'; return; }
+      contractsCache = r.templates || [];
+      if (!contractsCache.length) {
+        el.innerHTML = '<div class="empty-state"><p>Nenhum template ainda. Crie o primeiro!</p></div>';
+        return;
+      }
+      el.innerHTML = '<table><thead><tr><th>Nome</th><th>Descrição</th><th>Mapeados</th><th>Padrão</th><th style="text-align:right;">Ações</th></tr></thead><tbody>' +
+        contractsCache.map(t => {
+          const map = t.bitrix_field_map || {};
+          const cnt = Object.keys(map).length;
+          const def = t.is_default ? '<span class="status-badge" style="background:#dbeafe;color:#1e40af;">Padrão</span>' : '';
+          const esc = (s) => String(s||'').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+          return '<tr><td><strong>'+esc(t.name)+'</strong></td><td style="color:#6b7280;">'+esc(t.description||'-')+'</td><td>'+cnt+'</td><td>'+def+'</td>' +
+            '<td style="text-align:right;white-space:nowrap;">' +
+            '<button class="btn btn-outline btn-sm" onclick="openContractEditor(\\''+t.id+'\\')">Editar</button> ' +
+            '<button class="btn btn-outline btn-sm" onclick="duplicateContractTemplate(\\''+t.id+'\\')">Duplicar</button> ' +
+            '<button class="btn btn-outline btn-sm" onclick="deleteContractTemplate(\\''+t.id+'\\')" style="color:#ef4444;">Excluir</button>' +
+            '</td></tr>';
+        }).join('') + '</tbody></table>';
+    }
+
+    function openContractEditor(id) {
+      const t = id ? contractsCache.find(x => x.id === id) : null;
+      document.getElementById('contracts-list-view').style.display = 'none';
+      document.getElementById('contracts-editor-view').style.display = 'block';
+      document.getElementById('contract-editor-title').textContent = t ? 'Editar Template' : 'Novo Template';
+      document.getElementById('ct-id').value = t ? t.id : '';
+      document.getElementById('ct-name').value = t ? (t.name||'') : '';
+      document.getElementById('ct-description').value = t ? (t.description||'') : '';
+      document.getElementById('ct-default').checked = t ? !!t.is_default : false;
+      document.getElementById('ct-body').value = t ? (t.body_html||'') : '';
+      renderCtBlocks();
+      renderCtVars();
+      renderCtMap(t ? (t.bitrix_field_map||{}) : {});
+      ctTab('edit');
+      document.getElementById('ct-body').oninput = debouncePreview;
+    }
+
+    function closeContractEditor() {
+      document.getElementById('contracts-editor-view').style.display = 'none';
+      document.getElementById('contracts-list-view').style.display = 'block';
+    }
+
+    function renderCtBlocks() {
+      const c = document.getElementById('ct-blocks');
+      c.innerHTML = CT_BLOCKS.map((b,i) => '<button type="button" class="btn btn-outline btn-sm" style="text-align:left;justify-content:flex-start;" onclick="ctInsertBlock('+i+')">+ '+b.label+'</button>').join('');
+    }
+    function renderCtVars() {
+      const c = document.getElementById('ct-vars');
+      c.innerHTML = CT_VARS.map(g => '<div style="margin-bottom:8px;"><p style="font-size:10px;color:#9ca3af;margin-bottom:4px;">'+g.group+'</p><div style="display:flex;flex-wrap:wrap;gap:4px;">' +
+        g.items.map(([code,label]) => '<button type="button" class="btn-chip" title="'+code+'" onclick="ctInsertText(\\''+code+'\\')">'+label+'</button>').join('') +
+        '</div></div>').join('');
+    }
+    function renderCtMap(map) {
+      const c = document.getElementById('ct-map-rows');
+      c.innerHTML = CT_MAP_KEYS.map(([key,label]) => {
+        const v = map[key] || { entity: 'deal', field: '' };
+        return '<div style="display:grid;grid-template-columns:130px 110px 1fr;gap:8px;margin-bottom:6px;align-items:center;">' +
+          '<label style="font-size:12px;">'+label+'</label>' +
+          '<select data-mapkey="'+key+'" data-mapfield="entity" style="padding:6px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;">' +
+            ['deal','lead','contact','company'].map(e => '<option value="'+e+'"'+(v.entity===e?' selected':'')+'>'+e+'</option>').join('') +
+          '</select>' +
+          '<input type="text" data-mapkey="'+key+'" data-mapfield="field" value="'+(v.field||'').replace(/"/g,'&quot;')+'" placeholder="ex: UF_CRM_1234 ou TITLE" style="padding:6px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;" />' +
+        '</div>';
+      }).join('');
+    }
+    function collectCtMap() {
+      const map = {};
+      document.querySelectorAll('#ct-map-rows [data-mapkey]').forEach(el => {
+        const k = el.getAttribute('data-mapkey');
+        const f = el.getAttribute('data-mapfield');
+        if (!map[k]) map[k] = { entity: 'deal', field: '' };
+        map[k][f] = el.value;
+      });
+      Object.keys(map).forEach(k => { if (!map[k].field) delete map[k]; });
+      return map;
+    }
+    function ctInsertText(text) {
+      const ta = document.getElementById('ct-body');
+      const s = ta.selectionStart, e = ta.selectionEnd;
+      ta.value = ta.value.slice(0,s) + text + ta.value.slice(e);
+      ta.focus();
+      ta.selectionStart = ta.selectionEnd = s + text.length;
+      debouncePreview();
+    }
+    function ctInsertBlock(i) { ctInsertText('\\n' + CT_BLOCKS[i].html + '\\n'); }
+    function ctTab(t) {
+      ['edit','preview','map'].forEach(k => {
+        document.getElementById('ct-pane-'+k).style.display = (k===t) ? 'block' : 'none';
+        const tab = document.getElementById('ct-tab-'+k);
+        if (tab) tab.classList.toggle('active', k===t);
+      });
+      if (t === 'preview') updateCtPreview();
+    }
+    let ctPreviewTimer = null;
+    function debouncePreview() { clearTimeout(ctPreviewTimer); ctPreviewTimer = setTimeout(updateCtPreview, 250); }
+    function updateCtPreview() {
+      const html = document.getElementById('ct-body').value || '';
+      const doc = '<html><head><meta charset="utf-8"><style>body{font-family:Georgia,serif;padding:40px;line-height:1.6;color:#111;}h1,h2{color:#1e40af;}table{border-collapse:collapse;width:100%;}td,th{border:1px solid #ddd;padding:6px;}</style></head><body>'+html+'</body></html>';
+      const f = document.getElementById('ct-preview');
+      if (f) f.srcdoc = doc;
+    }
+    async function saveContractTemplate() {
+      const payload = {
+        id: document.getElementById('ct-id').value || null,
+        name: document.getElementById('ct-name').value.trim(),
+        description: document.getElementById('ct-description').value.trim(),
+        is_default: document.getElementById('ct-default').checked,
+        body_html: document.getElementById('ct-body').value,
+        bitrix_field_map: collectCtMap(),
+      };
+      if (!payload.name) { showToast('Informe um nome', 'error'); return; }
+      const r = await apiCall('contract_template_save', { data: payload });
+      if (!r.success) { showToast(r.error || 'Erro ao salvar', 'error'); return; }
+      showToast('Template salvo');
+      closeContractEditor();
+      await loadContracts();
+    }
+    async function deleteContractTemplate(id) {
+      if (!confirm('Excluir este template?')) return;
+      const r = await apiCall('contract_template_delete', { data: { id } });
+      if (!r.success) { showToast(r.error || 'Erro', 'error'); return; }
+      showToast('Template excluído');
+      await loadContracts();
+    }
+    async function duplicateContractTemplate(id) {
+      const r = await apiCall('contract_template_duplicate', { data: { id } });
+      if (!r.success) { showToast(r.error || 'Erro', 'error'); return; }
+      showToast('Template duplicado');
+      await loadContracts();
+    }
+    function openAdvancedTemplateEditor() {
+      const url = 'https://asaas.thoth24.com/dashboard/contract-templates';
+      if (typeof BX24 !== 'undefined' && BX24.openApplication) {
+        try { window.open(url, '_blank'); return; } catch(e){}
+      }
+      window.open(url, '_blank');
+    }
     
     // BX24 init
     if (typeof BX24 !== 'undefined') {
