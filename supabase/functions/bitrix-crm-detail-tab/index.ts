@@ -193,8 +193,9 @@ function html(ctx: {
   transactions: any[]; subscriptions: any[]; invoices: any[]; splits: any[]; contractPlan: any | null;
   memberId: string; domain: string; accessToken: string;
   customer: any; dealFields: any; dealProducts: { rows: any[]; total: number };
+  templates: any[]; contracts: any[];
 }): string {
-  const { transactions, subscriptions, invoices, splits, contractPlan, customer, dealFields, dealProducts } = ctx;
+  const { transactions, subscriptions, invoices, splits, contractPlan, customer, dealFields, dealProducts, templates, contracts } = ctx;
   const totalCharged = transactions.reduce((s, t) => s + (Number(t.amount) || 0), 0);
   const totalReceived = transactions.filter(t => ['confirmed', 'received'].includes(t.status)).reduce((s, t) => s + (Number(t.amount) || 0), 0);
   const totalOpen = transactions.filter(t => ['pending', 'overdue'].includes(t.status)).reduce((s, t) => s + (Number(t.amount) || 0), 0);
