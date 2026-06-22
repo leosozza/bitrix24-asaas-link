@@ -139,6 +139,7 @@ interface Props {
 export function ContractTemplateEditor({ value, onChange }: Props) {
   const [mode, setMode] = useState<"visual" | "html">("visual");
   const [htmlDraft, setHtmlDraft] = useState(value);
+  const [zoom, setZoom] = useState(1);
   const valueRef = useRef(value);
 
   const editor = useEditor({
@@ -147,6 +148,25 @@ export function ContractTemplateEditor({ value, onChange }: Props) {
       TextStyle,
       Color,
       TextAlign.configure({ types: ["heading", "paragraph"] }),
+      Table.configure({ resizable: true, HTMLAttributes: { class: "tiptap-table" } }),
+      TableRow, TableCell, TableHeader,
+      Image,
+      Link.configure({ openOnClick: false }),
+      Placeholder.configure({ placeholder: "Comece a digitar seu contrato…" }),
+    ],
+    content: value,
+    onUpdate: ({ editor }) => {
+      const html = editor.getHTML();
+      valueRef.current = html;
+      onChange(html);
+    },
+    editorProps: {
+      attributes: {
+        class: "docx-page",
+      },
+    },
+  });
+
       Table.configure({ resizable: true, HTMLAttributes: { class: "tiptap-table" } }),
       TableRow, TableCell, TableHeader,
       Image,
