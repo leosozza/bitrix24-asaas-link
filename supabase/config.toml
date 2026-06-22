@@ -38,3 +38,7 @@ verify_jwt = false
 
 [functions.bitrix-crm-detail-tab]
 verify_jwt = false
+
+[functions.asaas-contract-webhook]
+verify_jwt = false
+
