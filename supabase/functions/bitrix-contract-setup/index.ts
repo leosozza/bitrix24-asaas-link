@@ -116,12 +116,21 @@ serve(async (req) => {
 
     if (action === "setup_fields") {
       const tenantId = body.tenant_id;
-      const inst = await getInstallation(admin, tenantId);
+      const inst = await getInstallation(admin, tenantId, body.member_id);
       if (!inst?.client_endpoint || !inst?.access_token) return json({ error: "Instalação Bitrix não encontrada" }, 404);
       await ensureFields(inst.client_endpoint, inst.access_token, "deal");
       await ensureFields(inst.client_endpoint, inst.access_token, "lead");
-      const robot = await registerRobot(inst.client_endpoint, inst.access_token);
-      return json({ success: true, fields_installed: FIELDS.map((f) => f.code), robot });
+      const templates = await loadTemplatesForTenant(admin, inst.tenant_id);
+      const robot = await registerRobot(inst.client_endpoint, inst.access_token, templates);
+      return json({ success: true, fields_installed: FIELDS.map((f) => f.code), robot, templates_count: templates.length });
+    }
+
+    if (action === "sync_robot_templates") {
+      const inst = await getInstallation(admin, body.tenant_id, body.member_id);
+      if (!inst?.client_endpoint || !inst?.access_token) return json({ error: "Instalação Bitrix não encontrada" }, 404);
+      const templates = await loadTemplatesForTenant(admin, inst.tenant_id);
+      const robot = await registerRobot(inst.client_endpoint, inst.access_token, templates);
+      return json({ success: true, robot, templates_count: templates.length });
     }
 
     if (action === "update_entity") {
