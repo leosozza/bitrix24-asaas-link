@@ -193,8 +193,9 @@ function html(ctx: {
   transactions: any[]; subscriptions: any[]; invoices: any[]; splits: any[]; contractPlan: any | null;
   memberId: string; domain: string; accessToken: string;
   customer: any; dealFields: any; dealProducts: { rows: any[]; total: number };
+  templates: any[]; contracts: any[];
 }): string {
-  const { transactions, subscriptions, invoices, splits, contractPlan, customer, dealFields, dealProducts } = ctx;
+  const { transactions, subscriptions, invoices, splits, contractPlan, customer, dealFields, dealProducts, templates, contracts } = ctx;
   const totalCharged = transactions.reduce((s, t) => s + (Number(t.amount) || 0), 0);
   const totalReceived = transactions.filter(t => ['confirmed', 'received'].includes(t.status)).reduce((s, t) => s + (Number(t.amount) || 0), 0);
   const totalOpen = transactions.filter(t => ['pending', 'overdue'].includes(t.status)).reduce((s, t) => s + (Number(t.amount) || 0), 0);
@@ -365,6 +366,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
   <button class="tab" data-tab="subs">${ICONS.subs}<span>Assinaturas</span></button>
   <button class="tab" data-tab="nfse">${ICONS.nfse}<span>NFSe</span></button>
   <button class="tab" data-tab="split">${ICONS.split}<span>Split</span></button>
+  <button class="tab" data-tab="contract-gen">${ICONS.contract}<span>Gerar Contrato</span></button>
 </div>
 
 <!-- DADOS DO CONTRATO -->
@@ -409,7 +411,79 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
   <table><thead><tr><th>Nome</th><th>Wallet ID</th><th>Valor</th><th>Ativo</th></tr></thead><tbody>${splitRows}</tbody></table>
 </div>
 
-<!-- WIZARD: NOVA COBRANÇA -->
+<!-- GERAR CONTRATO -->
+<div class="panel" id="panel-contract-gen">
+  <div class="head"><h3>Gerar Contrato a partir deste ${escHtml(ctx.entityType === 'lead' ? 'Lead' : 'Negócio')}</h3></div>
+  ${templates.length === 0 ? `<div class="info-banner">Nenhum template cadastrado. Crie um template na aba <b>Contratos → Templates</b> no app.</div>` : `
+  <div class="grid">
+    <div class="fg"><label>Template <span class="req">*</span></label>
+      <select id="cg_template">
+        ${templates.map((t: any) => `<option value="${escAttr(t.id)}">${escHtml(t.name)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="fg"><label>Nome do cliente <span class="req">*</span></label>
+      <input id="cg_name" value="${escAttr(customer?.name || '')}">
+    </div>
+    <div class="fg"><label>E-mail</label>
+      <input id="cg_email" value="${escAttr(customer?.email || '')}">
+    </div>
+    <div class="fg"><label>CPF/CNPJ</label>
+      <input id="cg_doc" value="${escAttr(customer?.document || '')}">
+    </div>
+    <div class="fg"><label>Telefone</label>
+      <input id="cg_phone" value="${escAttr(customer?.phone || '')}">
+    </div>
+    <div class="fg"><label>Valor total (R$)</label>
+      <input id="cg_total" type="number" step="0.01" min="0" value="${Number(dealProducts.total || 0).toFixed(2)}">
+    </div>
+  </div>
+  <div class="section">
+    <h4><span class="num">A</span> Cobrança Asaas (opcional)</h4>
+    <div class="grid-3">
+      <div class="fg"><label>Modo</label>
+        <select id="cg_mode">
+          <option value="">Não criar cobrança</option>
+          <option value="unica">Cobrança única</option>
+          <option value="parcelada">Parcelada</option>
+          <option value="assinatura_mensal">Assinatura mensal</option>
+        </select>
+      </div>
+      <div class="fg"><label>Forma</label>
+        <select id="cg_billing">
+          <option value="UNDEFINED">Cliente escolhe</option>
+          <option value="PIX">PIX</option>
+          <option value="BOLETO">Boleto</option>
+          <option value="CREDIT_CARD">Cartão</option>
+        </select>
+      </div>
+      <div class="fg"><label>Parcelas / Ciclo</label>
+        <input id="cg_count" type="number" min="1" value="1">
+      </div>
+    </div>
+  </div>
+  <button class="btn" type="button" onclick="generateContract()" id="cg_btn">${ICONS.contract}<span style="margin-left:6px">Gerar contrato</span></button>
+  <div class="msg" id="cg_msg"></div>
+  `}
+  ${contracts.length > 0 ? `
+  <h4 style="margin:18px 0 8px;font-size:13px;color:#475569">Contratos recentes deste ${escHtml(ctx.entityType === 'lead' ? 'lead' : 'negócio')}</h4>
+  <table>
+    <thead><tr><th>Cliente</th><th>Valor</th><th>Status</th><th>Criado</th><th>Ações</th></tr></thead>
+    <tbody>${contracts.map((c: any) => `
+      <tr>
+        <td>${escHtml(c.customer_name || '-')}</td>
+        <td>R$ ${Number(c.total_value || 0).toFixed(2).replace('.', ',')}</td>
+        <td><span class="badge">${escHtml(c.payment_status || c.status || '-')}</span></td>
+        <td>${c.created_at ? new Date(c.created_at).toLocaleDateString('pt-BR') : '-'}</td>
+        <td class="actions">
+          ${c.public_token ? `<a class="ico" target="_blank" href="/contrato/${escAttr(c.public_token)}" onclick="event.stopPropagation()">${ICONS.link}</a>` : ''}
+          ${c.public_token ? `<button class="ico" title="Copiar link" onclick="copyText(window.location.origin.replace(/^https?:\\/\\/[^/]+/, '') + '/contrato/${escAttr(c.public_token)}')">${ICONS.download}</button>` : ''}
+        </td>
+      </tr>`).join('')}
+    </tbody>
+  </table>
+  ` : ''}
+</div>
+
 <div class="modal" id="wizardModal">
   <div class="modal-box">
     <div class="modal-head">
@@ -997,6 +1071,42 @@ async function submitWizard(){
   btn.disabled = false; btn.textContent = 'Enviar ao Asaas';
 }
 
+async function generateContract(){
+  var btn = document.getElementById('cg_btn');
+  var msg = document.getElementById('cg_msg');
+  if (!btn) return;
+  btn.disabled = true;
+  msg.className = 'msg';
+  try {
+    var payload = {
+      action: 'generate_contract',
+      memberId: CTX.memberId, domain: CTX.domain, accessToken: CTX.accessToken,
+      entityType: CTX.entityType, entityId: CTX.entityId,
+      template_id: document.getElementById('cg_template').value,
+      name: document.getElementById('cg_name').value,
+      email: document.getElementById('cg_email').value,
+      doc: document.getElementById('cg_doc').value,
+      phone: document.getElementById('cg_phone').value,
+      total: Number(document.getElementById('cg_total').value) || 0,
+      mode: document.getElementById('cg_mode').value,
+      billing: document.getElementById('cg_billing').value,
+      count: Number(document.getElementById('cg_count').value) || 1,
+    };
+    var r = await fetch(CTX.supabaseUrl + '/functions/v1/bitrix-crm-detail-tab', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload),
+    });
+    var d = await r.json();
+    if (d.success && d.public_url) {
+      msg.className = 'msg ok';
+      msg.innerHTML = '✅ Contrato gerado! <a href="'+d.public_url+'" target="_blank" style="color:#0066cc;text-decoration:underline">Abrir contrato</a> · <button class="ico" onclick="copyText(\\''+d.public_url+'\\')">Copiar link</button>';
+      setTimeout(function(){ location.reload(); }, 4000);
+    } else {
+      msg.className = 'msg err'; msg.textContent = '❌ ' + (d.error || 'Falha ao gerar');
+    }
+  } catch(e){ msg.className='msg err'; msg.textContent='❌ '+e.message; }
+  btn.disabled = false;
+}
+
 async function rowAction(action, id){
   if (!confirm('Confirmar ação: ' + action + '?')) return;
   try {
@@ -1039,6 +1149,7 @@ serve(async (req) => {
           memberId, domain, accessToken: 'preview_token',
           customer: { name: 'João Silva', email: 'joao@ex.com', document: '', phone: '' },
           dealFields: {}, dealProducts: { rows: [], total: 0 },
+          templates: [], contracts: [],
         });
         return new Response(h, { headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' } });
       }
@@ -1276,6 +1387,59 @@ serve(async (req) => {
         }
       }
 
+      if (action === 'generate_contract') {
+        if (!j.template_id) return json({ success: false, error: 'Selecione um template' });
+        if (!j.name) return json({ success: false, error: 'Nome do cliente é obrigatório' });
+        try {
+          // Optionally enrich customer from CRM
+          let cust = { name: j.name, email: j.email || '', doc: j.doc || '', phone: j.phone || '' };
+          if (clientEndpoint && j.accessToken && j.entityType && j.entityId) {
+            try {
+              const c = await getCrmCustomer(clientEndpoint, j.accessToken, j.entityType, j.entityId);
+              cust = {
+                name: cust.name || c.name,
+                email: cust.email || c.email,
+                doc: cust.doc || c.document,
+                phone: cust.phone || c.phone,
+              };
+            } catch (_) { /* ignore */ }
+          }
+
+          const asaas_payment = j.mode ? {
+            auto_create: true,
+            charge_mode: j.mode,
+            billing_type: j.billing || 'UNDEFINED',
+            cycle: j.mode === 'assinatura_mensal' ? 'MONTHLY' : null,
+            installment_count: j.mode === 'parcelada' ? (Number(j.count) || 1) : null,
+            customer: cust,
+          } : null;
+
+          const r = await fetch(`${SUPABASE_URL}/functions/v1/contract-generate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+            body: JSON.stringify({
+              __service_tenant: installation.tenant_id,
+              template_id: j.template_id,
+              customer: cust,
+              total_value: Number(j.total) || 0,
+              bitrix_entity_type: j.entityType,
+              bitrix_entity_id: j.entityId,
+              asaas_payment,
+            }),
+          });
+          const d = await r.json();
+          if (!r.ok || d.error) return json({ success: false, error: d.error || 'Falha ao gerar contrato' });
+
+          if (clientEndpoint && j.accessToken) {
+            await addTimelineComment(clientEndpoint, j.accessToken, j.entityType, j.entityId,
+              `📄 Contrato gerado via iframe: ${d.public_url}`);
+          }
+          return json({ success: true, public_url: d.public_url, pdf_url: d.pdf_url, contract_id: d.contract_id });
+        } catch (e: any) {
+          return json({ success: false, error: e.message });
+        }
+      }
+
       return json({ success: false, error: 'Ação desconhecida: ' + action });
     }
 
@@ -1302,12 +1466,13 @@ serve(async (req) => {
         entityType: ei.type, entityId, ownerTypeId: ei.ownerTypeId,
         transactions: [], subscriptions: [], invoices: [], splits: [], contractPlan: null,
         memberId, domain, accessToken, customer: {}, dealFields: {}, dealProducts: { rows: [], total: 0 },
+        templates: [], contracts: [],
       }), { headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' } });
     }
 
     const clientEndpoint = installation.client_endpoint || (installation.domain ? `https://${installation.domain}/rest/` : null);
 
-    const [_, customer, dealFields, dealProducts, txRes, subRes, invRes, splitRes, planRes] = await Promise.all([
+    const [_, customer, dealFields, dealProducts, txRes, subRes, invRes, splitRes, planRes, tplRes, ctrRes] = await Promise.all([
       (clientEndpoint && accessToken && ei.type === 'deal') ? ensureCustomFields(supabase, installation.id, clientEndpoint, accessToken).catch(() => null) : Promise.resolve(null),
       (clientEndpoint && accessToken) ? getCrmCustomer(clientEndpoint, accessToken, ei.type, entityId) : Promise.resolve({}),
       (clientEndpoint && accessToken && ei.type === 'deal') ? getDealFields(clientEndpoint, accessToken, ei.type, entityId) : Promise.resolve({}),
@@ -1317,6 +1482,8 @@ serve(async (req) => {
       supabase.from('invoices').select('*').eq('tenant_id', installation.tenant_id).eq('bitrix_entity_type', ei.type).eq('bitrix_entity_id', entityId).order('created_at', { ascending: false }),
       supabase.from('split_configurations').select('*').eq('tenant_id', installation.tenant_id).eq('is_active', true),
       supabase.from('contract_plans').select('*').eq('tenant_id', installation.tenant_id).eq('bitrix_entity_type', ei.type).eq('bitrix_entity_id', entityId).order('created_at', { ascending: false }).limit(1).maybeSingle(),
+      supabase.from('contract_templates').select('id, name').eq('tenant_id', installation.tenant_id).order('name', { ascending: true }),
+      supabase.from('contracts').select('id, customer_name, total_value, status, payment_status, public_token, created_at').eq('tenant_id', installation.tenant_id).eq('bitrix_entity_type', ei.type).eq('bitrix_entity_id', entityId).order('created_at', { ascending: false }).limit(5),
     ]);
 
     return new Response(html({
@@ -1324,6 +1491,7 @@ serve(async (req) => {
       transactions: txRes.data || [], subscriptions: subRes.data || [], invoices: invRes.data || [], splits: splitRes.data || [],
       contractPlan: planRes.data || null,
       memberId, domain, accessToken, customer, dealFields, dealProducts,
+      templates: tplRes.data || [], contracts: ctrRes.data || [],
     }), { headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' } });
 
   } catch (error: unknown) {
