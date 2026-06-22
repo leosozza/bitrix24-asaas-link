@@ -1,143 +1,114 @@
-# 5 Templates de contrato + mapeamento de campos do Bitrix
-
 ## Objetivo
 
-1. Pré-carregar **5 templates prontos**, incluindo o **Delivery Real** (do .docx anexado) com a seção de pagamento adicionada, o modelo **azul "Pacheco e Lacerda"** e o estilo **"Italnet" Telecom**.
-2. No **editor de template**, permitir mapear cada placeholder a um **campo do Bitrix** (padrão ou UF_CRM_*) de Deal/Lead/Contact/Company.
-3. Ao gerar contrato a partir de uma entidade Bitrix, os valores são buscados via REST e o contrato é preenchido automaticamente.
+Integrar o fluxo de **contratos** com **cobrança Asaas**, fechando o ciclo: mapear campos de cobrança no template → gerar cobrança/assinatura ao assinar → atualizar contrato e Bitrix via webhook.
 
 ---
 
-## Os 5 templates
+## 1. Mapeamento de campos de cobrança Asaas no editor de template
 
-1. **Delivery Real — Consultoria/Serviços** (baseado no .docx enviado: tabela de DADOS CONTRATUAIS, 11 cláusulas + Anexo I, **agora com a Cláusula 4 expandida para incluir `{{parcelas_tabela}}`** mostrando vencimentos, valores e forma de pagamento)
-2. **Prestação de Serviços — Azul Elegante** (header azul listrado, blocos CONTRATANTE/CONTRATADO lado a lado)
-3. **Provedor de Internet / Telecom** (numeração hierárquica 1, 1.1, 2, 2.1...)
-4. **Assinatura Recorrente / SaaS** (renovação automática, política de cancelamento, SLA)
-5. **Venda de Produto / Licença** (entrega, garantia, suporte)
+Hoje o `BitrixFieldMapper` mapeia placeholders genéricos do contrato (`{{cliente_nome}}`, etc.). Agora adicionamos um segundo bloco no editor: **"Campos de cobrança Asaas"**, com chaves fixas exigidas pela API do Asaas:
 
-Todos com placeholders Mustache `{{...}}` e o bloco de evidência da assinatura eletrônica é injetado pela função `contract-public` (já implementado).
+| Campo Asaas      | Obrigatório | Origem Bitrix sugerida              |
+| ---------------- | ----------- | ----------------------------------- |
+| `name`           | sim         | Contact NAME+LAST_NAME / Company TITLE |
+| `cpfCnpj`        | sim         | Contact UF_CRM_CPF / Company UF_CRM_CNPJ |
+| `email`          | recomendado | Contact EMAIL[0]                    |
+| `mobilePhone`    | recomendado | Contact PHONE[0]                    |
+| `postalCode`     | opcional    | Company ADDRESS_POSTAL_CODE         |
+| `address`        | opcional    | Company ADDRESS                     |
+| `addressNumber`  | opcional    | Company ADDRESS_2                   |
+| `province`       | opcional    | Company ADDRESS_CITY                |
 
-### Adição de pagamento ao template Delivery Real
+Salvo no template em uma nova coluna JSONB **`asaas_billing_map`** (estrutura igual a `bitrix_field_map`: `{ "cpfCnpj": { entity: "contact", field: "UF_CRM_CPF" }, ... }`).
 
-A Cláusula 4 atual é genérica. Será expandida para:
+UI: novo componente `AsaasBillingFieldMapper.tsx` (reutiliza `useBitrixEntityFields`) renderizado como 4ª coluna no editor de templates, com indicador "X de 8 campos mapeados" e marcação visual para os obrigatórios.
 
-```text
-CLÁUSULA 4 – VALORES E PAGAMENTO
-
-Valor total contratado: {{valor_total}}
-Quantidade de parcelas: {{qtd_parcelas}}
-Forma de pagamento conforme cronograma abaixo:
-
-{{parcelas_tabela}}    ← tabela renderizada # / TIPO / VENCIMENTO / VALOR / MÉTODO
-
-Em caso de inadimplência:
-• multa de 2% sobre o valor em aberto;
-• juros de 1% ao mês pró-rata;
-• possibilidade de suspensão dos serviços após 7 dias de atraso.
-```
+A função `bitrix-contract-fields` (action `resolve`) passa a devolver também `asaas_billing` (objeto pronto para virar customer no Asaas).
 
 ---
 
-## Mapeamento de campos do Bitrix
+## 2. Seção de pagamento no `ContractWizard` (integração Asaas)
 
-### UI (editor de template)
+Novo **Passo 3 – Pagamento Asaas** entre "Dados" e "Revisão":
 
-Painel "Campos do Bitrix" como 3ª coluna do editor:
+- **Tipo de cobrança**: `unica` | `parcelada` | `assinatura_mensal` (recorrente)
+- **Forma de pagamento**: `BOLETO` | `PIX` | `CREDIT_CARD` | `UNDEFINED` (cliente escolhe)
+- **Valor**: pré-preenchido com `total_value` do contrato
+- Se **parcelada**: nº de parcelas + vencimento da 1ª (reaproveita `PaymentScheduleTable`)
+- Se **assinatura_mensal**: ciclo fixo `MONTHLY`, próxima cobrança, fim opcional (`endDate` ou `maxPayments`)
+- **Dados do cliente Asaas**: pré-preenchidos por `asaas_billing` (vindo do Bitrix resolve) — campos editáveis com badge "vindo do Bitrix"
+- Checkbox **"Criar cobrança automaticamente ao assinar"** (default ligado)
 
-```text
-Placeholder              Origem (Bitrix)
-─────────────────────────────────────────────────
-{{cliente_nome}}    ←   Deal → CONTACT_ID → NAME + LAST_NAME
-{{cliente_doc}}     ←   Contact → UF_CRM_CPF
-{{cliente_email}}   ←   Contact → EMAIL[0].VALUE
-{{cliente_empresa}} ←   Company → TITLE
-{{cliente_endereco}}←   Company → ADDRESS
-{{valor_total}}     ←   Deal → OPPORTUNITY
-{{vendedor}}        ←   Deal → ASSIGNED_BY (resolvido para nome)
-{{prazo_contrato}}  ←   Deal → UF_CRM_PRAZO
-```
+Persistência: novas colunas em `contracts`:
+- `asaas_billing_type text` (BOLETO/PIX/...)
+- `asaas_charge_mode text` (unica/parcelada/assinatura)
+- `asaas_subscription_cycle text` (MONTHLY/...)
+- `asaas_customer_payload jsonb`
+- `auto_create_charge boolean default true`
 
-Para cada placeholder detectado no `body_html`, o usuário escolhe:
-- **Entidade origem** (Deal | Lead | Contact | Company)
-- **Campo** (lista carregada dinamicamente via REST do Bitrix)
+(o campo `asaas_subscription_id` já existe)
 
-Salvo no template como:
-```json
-"bitrix_field_map": {
-  "{{cliente_doc}}": { "entity": "contact", "field": "UF_CRM_CPF" },
-  "{{cliente_empresa}}": { "entity": "company", "field": "TITLE" }
-}
-```
-
-### Geração a partir do CRM
-
-Quando o `ContractWizard` recebe `prefill.bitrix_entity_type + bitrix_entity_id`:
-1. Após escolher template, botão **"Buscar dados do Bitrix"** aparece no passo 2.
-2. Backend (`bitrix-contract-fields?action=resolve`) busca a entidade, resolve relacionadas (Deal→Contact/Company), aplica `bitrix_field_map`, devolve `{ customer, extra_vars, mapped_count }`.
-3. UI preenche os campos e mostra "X campos vindos do Bitrix".
+### Geração da cobrança
+Quando o contrato é assinado (em `contract-public`, hoje só marca `signed_at`), passa a:
+1. Garantir/atualizar `customer` Asaas via `POST /v3/customers` (idempotente por `cpfCnpj`)
+2. Conforme `asaas_charge_mode`:
+   - `unica` → `POST /v3/payments`
+   - `parcelada` → `POST /v3/payments` com `installmentCount`/`installmentValue`
+   - `assinatura` → `POST /v3/subscriptions` (cycle MONTHLY) — grava `asaas_subscription_id`
+3. Atualiza `contracts` com IDs e `invoiceUrl/bankSlipUrl`
+4. Posta timeline no Bitrix com o link de pagamento (reutilizando padrão de `asaas-webhook`)
 
 ---
 
-## Mudanças técnicas
+## 3. Webhook Asaas → status do contrato + Bitrix
 
-### 1. Migration
-- `contract_templates`: adicionar `bitrix_field_map jsonb NOT NULL DEFAULT '{}'`
-- `contract_templates`: adicionar `cover_style text` (chave do estilo visual, ex: `delivery_real` / `blue_elegant`)
+Novo Edge Function público **`asaas-contract-webhook`** (`verify_jwt = false`, validado por `asaas-access-token`):
 
-### 2. Edge functions
+- Eventos tratados:
+  - `PAYMENT_CREATED` → contract.status = `sent` (se ainda `draft`)
+  - `PAYMENT_CONFIRMED` / `PAYMENT_RECEIVED` → `paid`
+  - `PAYMENT_OVERDUE` → `overdue`
+  - `PAYMENT_REFUNDED` / `PAYMENT_DELETED` → `canceled`
+  - `SUBSCRIPTION_DELETED` → `canceled`
+- Lookup: `payment.externalReference` = `contract:<id>` (definido na criação) ou via `asaas_subscription_id`.
+- Atualiza `contracts.status` + nova coluna `payment_status text` (separa status contratual de status de pagamento — `pending`/`paid`/`overdue`/`refunded`).
+- Reflexo no Bitrix:
+  - Atualiza timeline da entidade vinculada (`bitrix_entity_type`/`bitrix_entity_id`) com badge de status (mesmo padrão de `bitrix-timeline-tracking`).
+  - Se entidade for **Deal** e evento `PAYMENT_RECEIVED` → marca o deal como `WON` (configurável).
+- Idempotência via `integration_logs` (mesmo padrão do `thoth-asaas-webhook`).
 
-**`contract-templates-seed`** (auth)
-- Cria os 5 templates para o tenant logado se não existirem.
-- Botão "Carregar 5 modelos prontos" na página de templates.
-
-**`bitrix-contract-fields`** (auth)
-- `action: "list_fields", entity_type: deal|lead|contact|company` → usa `crm.<entity>.fields` e retorna `[{ id, label, type }]`.
-- `action: "resolve", template_id, entity_type, entity_id` → busca entidade + relacionadas, aplica mapping, devolve `{ customer, extra_vars }`.
-
-### 3. Frontend
-
-**`DashboardContractTemplates.tsx`**
-- Botão "Carregar 5 modelos prontos" (visível se < 5 templates).
-- Editor ganha **3ª coluna "Bitrix"** com `BitrixFieldMapper`:
-  - Detecta placeholders no `body_html` via regex `{{(\w+)}}`
-  - Para cada um: dois Selects (Entidade + Campo) populados via React Query
-  - Indicador "X de Y mapeados"
-- Botão "Pré-visualizar" abre nova aba com HTML renderizado com dados de exemplo.
-
-**`ContractWizard.tsx`**
-- Quando `prefill.bitrix_entity_type` existe e o template tem `bitrix_field_map`, mostra botão **"Buscar dados do Bitrix"** no passo 2.
-- Toast: "X campos preenchidos automaticamente".
-
-**`hooks/useContracts.ts`**
-- `useBitrixEntityFields(entityType)`
-- `useResolveBitrixContract()`
-- `useSeedTemplates()`
-
-### 4. Renderer
-- `_shared/contract-renderer.ts` já suporta `<style>` embutido — sem mudanças.
-- Cada template traz CSS próprio com `-webkit-print-color-adjust: exact` para preservar cores em PDF.
+Registro do webhook: o tenant configura a URL **uma vez** no painel da conta Asaas dele (mostramos no `DashboardContracts` com botão copiar). Não auto-registramos (a conta Asaas é do tenant e já é usada pelo conector principal — este webhook é endpoint separado).
 
 ---
 
 ## Arquivos
 
-**Editar:**
-- `src/pages/DashboardContractTemplates.tsx`
-- `src/components/contracts/ContractWizard.tsx`
-- `src/hooks/useContracts.ts`
+**Migrations**
+- `<ts>_contract_asaas_billing.sql`:
+  - `contract_templates`: + `asaas_billing_map jsonb DEFAULT '{}'`
+  - `contracts`: + `asaas_billing_type`, `asaas_charge_mode`, `asaas_subscription_cycle`, `asaas_customer_payload jsonb`, `asaas_customer_id text`, `asaas_payment_id text`, `auto_create_charge bool default true`, `payment_status text default 'pending'`
 
-**Criar:**
-- `supabase/migrations/<ts>_template_bitrix_field_map.sql`
-- `supabase/functions/contract-templates-seed/index.ts`
-- `supabase/functions/bitrix-contract-fields/index.ts`
-- `supabase/functions/_shared/contract-default-templates.ts` (HTML+CSS dos 5 modelos, incluindo Delivery Real completo com Cláusula 4 expandida)
-- `src/components/contracts/BitrixFieldMapper.tsx`
+**Edge functions**
+- `supabase/functions/asaas-contract-webhook/index.ts` (novo, public)
+- `supabase/functions/contract-public/index.ts` (editar: ao assinar, chamar criação de cobrança quando `auto_create_charge`)
+- `supabase/functions/bitrix-contract-fields/index.ts` (editar: action `resolve` devolve `asaas_billing` também)
+- `supabase/functions/_shared/asaas-contract-billing.ts` (novo: helpers `ensureAsaasCustomer`, `createCharge`, `createSubscription`)
+
+**Frontend**
+- `src/components/contracts/AsaasBillingFieldMapper.tsx` (novo)
+- `src/components/contracts/ContractWizard.tsx` (editar: novo passo Pagamento)
+- `src/components/contracts/AsaasPaymentStep.tsx` (novo)
+- `src/pages/DashboardContractTemplates.tsx` (editar: incluir `AsaasBillingFieldMapper`)
+- `src/pages/DashboardContracts.tsx` (editar: badge `payment_status` + bloco "URL do webhook Asaas")
+- `src/hooks/useContracts.ts` (editar: tipos + campos novos)
+
+**Config**
+- `supabase/config.toml`: `[functions.asaas-contract-webhook] verify_jwt = false`
 
 ---
 
 ## Fora de escopo
 
-- Sem editor WYSIWYG nesta entrega (segue textarea HTML + botão "Pré-visualizar").
-- Não criamos campos UF_CRM_* automaticamente no Bitrix — o tenant mapeia para os que já existem na conta dele.
-- Os placeholders do .docx (`{ContactName}`, `{CompanyUfCrm1781051230426}`, etc.) são convertidos para nossos placeholders Mustache (`{{cliente_nome}}`, `{{cliente_doc}}`); o tenant configura o mapeamento Bitrix para apontar para os UF_CRM corretos da conta dele.
+- Tokenização de cartão de crédito direta no wizard (cliente paga via link `invoiceUrl` do Asaas).
+- Split de pagamento por contrato (já existe módulo `transaction_splits` separado; pode ser adicionado depois).
+- Renegociação/edição de cobrança após criada — apenas cancelamento via mudança de status do contrato.
