@@ -59,9 +59,16 @@ async function ensureFields(endpoint: string, accessToken: string, entityKind: "
 async function registerRobot(endpoint: string, accessToken: string, templates: Array<{ id: string; name: string }> = []) {
   const params = buildContractRobotParams(templates, SUPABASE_URL);
 
-  // Try add; if already exists, update to refresh the template options
+  // Force a clean definition so tenants with an old/partial robot get the visible Bizproc option.
+  await callBitrix(endpoint, "bizproc.robot.delete", { CODE: params.CODE }, accessToken).catch(() => null);
+
+  // Try add; if Bitrix still says it already exists, update to refresh the template options.
   const addRes = await callBitrix(endpoint, "bizproc.robot.add", params, accessToken);
-  const alreadyExists = String(addRes?.error_description || addRes?.error || "").toLowerCase().includes("exist") || addRes?.error === "ERROR_ROBOT_VALIDATION_FAILURE";
+  const alreadyExistsText = String(addRes?.error_description || addRes?.error || "").toLowerCase();
+  const alreadyExists = alreadyExistsText.includes("exist")
+    || alreadyExistsText.includes("already installed")
+    || addRes?.error === "ERROR_ROBOT_VALIDATION_FAILURE"
+    || addRes?.error === "ERROR_ACTIVITY_ALREADY_INSTALLED";
   if (alreadyExists) {
     const upd = await callBitrix(endpoint, "bizproc.robot.update", params, accessToken);
     if (upd?.error) console.warn("[contract-setup] robot.update:", upd.error, upd.error_description);
