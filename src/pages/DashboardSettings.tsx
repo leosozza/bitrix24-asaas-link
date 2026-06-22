@@ -276,6 +276,49 @@ export default function DashboardSettings() {
     toast.success('Configuração Asaas salva');
   };
 
+  const loadInvoiceStages = async () => {
+    if (!user) return;
+    setLoadingStages(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('bitrix-invoice-stages', {
+        body: { tenant_id: user.id },
+      });
+      if (error) throw error;
+      const stages = (data?.stages || []) as Array<{ statusId: string; name: string; semantics?: string | null }>;
+      setInvoiceStages(stages);
+      if (!invoicePaidStageId) {
+        const success = stages.find(s => (s.semantics || '').toUpperCase() === 'S');
+        if (success) setInvoicePaidStageId(success.statusId);
+      }
+    } catch (e: any) {
+      toast.error('Não foi possível carregar os estágios das Faturas do Bitrix24');
+    } finally {
+      setLoadingStages(false);
+    }
+  };
+
+  const saveInvoiceSync = async () => {
+    if (!user) return;
+    if (syncBitrixInvoices && !invoicePaidStageId) {
+      toast.error('Escolha o estágio "Pago/Convertido" da Fatura');
+      return;
+    }
+    setSavingInvoiceSync(true);
+    const { error } = await supabase
+      .from('asaas_configurations')
+      .update({
+        sync_bitrix_invoices: syncBitrixInvoices,
+        bitrix_invoice_paid_stage_id: syncBitrixInvoices ? invoicePaidStageId : null,
+      })
+      .eq('tenant_id', user.id)
+      .eq('is_active', true);
+    setSavingInvoiceSync(false);
+    if (error) return toast.error('Erro: ' + error.message);
+    toast.success('Integração com Faturas Bitrix atualizada');
+  };
+
+
+
   const saveManualSecret = async () => {
     if (!user || !manualSecret.trim()) return;
     setIsSavingSecret(true);
