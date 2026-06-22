@@ -71,7 +71,7 @@ export function useContracts() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("contracts")
-        .select("id,template_id,asaas_subscription_id,bitrix_entity_type,bitrix_entity_id,customer_name,customer_doc,customer_email,total_value,payment_schedule,public_token,status,signed_at,signature_name,created_at")
+        .select("id,template_id,asaas_subscription_id,asaas_payment_id,asaas_invoice_url,asaas_charge_mode,asaas_billing_type,bitrix_entity_type,bitrix_entity_id,customer_name,customer_doc,customer_email,total_value,payment_schedule,public_token,status,payment_status,auto_create_charge,signed_at,signature_name,created_at")
         .order("created_at", { ascending: false });
       if (error) throw error;
       return (data || []) as unknown as Contract[];
@@ -92,6 +92,7 @@ export function useSaveTemplate() {
         body_html: input.body_html || "",
         is_default: !!input.is_default,
         bitrix_field_map: (input.bitrix_field_map ?? {}) as any,
+        asaas_billing_map: (input.asaas_billing_map ?? {}) as any,
         ...(input.cover_style !== undefined ? { cover_style: input.cover_style } : {}),
       };
       if (input.id) {
