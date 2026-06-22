@@ -268,6 +268,7 @@ export type Database = {
       }
       contract_templates: {
         Row: {
+          asaas_billing_map: Json
           bitrix_field_map: Json
           body_html: string
           cover_style: string | null
@@ -281,6 +282,7 @@ export type Database = {
           variables: Json
         }
         Insert: {
+          asaas_billing_map?: Json
           bitrix_field_map?: Json
           body_html: string
           cover_style?: string | null
@@ -294,6 +296,7 @@ export type Database = {
           variables?: Json
         }
         Update: {
+          asaas_billing_map?: Json
           bitrix_field_map?: Json
           body_html?: string
           cover_style?: string | null
@@ -310,8 +313,17 @@ export type Database = {
       }
       contracts: {
         Row: {
+          asaas_bank_slip_url: string | null
+          asaas_billing_type: string | null
+          asaas_charge_mode: string | null
           asaas_customer_id: string | null
+          asaas_customer_payload: Json
+          asaas_installment_id: string | null
+          asaas_invoice_url: string | null
+          asaas_payment_id: string | null
+          asaas_subscription_cycle: string | null
           asaas_subscription_id: string | null
+          auto_create_charge: boolean
           bitrix_entity_id: string | null
           bitrix_entity_type: string | null
           company_name: string | null
@@ -325,7 +337,10 @@ export type Database = {
           document_hash: string | null
           extra_vars: Json
           id: string
+          installment_count: number | null
+          payment_due_date: string | null
           payment_schedule: Json
+          payment_status: string
           pdf_storage_path: string | null
           public_token: string
           rendered_html: string
@@ -347,8 +362,17 @@ export type Database = {
           viewed_at: string | null
         }
         Insert: {
+          asaas_bank_slip_url?: string | null
+          asaas_billing_type?: string | null
+          asaas_charge_mode?: string | null
           asaas_customer_id?: string | null
+          asaas_customer_payload?: Json
+          asaas_installment_id?: string | null
+          asaas_invoice_url?: string | null
+          asaas_payment_id?: string | null
+          asaas_subscription_cycle?: string | null
           asaas_subscription_id?: string | null
+          auto_create_charge?: boolean
           bitrix_entity_id?: string | null
           bitrix_entity_type?: string | null
           company_name?: string | null
@@ -362,7 +386,10 @@ export type Database = {
           document_hash?: string | null
           extra_vars?: Json
           id?: string
+          installment_count?: number | null
+          payment_due_date?: string | null
           payment_schedule?: Json
+          payment_status?: string
           pdf_storage_path?: string | null
           public_token?: string
           rendered_html: string
@@ -384,8 +411,17 @@ export type Database = {
           viewed_at?: string | null
         }
         Update: {
+          asaas_bank_slip_url?: string | null
+          asaas_billing_type?: string | null
+          asaas_charge_mode?: string | null
           asaas_customer_id?: string | null
+          asaas_customer_payload?: Json
+          asaas_installment_id?: string | null
+          asaas_invoice_url?: string | null
+          asaas_payment_id?: string | null
+          asaas_subscription_cycle?: string | null
           asaas_subscription_id?: string | null
+          auto_create_charge?: boolean
           bitrix_entity_id?: string | null
           bitrix_entity_type?: string | null
           company_name?: string | null
@@ -399,7 +435,10 @@ export type Database = {
           document_hash?: string | null
           extra_vars?: Json
           id?: string
+          installment_count?: number | null
+          payment_due_date?: string | null
           payment_schedule?: Json
+          payment_status?: string
           pdf_storage_path?: string | null
           public_token?: string
           rendered_html?: string

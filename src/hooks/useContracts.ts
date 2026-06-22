@@ -14,6 +14,7 @@ export interface ContractTemplate {
   is_default: boolean;
   cover_style: string | null;
   bitrix_field_map: BitrixFieldMap;
+  asaas_billing_map: BitrixFieldMap;
   created_at: string;
   updated_at: string;
 }
@@ -29,6 +30,10 @@ export interface Contract {
   id: string;
   template_id: string | null;
   asaas_subscription_id: string | null;
+  asaas_payment_id: string | null;
+  asaas_invoice_url: string | null;
+  asaas_charge_mode: string | null;
+  asaas_billing_type: string | null;
   bitrix_entity_type: string | null;
   bitrix_entity_id: string | null;
   customer_name: string;
@@ -38,6 +43,8 @@ export interface Contract {
   payment_schedule: Array<{ n: number; tipo: string; vencimento: string; valor: number; metodo: string }>;
   public_token: string;
   status: "draft" | "sent" | "viewed" | "signed" | "canceled";
+  payment_status: "pending" | "paid" | "overdue" | "refunded" | "canceled";
+  auto_create_charge: boolean;
   signed_at: string | null;
   signature_name: string | null;
   created_at: string;
@@ -64,7 +71,7 @@ export function useContracts() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("contracts")
-        .select("id,template_id,asaas_subscription_id,bitrix_entity_type,bitrix_entity_id,customer_name,customer_doc,customer_email,total_value,payment_schedule,public_token,status,signed_at,signature_name,created_at")
+        .select("id,template_id,asaas_subscription_id,asaas_payment_id,asaas_invoice_url,asaas_charge_mode,asaas_billing_type,bitrix_entity_type,bitrix_entity_id,customer_name,customer_doc,customer_email,total_value,payment_schedule,public_token,status,payment_status,auto_create_charge,signed_at,signature_name,created_at")
         .order("created_at", { ascending: false });
       if (error) throw error;
       return (data || []) as unknown as Contract[];
@@ -85,6 +92,7 @@ export function useSaveTemplate() {
         body_html: input.body_html || "",
         is_default: !!input.is_default,
         bitrix_field_map: (input.bitrix_field_map ?? {}) as any,
+        asaas_billing_map: (input.asaas_billing_map ?? {}) as any,
         ...(input.cover_style !== undefined ? { cover_style: input.cover_style } : {}),
       };
       if (input.id) {
@@ -138,7 +146,7 @@ export function useResolveBitrixContract() {
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
-      return data as { success: boolean; customer: Record<string, string>; extra_vars: Record<string, string>; mapped_count: number };
+      return data as { success: boolean; customer: Record<string, string>; extra_vars: Record<string, string>; asaas_billing: Record<string, string>; asaas_billing_keys: string[]; mapped_count: number };
     },
   });
 }
