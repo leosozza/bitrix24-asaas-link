@@ -295,6 +295,16 @@ export default function DashboardSettings() {
         const success = stages.find(s => (s.semantics || '').toUpperCase() === 'S');
         if (success) setInvoicePaidStageId(success.statusId);
       }
+      if (!invoicePendingStageId) {
+        const pending = stages.find(s => (s.semantics || '').toUpperCase() === 'P')
+          || stages.find(s => !s.semantics)
+          || stages[0];
+        if (pending) setInvoicePendingStageId(pending.statusId);
+      }
+      if (!invoiceOverdueStageId) {
+        const fail = stages.find(s => (s.semantics || '').toUpperCase() === 'F');
+        if (fail) setInvoiceOverdueStageId(fail.statusId);
+      }
     } catch (e: any) {
       toast.error('Não foi possível carregar os estágios das Faturas do Bitrix24');
     } finally {
@@ -304,8 +314,8 @@ export default function DashboardSettings() {
 
   const saveInvoiceSync = async () => {
     if (!user) return;
-    if (syncBitrixInvoices && !invoicePaidStageId) {
-      toast.error('Escolha o estágio "Pago/Convertido" da Fatura');
+    if (syncBitrixInvoices && (!invoicePaidStageId || !invoicePendingStageId || !invoiceOverdueStageId)) {
+      toast.error('Escolha o estágio para "A Receber", "Em Atraso" e "Recebidas"');
       return;
     }
     setSavingInvoiceSync(true);
@@ -314,7 +324,9 @@ export default function DashboardSettings() {
       .update({
         sync_bitrix_invoices: syncBitrixInvoices,
         bitrix_invoice_paid_stage_id: syncBitrixInvoices ? invoicePaidStageId : null,
-      })
+        bitrix_invoice_pending_stage_id: syncBitrixInvoices ? invoicePendingStageId : null,
+        bitrix_invoice_overdue_stage_id: syncBitrixInvoices ? invoiceOverdueStageId : null,
+      } as any)
       .eq('tenant_id', user.id)
       .eq('is_active', true);
     setSavingInvoiceSync(false);
