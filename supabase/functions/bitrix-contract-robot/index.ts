@@ -36,12 +36,16 @@ serve(async (req) => {
     const documentTypeRaw = params["document_type[2]"] || "";
     const documentIdRaw = params["document_id[2]"] || params["document_id[0]"] || "";
 
-    const templateId = params["properties[template_id]"] || params["PROPERTIES[template_id]"] || "";
-    const valor = Number(params["properties[payment_total]"] || params["PROPERTIES[payment_total]"] || 0);
-    const qty = parseInt(params["properties[payment_qty]"] || params["PROPERTIES[payment_qty]"] || "1");
-    const method = (params["properties[payment_method]"] || params["PROPERTIES[payment_method]"] || "PIX").toUpperCase();
-    const startDate = params["properties[payment_start]"] || params["PROPERTIES[payment_start]"] || new Date().toISOString().slice(0, 10);
-    const intervalDays = parseInt(params["properties[payment_interval_days]"] || params["PROPERTIES[payment_interval_days]"] || "30");
+    const p = (k: string) => params[`properties[${k}]`] || params[`PROPERTIES[${k}]`] || "";
+    let templateId = p("template_id");
+    const valor = Number(p("payment_total") || 0);
+    const qty = parseInt(p("payment_qty") || "1");
+    const method = (p("payment_method") || "PIX").toUpperCase();
+    const startDate = p("payment_start") || new Date().toISOString().slice(0, 10);
+    const intervalDays = parseInt(p("payment_interval_days") || "30");
+    const asaasAutoCharge = String(p("asaas_auto_charge") || "Y").toUpperCase() !== "N";
+    const asaasChargeMode = (p("asaas_charge_mode") || "parcelada").toLowerCase();
+    const asaasSubscriptionCycle = (p("asaas_subscription_cycle") || "MONTHLY").toUpperCase();
 
     const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const { data: inst } = await admin.from("bitrix_installations")
