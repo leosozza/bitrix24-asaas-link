@@ -1,0 +1,1 @@
+UPDATE public.bitrix_installations SET client_endpoint = 'https://' || domain || '/rest/' WHERE (client_endpoint IS NULL OR client_endpoint = '') AND domain IS NOT NULL AND domain <> '';
