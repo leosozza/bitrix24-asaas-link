@@ -221,7 +221,8 @@
   overflow: auto;
   border: 1px solid hsl(var(--border));
   border-radius: 0.375rem;
-  max-height: calc(90vh - 240px);
+  max-height: calc(90vh - 320px);
+  min-height: 360px;
 }
 .docx-zoom-wrap {
   transform-origin: top center;
