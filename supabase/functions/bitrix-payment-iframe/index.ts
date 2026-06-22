@@ -4214,6 +4214,82 @@ async function generateDashboardPage(
       body.style.display = isOpen ? 'none' : 'block';
       if (caret) caret.textContent = isOpen ? '▼' : '▲';
     }
+
+    function toggleInvoiceSyncCard() {
+      const body = document.getElementById('invsync-body');
+      const caret = document.getElementById('invsync-caret');
+      if (!body) return;
+      const isOpen = body.style.display !== 'none';
+      body.style.display = isOpen ? 'none' : 'block';
+      if (caret) caret.textContent = isOpen ? '▼' : '▲';
+      if (!isOpen) ensureInvoiceStagesLoaded();
+    }
+
+    let __invoiceStages = null;
+    async function ensureInvoiceStagesLoaded(force) {
+      if (__invoiceStages && !force) { populateInvoiceStageSelects(); return; }
+      const result = await apiCall('get_invoice_stages');
+      if (!result || !result.success) {
+        showToast(result?.error || 'Erro ao carregar estágios das Faturas Bitrix', 'error');
+        return;
+      }
+      __invoiceStages = result.stages || [];
+      populateInvoiceStageSelects();
+    }
+    function populateInvoiceStageSelects() {
+      const inv = (settingsData && settingsData.invoiceSync) || {};
+      const map = [
+        { id: 'cfg-stage-pending', selected: inv.pendingStageId, sem: 'P' },
+        { id: 'cfg-stage-overdue', selected: inv.overdueStageId, sem: 'F' },
+        { id: 'cfg-stage-paid', selected: inv.paidStageId, sem: 'S' },
+      ];
+      map.forEach((m) => {
+        const sel = document.getElementById(m.id);
+        if (!sel) return;
+        const options = (__invoiceStages || []).map((s) => {
+          const isSel = (m.selected && s.statusId === m.selected) ? ' selected' : '';
+          const mark = ((s.semantics || '').toUpperCase() === m.sem) ? ' ✓' : '';
+          return '<option value="' + escapeHtml(s.statusId) + '"' + isSel + '>' + escapeHtml(s.name) + mark + '</option>';
+        }).join('');
+        sel.innerHTML = '<option value="">— selecione —</option>' + options;
+        // auto-pick by semantics when nothing selected
+        if (!m.selected) {
+          const auto = (__invoiceStages || []).find((s) => (s.semantics || '').toUpperCase() === m.sem);
+          if (auto) sel.value = auto.statusId;
+        }
+      });
+    }
+    function reloadInvoiceStages() {
+      __invoiceStages = null;
+      ensureInvoiceStagesLoaded(true);
+    }
+    function onToggleSyncInvoices(btn) {
+      btn.classList.toggle('on');
+      const on = btn.classList.contains('on');
+      const wrap = document.getElementById('cfg-invoice-stages');
+      if (wrap) wrap.style.display = on ? 'block' : 'none';
+      if (on) ensureInvoiceStagesLoaded();
+    }
+    async function saveInvoiceSync() {
+      const enabled = document.getElementById('cfg-sync-invoices').classList.contains('on');
+      const pendingStageId = (document.getElementById('cfg-stage-pending') || {}).value || '';
+      const overdueStageId = (document.getElementById('cfg-stage-overdue') || {}).value || '';
+      const paidStageId = (document.getElementById('cfg-stage-paid') || {}).value || '';
+      if (enabled && (!pendingStageId || !overdueStageId || !paidStageId)) {
+        showToast('Selecione as três etapas', 'error');
+        return;
+      }
+      const result = await apiCall('save_invoice_sync', { data: { enabled, pendingStageId, overdueStageId, paidStageId } });
+      if (result.success) {
+        showToast(result.message || 'Integração de Faturas salva');
+        tabLoaded['settings'] = false;
+        loadSettings();
+      } else {
+        showToast(result.error || 'Erro', 'error');
+      }
+    }
+    
+
     
     function openCompanyModal() { openModal('company-modal'); }
     function openAsaasModal() { openModal('asaas-modal'); }
