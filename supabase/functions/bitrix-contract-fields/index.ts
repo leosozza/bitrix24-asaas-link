@@ -26,14 +26,24 @@ const ENTITY_METHODS: Record<string, { fields: string; get: string }> = {
 async function getInstallation(admin: any, tenantId: string) {
   const { data } = await admin
     .from("bitrix_installations")
-    .select("client_endpoint, access_token, member_id")
+    .select("client_endpoint, access_token, member_id, domain")
     .eq("status", "active")
     .eq("tenant_id", tenantId)
     .order("updated_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  return data;
+  if (!data) return null;
+  // Normalize endpoint: must be a full URL ending with /rest/
+  let endpoint: string = data.client_endpoint || "";
+  if (!endpoint && data.domain) {
+    const host = String(data.domain).replace(/^https?:\/\//, "").replace(/\/+$/, "");
+    endpoint = `https://${host}/rest/`;
+  }
+  if (endpoint && !/^https?:\/\//i.test(endpoint)) endpoint = `https://${endpoint}`;
+  if (endpoint && !endpoint.endsWith("/")) endpoint += "/";
+  return { ...data, client_endpoint: endpoint };
 }
+
 
 function fieldLabel(meta: any): string {
   if (!meta) return "";
