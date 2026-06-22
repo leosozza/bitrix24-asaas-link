@@ -2918,6 +2918,9 @@ async function generateDashboardPage(
     }
     .btn-outline:hover { background: #f9fafb; }
     .btn-sm { padding: 4px 10px; font-size: 12px; }
+    .btn-chip { padding: 4px 10px; font-size: 12px; border: 1px solid #e5e7eb; background: #fff; border-radius: 999px; cursor: pointer; color: #374151; }
+    .btn-chip:hover { background: #f3f4f6; }
+    .btn-chip.active { background: #2FC6F6; color: #fff; border-color: #2FC6F6; }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
     
     /* FORM */
