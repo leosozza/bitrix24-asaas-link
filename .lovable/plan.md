@@ -1,48 +1,39 @@
-## Objetivo
+## Diagnóstico
 
-1. Transformar a página **Faturas** em uma visualização por abas:
-   - **A Receber** — cobranças pendentes ainda dentro do prazo
-   - **Em Atraso** — cobranças pendentes com vencimento ultrapassado
-   - **Recebidas** — cobranças pagas/confirmadas
+O card "Integração com Faturas do Bitrix24" **já existe no código-fonte** de `supabase/functions/bitrix-payment-iframe/index.ts` (linhas 4096–4115), mas **não está presente na versão publicada** da Edge Function.
 
-2. Nas **Configurações → Asaas → Integração com Faturas do Bitrix24**, permitir escolher qual **etapa do funil de Faturas (SmartInvoice)** representa cada estado, e mover a fatura no Bitrix automaticamente conforme o status muda no Asaas.
+Verificação feita agora:
 
-## Mudanças
+```text
+URL: …/functions/v1/bitrix-payment-iframe?...&PLACEMENT=DEFAULT
+- "Configuração Fiscal"            → 6 ocorrências ✔ (código antigo presente)
+- "Integração com Faturas"         → 0 ocorrências ✘ (código novo ausente)
+- "cfg-sync-invoices" / "invoiceSync" → 0 ocorrências ✘
+```
 
-### Banco de dados (migração)
-Adicionar em `asaas_configurations`:
-- `bitrix_invoice_pending_stage_id text` — etapa "A Receber"
-- `bitrix_invoice_overdue_stage_id text` — etapa "Em Atraso"
-- (já existe `bitrix_invoice_paid_stage_id` — etapa "Recebidas")
+Ou seja: o deploy da última alteração da função `bitrix-payment-iframe` não foi efetivado. Por isso, mesmo abrindo a aba Configurações dentro do Bitrix24, o card não aparece — o navegador está recebendo o HTML antigo gerado pela função antiga.
 
-### Página Faturas (`src/pages/DashboardInvoices.tsx`)
-Reescrever para mostrar abas (componente `Tabs`) usando dados da tabela `transactions` que possuem `bitrix_invoice_id` (e/ou todas as cobranças Asaas, a confirmar):
-- **A Receber**: `status = 'pending'` AND `due_date >= hoje`
-- **Em Atraso**: `status = 'pending'` AND `due_date < hoje`
-- **Recebidas**: `status = 'confirmed'`
+A migração no banco já está aplicada (colunas `sync_bitrix_invoices`, `bitrix_invoice_pending_stage_id`, `bitrix_invoice_overdue_stage_id`, `bitrix_invoice_paid_stage_id` existem em `asaas_configurations`).
 
-Cada aba mostra tabela com cliente, valor, vencimento, método, link da cobrança e link da fatura no Bitrix (se houver). Manter o botão atual de "Nova Nota Fiscal" como ação secundária, ou mover NFSe para outra página — **a confirmar com o usuário**.
+## O que vou fazer
 
-### Configurações Asaas (`src/pages/DashboardSettings.tsx`)
-Na seção "Integração com Faturas do Bitrix24", substituir o único select por **três selects**, um para cada estado:
-- Etapa "A Receber" → `bitrix_invoice_pending_stage_id`
-- Etapa "Em Atraso" → `bitrix_invoice_overdue_stage_id`
-- Etapa "Recebidas/Pago" → `bitrix_invoice_paid_stage_id`
+1. **Forçar o redeploy** da Edge Function `bitrix-payment-iframe` (toque sem mudança lógica — um comentário/whitespace para disparar o pipeline de deploy automático).
+2. **Validar o deploy** fazendo `curl` no endpoint da função e confirmando que o HTML servido contém:
+   - `"Integração com Faturas do Bitrix24"`
+   - `id="cfg-sync-invoices"`
+   - `function toggleInvoiceSyncCard`
+3. Se o deploy continuar não pegando, investigar erros de build da função (sintaxe / import) e corrigir.
 
-Os três usam a mesma lista carregada via `bitrix-invoice-stages` (auto-sugerir por `semantics`: `P`=processo→A Receber, `F`=falha→Em Atraso, `S`=sucesso→Recebidas).
+## O que o usuário precisa fazer
 
-### Edge functions
-- **`bitrix-payment-process`**: ao criar a SmartInvoice, já definir o `stageId` para `bitrix_invoice_pending_stage_id` (se configurado).
-- **`asaas-webhook`**:
-  - `PAYMENT_OVERDUE` → mover invoice para `bitrix_invoice_overdue_stage_id`.
-  - `PAYMENT_CONFIRMED` / `PAYMENT_RECEIVED` → mover para `bitrix_invoice_paid_stage_id` (já implementado).
+Depois do redeploy confirmado:
 
-## Pergunta antes de implementar
+- Dentro do Bitrix24, abrir o app Asaas e dar um **refresh forte** no iframe (Ctrl+Shift+R / Cmd+Shift+R) — o Bitrix mantém cache agressivo do HTML do iframe e pode continuar mostrando a versão antiga até o reload.
+- O novo card "Integração com Faturas do Bitrix24" aparecerá entre "Configuração Fiscal" e "Split de Pagamento" na aba **Configurações**, com:
+  - Toggle "Criar Fatura no Bitrix24 para cada cobrança"
+  - 3 selects (A Receber / Em Atraso / Recebidas) para mapear as etapas do pipeline de SmartInvoice do Bitrix
+  - Botão "Salvar integração de Faturas"
 
-A página **Faturas** hoje gerencia **NFSe (notas fiscais de serviço)**. O que você quer:
+## Escopo
 
-- **(A)** Substituir a página atual: as abas A Receber / Em Atraso / Recebidas listam as **cobranças Asaas/Faturas do Bitrix**, e a parte de NFSe vai para outra página (ex.: "Notas Fiscais").
-- **(B)** Manter NFSe nesta página e **adicionar uma 4ª aba "Notas Fiscais"**, com as 3 primeiras sendo as cobranças.
-- **(C)** Outro arranjo (descreva).
-
-Confirmando essa escolha, eu sigo com a implementação completa acima.
+Apenas Edge Function `bitrix-payment-iframe`. Nada de frontend React (você confirmou que todos usam exclusivamente dentro do Bitrix24, então o painel externo `DashboardSettings` não é tocado nesta passada).
