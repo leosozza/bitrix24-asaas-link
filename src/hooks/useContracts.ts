@@ -162,7 +162,10 @@ export function useDeleteTemplate() {
       const { error } = await supabase.from("contract_templates").delete().eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["contract_templates"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["contract_templates"] });
+      supabase.functions.invoke("bitrix-contract-setup", { body: { action: "sync_robot_templates" } }).catch(() => {});
+    },
   });
 }
 
