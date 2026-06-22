@@ -618,7 +618,20 @@ async function ensureAutomationRobots(
   console.log('[Robots Ensure] Client endpoint:', clientEndpoint);
   console.log('[Robots Ensure] Force repair:', forceRepair);
   
-  const expectedRobots = ['asaas_create_charge', 'asaas_check_payment', 'asaas_create_subscription', 'asaas_cancel_subscription', 'asaas_create_invoice'];
+  const expectedRobots = ['asaas_create_charge', 'asaas_check_payment', 'asaas_create_subscription', 'asaas_cancel_subscription', 'asaas_create_invoice', CONTRACT_ROBOT_CODE];
+
+  // Resolve tenant_id from installation for contract robot template options
+  let tenantId: string | undefined;
+  try {
+    const { data: inst } = await supabase
+      .from('bitrix_installations')
+      .select('tenant_id')
+      .eq('id', installationId)
+      .maybeSingle();
+    tenantId = inst?.tenant_id || undefined;
+  } catch (e) {
+    console.log('[Robots Ensure] Could not resolve tenant_id:', e);
+  }
   
   // Step 1: Call bizproc.robot.list to check which robots exist
   console.log('[Robots Ensure] Calling bizproc.robot.list...');
