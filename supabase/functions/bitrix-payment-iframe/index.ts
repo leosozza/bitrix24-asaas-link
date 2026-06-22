@@ -2614,6 +2614,83 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
       return jsonSuccess({ message: 'Conta excluída' });
     }
     
+    case 'contract_templates_list': {
+      const { data: rows, error } = await supabase
+        .from('contract_templates')
+        .select('id,name,description,body_html,is_default,bitrix_field_map,asaas_billing_map,cover_style,updated_at')
+        .eq('tenant_id', tenantId)
+        .order('is_default', { ascending: false })
+        .order('updated_at', { ascending: false });
+      if (error) return jsonError(error.message);
+      return jsonSuccess({ templates: rows || [] });
+    }
+    case 'contract_template_save': {
+      const d = data || {};
+      if (!d.name) return jsonError('Nome obrigatório');
+      const payload: any = {
+        tenant_id: tenantId,
+        name: String(d.name),
+        description: d.description ? String(d.description) : null,
+        body_html: String(d.body_html || ''),
+        is_default: !!d.is_default,
+        bitrix_field_map: d.bitrix_field_map || {},
+      };
+      if (d.asaas_billing_map) payload.asaas_billing_map = d.asaas_billing_map;
+      let id = d.id;
+      if (id) {
+        const { error } = await supabase.from('contract_templates').update(payload).eq('id', id).eq('tenant_id', tenantId);
+        if (error) return jsonError(error.message);
+      } else {
+        const { data: ins, error } = await supabase.from('contract_templates').insert(payload).select('id').single();
+        if (error) return jsonError(error.message);
+        id = ins.id;
+      }
+      // If marked default, clear other defaults
+      if (payload.is_default) {
+        await supabase.from('contract_templates').update({ is_default: false }).eq('tenant_id', tenantId).neq('id', id);
+      }
+      // Fire-and-forget robot sync
+      fetch(`${SUPABASE_URL}/functions/v1/bitrix-contract-setup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}` },
+        body: JSON.stringify({ action: 'sync_robot_templates', tenant_id: tenantId, member_id: memberId }),
+      }).catch(() => {});
+      return jsonSuccess({ id });
+    }
+    case 'contract_template_delete': {
+      const id = data?.id;
+      if (!id) return jsonError('id obrigatório');
+      const { error } = await supabase.from('contract_templates').delete().eq('id', id).eq('tenant_id', tenantId);
+      if (error) return jsonError(error.message);
+      fetch(`${SUPABASE_URL}/functions/v1/bitrix-contract-setup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}` },
+        body: JSON.stringify({ action: 'sync_robot_templates', tenant_id: tenantId, member_id: memberId }),
+      }).catch(() => {});
+      return jsonSuccess({ message: 'Excluído' });
+    }
+    case 'contract_template_duplicate': {
+      const id = data?.id;
+      if (!id) return jsonError('id obrigatório');
+      const { data: orig, error: e1 } = await supabase
+        .from('contract_templates')
+        .select('name,description,body_html,bitrix_field_map,asaas_billing_map,cover_style')
+        .eq('id', id).eq('tenant_id', tenantId).single();
+      if (e1) return jsonError(e1.message);
+      const { data: ins, error: e2 } = await supabase.from('contract_templates').insert({
+        tenant_id: tenantId,
+        name: (orig.name || 'Template') + ' (cópia)',
+        description: orig.description,
+        body_html: orig.body_html,
+        is_default: false,
+        bitrix_field_map: orig.bitrix_field_map || {},
+        asaas_billing_map: orig.asaas_billing_map || {},
+        cover_style: orig.cover_style,
+      }).select('id').single();
+      if (e2) return jsonError(e2.message);
+      return jsonSuccess({ id: ins.id });
+    }
+
     default:
       return jsonError(`Unknown action: ${action}`);
   }
