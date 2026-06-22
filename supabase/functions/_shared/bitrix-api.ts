@@ -22,10 +22,14 @@ export function flattenParams(obj: unknown, prefix = ""): Array<[string, string]
 }
 
 export async function callBitrix(endpoint: string, method: string, params: Record<string, unknown>, accessToken: string): Promise<any> {
+  if (!endpoint || !/^https?:\/\//i.test(endpoint)) {
+    return { error: "INVALID_ENDPOINT", error_description: `Endpoint Bitrix ausente ou inválido (recebido: "${endpoint}"). Reinstale o app no Bitrix24.` };
+  }
+  const base = endpoint.endsWith("/") ? endpoint : endpoint + "/";
   const form = new URLSearchParams();
   for (const [k, v] of flattenParams(params)) form.append(k, v);
   form.append("auth", accessToken);
-  const r = await fetch(`${endpoint}${method}`, {
+  const r = await fetch(`${base}${method}`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: form.toString(),
