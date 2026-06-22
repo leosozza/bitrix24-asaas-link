@@ -452,7 +452,7 @@ serve(async (req) => {
         try {
           const { data: cfg } = await supabase
             .from('asaas_configurations')
-            .select('sync_bitrix_invoices')
+            .select('sync_bitrix_invoices, bitrix_invoice_pending_stage_id')
             .eq('tenant_id', installation.tenant_id)
             .eq('is_active', true)
             .maybeSingle();
@@ -475,6 +475,7 @@ serve(async (req) => {
                 dueDate: payment.dueDate,
                 dealId: parseInt(paymentRequest.orderId) || null,
                 asaasPaymentId: payment.id,
+                stageId: (cfg as any).bitrix_invoice_pending_stage_id || null,
               });
               if (invoiceId) {
                 await supabase.from('transactions')

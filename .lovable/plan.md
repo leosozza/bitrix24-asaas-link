@@ -1,57 +1,48 @@
 ## Objetivo
 
-Adicionar, na configuração da integração Asaas, uma opção (toggle) para sincronizar **Faturas do Bitrix24 (SmartInvoice / entityTypeId = 31)** com as cobranças do Asaas.
+1. Transformar a página **Faturas** em uma visualização por abas:
+   - **A Receber** — cobranças pendentes ainda dentro do prazo
+   - **Em Atraso** — cobranças pendentes com vencimento ultrapassado
+   - **Recebidas** — cobranças pagas/confirmadas
 
-Quando ativado:
-- Cada nova cobrança Asaas (criada via robô, contrato ou Pay System) também cria uma **Fatura no Bitrix24** vinculada ao Deal/Contato/Cliente.
-- Quando o webhook Asaas confirma o pagamento (`PAYMENT_RECEIVED` / `PAYMENT_CONFIRMED`), a Fatura no Bitrix é atualizada para o status **"Convertido / Pago"** (`stageId` final do SmartInvoice).
-
-Quando desativado: nada muda no fluxo atual.
+2. Nas **Configurações → Asaas → Integração com Faturas do Bitrix24**, permitir escolher qual **etapa do funil de Faturas (SmartInvoice)** representa cada estado, e mover a fatura no Bitrix automaticamente conforme o status muda no Asaas.
 
 ## Mudanças
 
-### 1. Banco (migration)
+### Banco de dados (migração)
 Adicionar em `asaas_configurations`:
-- `sync_bitrix_invoices boolean default false`
-- `bitrix_invoice_paid_stage_id text` (opcional — stage usada como "Pago/Convertido"; default detectado automaticamente)
+- `bitrix_invoice_pending_stage_id text` — etapa "A Receber"
+- `bitrix_invoice_overdue_stage_id text` — etapa "Em Atraso"
+- (já existe `bitrix_invoice_paid_stage_id` — etapa "Recebidas")
 
-Adicionar em `transactions`:
-- `bitrix_invoice_id bigint` (id da fatura SmartInvoice criada no Bitrix)
+### Página Faturas (`src/pages/DashboardInvoices.tsx`)
+Reescrever para mostrar abas (componente `Tabs`) usando dados da tabela `transactions` que possuem `bitrix_invoice_id` (e/ou todas as cobranças Asaas, a confirmar):
+- **A Receber**: `status = 'pending'` AND `due_date >= hoje`
+- **Em Atraso**: `status = 'pending'` AND `due_date < hoje`
+- **Recebidas**: `status = 'confirmed'`
 
-### 2. UI — `src/pages/DashboardIntegrations.tsx` (e/ou `DashboardSettings.tsx`)
-Dentro do card de configuração Asaas, novo bloco **"Integração com Faturas do Bitrix24"**:
-- Switch "Criar Fatura no Bitrix24 para cada cobrança"
-- Quando ligado: select carregado via `crm.item.fields` + `crm.category.stage.list` para escolher qual stage representa "Pago/Convertido" (auto-seleciona a stage com semântica `S` (success) se houver).
-- Texto explicativo: "Ao criar uma cobrança Asaas, geraremos automaticamente uma Fatura vinculada ao Deal/Contato. Quando o cliente pagar, a Fatura será marcada como Convertida."
+Cada aba mostra tabela com cliente, valor, vencimento, método, link da cobrança e link da fatura no Bitrix (se houver). Manter o botão atual de "Nova Nota Fiscal" como ação secundária, ou mover NFSe para outra página — **a confirmar com o usuário**.
 
-### 3. Edge Functions
+### Configurações Asaas (`src/pages/DashboardSettings.tsx`)
+Na seção "Integração com Faturas do Bitrix24", substituir o único select por **três selects**, um para cada estado:
+- Etapa "A Receber" → `bitrix_invoice_pending_stage_id`
+- Etapa "Em Atraso" → `bitrix_invoice_overdue_stage_id`
+- Etapa "Recebidas/Pago" → `bitrix_invoice_paid_stage_id`
 
-**Novo helper** `supabase/functions/_shared/bitrix-invoice.ts`:
-- `createBitrixInvoice({ endpoint, token, dealId, contactId, companyId, amount, title, dueDate, asaasPaymentId })` → usa `crm.item.add` com `entityTypeId=31`, popula `parentId2` (deal), `contactId`, `companyId`, `opportunity` (valor), `title`, `accountNumber` (id Asaas).
-- `markBitrixInvoicePaid({ endpoint, token, invoiceId, paidStageId })` → `crm.item.update` com `stageId`.
+Os três usam a mesma lista carregada via `bitrix-invoice-stages` (auto-sugerir por `semantics`: `P`=processo→A Receber, `F`=falha→Em Atraso, `S`=sucesso→Recebidas).
 
-**Pontos de integração (criação)** — após criar cobrança no Asaas, se `sync_bitrix_invoices = true`, criar fatura e salvar `bitrix_invoice_id` em `transactions`:
-- `supabase/functions/bitrix-payment-process/index.ts`
-- `supabase/functions/bitrix-subscription-process/index.ts`
-- `supabase/functions/_shared/asaas-contract-billing.ts` (cobranças de contratos)
-- `supabase/functions/bitrix-contract-robot/index.ts` (caminho do robô)
+### Edge functions
+- **`bitrix-payment-process`**: ao criar a SmartInvoice, já definir o `stageId` para `bitrix_invoice_pending_stage_id` (se configurado).
+- **`asaas-webhook`**:
+  - `PAYMENT_OVERDUE` → mover invoice para `bitrix_invoice_overdue_stage_id`.
+  - `PAYMENT_CONFIRMED` / `PAYMENT_RECEIVED` → mover para `bitrix_invoice_paid_stage_id` (já implementado).
 
-**Ponto de integração (atualização para pago)** — `supabase/functions/asaas-webhook/index.ts`:
-- Nos eventos `PAYMENT_RECEIVED` / `PAYMENT_CONFIRMED`, se a `transaction` tiver `bitrix_invoice_id` e a config tiver `sync_bitrix_invoices = true`, chamar `markBitrixInvoicePaid` com `bitrix_invoice_paid_stage_id`.
-- Em `PAYMENT_REFUNDED` / `PAYMENT_DELETED`: opcional — voltar a fatura para stage "Cancelado" (fora do escopo desta versão, ficará só logado).
+## Pergunta antes de implementar
 
-### 4. Logs
-Registrar em `integration_logs` as ações `bitrix_invoice_create` e `bitrix_invoice_mark_paid` (sucesso/erro), sem quebrar o fluxo principal se a chamada Bitrix falhar (apenas loga).
+A página **Faturas** hoje gerencia **NFSe (notas fiscais de serviço)**. O que você quer:
 
-## Detalhes técnicos
+- **(A)** Substituir a página atual: as abas A Receber / Em Atraso / Recebidas listam as **cobranças Asaas/Faturas do Bitrix**, e a parte de NFSe vai para outra página (ex.: "Notas Fiscais").
+- **(B)** Manter NFSe nesta página e **adicionar uma 4ª aba "Notas Fiscais"**, com as 3 primeiras sendo as cobranças.
+- **(C)** Outro arranjo (descreva).
 
-- API Bitrix usada: **SmartInvoice universal** (`crm.item.add` / `crm.item.update` com `entityTypeId=31`) — substitui `crm.invoice.add` (deprecated).
-- Stages da fatura são lidas via `crm.category.stage.list?entityTypeId=31` (não há `categoryId` em SmartInvoice na maioria dos portais — usar `entityTypeId=31` direto).
-- Vínculo com Deal: campo `parentId2` em SmartInvoice corresponde ao Deal pai.
-- O campo `opportunity` carrega o valor; `currencyId` = `BRL`.
-- `accountNumber` recebe o `id` do payment Asaas para rastreabilidade.
-- Idempotência: ao criar, se `transactions.bitrix_invoice_id` já existir, pular criação.
-
-## Fora do escopo
-- Sincronização reversa (Fatura criada no Bitrix → cobrança Asaas).
-- Mapeamento de impostos/itens da fatura — usaremos uma linha única com o valor total.
+Confirmando essa escolha, eu sigo com a implementação completa acima.

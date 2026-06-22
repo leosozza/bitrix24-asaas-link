@@ -623,6 +623,36 @@ serve(async (req) => {
         const clientEndpoint = installation.client_endpoint || (installation.domain ? `https://${installation.domain}/rest/` : null);
         if (clientEndpoint && installation.access_token) {
           await updateActivityBadge(clientEndpoint, installation.access_token, transaction.bitrix_activity_id, 'asaas_charge_overdue', false, payment.value, 'Vencido');
+
+          // Move linked Bitrix SmartInvoice to "Em Atraso" stage (if configured)
+          if ((transaction as any).bitrix_invoice_id) {
+            try {
+              const { data: cfg } = await supabase
+                .from('asaas_configurations')
+                .select('sync_bitrix_invoices, bitrix_invoice_overdue_stage_id')
+                .eq('tenant_id', tenantId)
+                .eq('is_active', true)
+                .maybeSingle();
+              if (cfg?.sync_bitrix_invoices && (cfg as any).bitrix_invoice_overdue_stage_id) {
+                const ok = await updateBitrixInvoiceStage(
+                  clientEndpoint,
+                  installation.access_token,
+                  (transaction as any).bitrix_invoice_id,
+                  (cfg as any).bitrix_invoice_overdue_stage_id,
+                );
+                await supabase.from('integration_logs').insert({
+                  tenant_id: tenantId,
+                  action: 'bitrix_invoice_mark_overdue',
+                  entity_type: 'invoice',
+                  entity_id: String((transaction as any).bitrix_invoice_id),
+                  status: ok ? 'success' : 'error',
+                  response_data: { stageId: (cfg as any).bitrix_invoice_overdue_stage_id },
+                });
+              }
+            } catch (invErr) {
+              console.error('[Webhook] Failed to mark Bitrix invoice as overdue:', invErr);
+            }
+          }
         }
       }
     }

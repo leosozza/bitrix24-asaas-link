@@ -54,6 +54,8 @@ export default function DashboardSettings() {
   // Bitrix invoice sync
   const [syncBitrixInvoices, setSyncBitrixInvoices] = useState(false);
   const [invoicePaidStageId, setInvoicePaidStageId] = useState<string>('');
+  const [invoicePendingStageId, setInvoicePendingStageId] = useState<string>('');
+  const [invoiceOverdueStageId, setInvoiceOverdueStageId] = useState<string>('');
   const [invoiceStages, setInvoiceStages] = useState<Array<{ statusId: string; name: string; semantics?: string | null }>>([]);
   const [loadingStages, setLoadingStages] = useState(false);
   const [savingInvoiceSync, setSavingInvoiceSync] = useState(false);
@@ -141,18 +143,20 @@ export default function DashboardSettings() {
       setWebhookUrl(`${supaUrl}/functions/v1/asaas-webhook`);
       const { data: cfg } = await supabase
         .from('asaas_configurations')
-        .select('api_key, environment, is_active, webhook_secret, webhook_configured, sync_bitrix_invoices, bitrix_invoice_paid_stage_id')
+        .select('api_key, environment, is_active, webhook_secret, webhook_configured, sync_bitrix_invoices, bitrix_invoice_paid_stage_id, bitrix_invoice_pending_stage_id, bitrix_invoice_overdue_stage_id' as any)
         .eq('tenant_id', user.id)
         .eq('is_active', true)
         .maybeSingle();
       if (cfg) {
-        setAsaasApiKey(cfg.api_key || '');
-        setAsaasEnv((cfg.environment as 'sandbox' | 'production') || 'production');
-        setAsaasConnected(!!cfg.is_active);
-        setWebhookSecret(cfg.webhook_secret || '');
-        setWebhookConfigured(!!cfg.webhook_configured);
+        setAsaasApiKey((cfg as any).api_key || '');
+        setAsaasEnv(((cfg as any).environment as 'sandbox' | 'production') || 'production');
+        setAsaasConnected(!!(cfg as any).is_active);
+        setWebhookSecret((cfg as any).webhook_secret || '');
+        setWebhookConfigured(!!(cfg as any).webhook_configured);
         setSyncBitrixInvoices(!!(cfg as any).sync_bitrix_invoices);
         setInvoicePaidStageId((cfg as any).bitrix_invoice_paid_stage_id || '');
+        setInvoicePendingStageId((cfg as any).bitrix_invoice_pending_stage_id || '');
+        setInvoiceOverdueStageId((cfg as any).bitrix_invoice_overdue_stage_id || '');
       }
       // Fiscal
       const { data: fc } = await supabase
@@ -291,6 +295,16 @@ export default function DashboardSettings() {
         const success = stages.find(s => (s.semantics || '').toUpperCase() === 'S');
         if (success) setInvoicePaidStageId(success.statusId);
       }
+      if (!invoicePendingStageId) {
+        const pending = stages.find(s => (s.semantics || '').toUpperCase() === 'P')
+          || stages.find(s => !s.semantics)
+          || stages[0];
+        if (pending) setInvoicePendingStageId(pending.statusId);
+      }
+      if (!invoiceOverdueStageId) {
+        const fail = stages.find(s => (s.semantics || '').toUpperCase() === 'F');
+        if (fail) setInvoiceOverdueStageId(fail.statusId);
+      }
     } catch (e: any) {
       toast.error('Não foi possível carregar os estágios das Faturas do Bitrix24');
     } finally {
@@ -300,8 +314,8 @@ export default function DashboardSettings() {
 
   const saveInvoiceSync = async () => {
     if (!user) return;
-    if (syncBitrixInvoices && !invoicePaidStageId) {
-      toast.error('Escolha o estágio "Pago/Convertido" da Fatura');
+    if (syncBitrixInvoices && (!invoicePaidStageId || !invoicePendingStageId || !invoiceOverdueStageId)) {
+      toast.error('Escolha o estágio para "A Receber", "Em Atraso" e "Recebidas"');
       return;
     }
     setSavingInvoiceSync(true);
@@ -310,7 +324,9 @@ export default function DashboardSettings() {
       .update({
         sync_bitrix_invoices: syncBitrixInvoices,
         bitrix_invoice_paid_stage_id: syncBitrixInvoices ? invoicePaidStageId : null,
-      })
+        bitrix_invoice_pending_stage_id: syncBitrixInvoices ? invoicePendingStageId : null,
+        bitrix_invoice_overdue_stage_id: syncBitrixInvoices ? invoiceOverdueStageId : null,
+      } as any)
       .eq('tenant_id', user.id)
       .eq('is_active', true);
     setSavingInvoiceSync(false);
@@ -940,27 +956,36 @@ export default function DashboardSettings() {
                   />
                 </div>
                 {syncBitrixInvoices && (
-                  <div className="space-y-2">
-                    <Label className="text-xs">Estágio "Pago / Convertido" da Fatura</Label>
-                    <div className="flex gap-2">
-                      <Select value={invoicePaidStageId} onValueChange={setInvoicePaidStageId} disabled={loadingStages || invoiceStages.length === 0}>
-                        <SelectTrigger>
-                          <SelectValue placeholder={loadingStages ? 'Carregando estágios...' : 'Selecione o estágio'} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {invoiceStages.map(s => (
-                            <SelectItem key={s.statusId} value={s.statusId}>
-                              {s.name} {(s.semantics || '').toUpperCase() === 'S' ? '✓' : ''}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                  <div className="space-y-4">
+                    {[
+                      { label: 'Etapa "A Receber" (cobrança criada)', value: invoicePendingStageId, setter: setInvoicePendingStageId, sem: 'P' },
+                      { label: 'Etapa "Em Atraso" (vencida)', value: invoiceOverdueStageId, setter: setInvoiceOverdueStageId, sem: 'F' },
+                      { label: 'Etapa "Recebidas" (pago / convertido)', value: invoicePaidStageId, setter: setInvoicePaidStageId, sem: 'S' },
+                    ].map((row, idx) => (
+                      <div key={idx} className="space-y-2">
+                        <Label className="text-xs">{row.label}</Label>
+                        <Select value={row.value} onValueChange={row.setter} disabled={loadingStages || invoiceStages.length === 0}>
+                          <SelectTrigger>
+                            <SelectValue placeholder={loadingStages ? 'Carregando estágios...' : 'Selecione o estágio'} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {invoiceStages.map(s => (
+                              <SelectItem key={s.statusId} value={s.statusId}>
+                                {s.name} {(s.semantics || '').toUpperCase() === row.sem ? '✓' : ''}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    ))}
+                    <div className="flex justify-end">
                       <Button type="button" variant="outline" size="sm" onClick={loadInvoiceStages} disabled={loadingStages}>
-                        {loadingStages ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Recarregar'}
+                        {loadingStages ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                        Recarregar estágios
                       </Button>
                     </div>
                     <p className="text-[11px] text-muted-foreground">
-                      Estágios são lidos do Bitrix24 (SmartInvoice). Marcamos automaticamente o que tem semântica de sucesso.
+                      Estágios são lidos do Bitrix24 (SmartInvoice). Sugerimos automaticamente: processo → A Receber, falha → Em Atraso, sucesso → Recebidas.
                     </p>
                   </div>
                 )}

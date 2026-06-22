@@ -17,7 +17,9 @@ export type Database = {
       asaas_configurations: {
         Row: {
           api_key: string | null
+          bitrix_invoice_overdue_stage_id: string | null
           bitrix_invoice_paid_stage_id: string | null
+          bitrix_invoice_pending_stage_id: string | null
           created_at: string
           environment: Database["public"]["Enums"]["asaas_environment"]
           id: string
@@ -31,7 +33,9 @@ export type Database = {
         }
         Insert: {
           api_key?: string | null
+          bitrix_invoice_overdue_stage_id?: string | null
           bitrix_invoice_paid_stage_id?: string | null
+          bitrix_invoice_pending_stage_id?: string | null
           created_at?: string
           environment?: Database["public"]["Enums"]["asaas_environment"]
           id?: string
@@ -45,7 +49,9 @@ export type Database = {
         }
         Update: {
           api_key?: string | null
+          bitrix_invoice_overdue_stage_id?: string | null
           bitrix_invoice_paid_stage_id?: string | null
+          bitrix_invoice_pending_stage_id?: string | null
           created_at?: string
           environment?: Database["public"]["Enums"]["asaas_environment"]
           id?: string
