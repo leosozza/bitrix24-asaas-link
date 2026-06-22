@@ -258,6 +258,7 @@ export default function DashboardSettings() {
   const openAsaasDialog = () => {
     setEditApiKey(asaasApiKey); setEditEnv(asaasEnv);
     setShowAsaasDialog(true);
+    if (syncBitrixInvoices && invoiceStages.length === 0) loadInvoiceStages();
   };
   const saveAsaas = async () => {
     if (!user) return;
