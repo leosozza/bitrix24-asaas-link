@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { ensureAsaasCustomer, createAsaasCharge, createAsaasSubscription } from "../_shared/asaas-contract-billing.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -216,6 +217,72 @@ serve(async (req) => {
         rendered_html: updatedHtml,
       }).eq("id", contract.id);
 
+      // Create Asaas charge/subscription if configured
+      let chargeResult: { invoiceUrl?: string; bankSlipUrl?: string; id?: string } | null = null;
+      if (contract.auto_create_charge && contract.asaas_charge_mode && contract.asaas_customer_payload) {
+        try {
+          const { data: cfg } = await admin
+            .from("asaas_configurations")
+            .select("api_key, environment")
+            .eq("tenant_id", contract.tenant_id)
+            .eq("is_active", true)
+            .maybeSingle();
+          if (cfg?.api_key) {
+            const env = cfg.environment || "sandbox";
+            const customerPayload = { ...(contract.asaas_customer_payload as any), externalReference: `contract:${contract.id}` };
+            const customerId = await ensureAsaasCustomer(env, cfg.api_key, customerPayload);
+            const billingType = (contract.asaas_billing_type || "UNDEFINED") as any;
+            const due = contract.payment_due_date || new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
+            const description = `Contrato ${contract.id.slice(0, 8)} — ${contract.customer_name}`;
+            const externalReference = `contract:${contract.id}`;
+
+            if (contract.asaas_charge_mode === "assinatura_mensal" || contract.asaas_charge_mode === "assinatura") {
+              const sub = await createAsaasSubscription(env, cfg.api_key, {
+                customerId, value: Number(contract.total_value || 0),
+                nextDueDate: due, billingType,
+                cycle: (contract.asaas_subscription_cycle as any) || "MONTHLY",
+                description, externalReference,
+                maxPayments: contract.installment_count || undefined,
+              });
+              chargeResult = { id: sub.id };
+              await admin.from("contracts").update({
+                asaas_customer_id: customerId,
+                asaas_subscription_id: sub.id,
+                payment_status: "pending",
+              }).eq("id", contract.id);
+            } else {
+              const isInstallment = contract.asaas_charge_mode === "parcelada" && (contract.installment_count ?? 0) > 1;
+              const payment = await createAsaasCharge(env, cfg.api_key, {
+                customerId,
+                value: Number(contract.total_value || 0),
+                billingType, dueDate: due, description, externalReference,
+                installmentCount: isInstallment ? contract.installment_count : undefined,
+                installmentValue: isInstallment ? Number(contract.total_value || 0) / (contract.installment_count || 1) : undefined,
+              });
+              chargeResult = { id: payment.id, invoiceUrl: payment.invoiceUrl, bankSlipUrl: payment.bankSlipUrl };
+              await admin.from("contracts").update({
+                asaas_customer_id: customerId,
+                asaas_payment_id: payment.id,
+                asaas_installment_id: payment.installment || null,
+                asaas_invoice_url: payment.invoiceUrl || null,
+                asaas_bank_slip_url: payment.bankSlipUrl || null,
+                payment_status: "pending",
+              }).eq("id", contract.id);
+            }
+          }
+        } catch (e) {
+          console.error("[contract-public] Asaas charge failed", e);
+          await admin.from("integration_logs").insert({
+            tenant_id: contract.tenant_id,
+            action: "contract_charge_create_failed",
+            entity_type: "contract",
+            entity_id: contract.id,
+            status: "error",
+            error_message: e instanceof Error ? e.message : String(e),
+          });
+        }
+      }
+
       // Update Bitrix CRM field if linked
       if (contract.bitrix_entity_type && contract.bitrix_entity_id) {
         try {
@@ -229,12 +296,20 @@ serve(async (req) => {
               entity_id: contract.bitrix_entity_id,
               signer_name: name,
               signed_at: signedAt,
+              invoice_url: chargeResult?.invoiceUrl || null,
             }),
           }).catch(() => {});
         } catch (_) { /* ignore */ }
       }
 
-      return json({ success: true, signed_at: signedAt, evidence_id: evidenceId, document_hash: documentHash, signature_hash: signatureHash });
+      return json({
+        success: true,
+        signed_at: signedAt,
+        evidence_id: evidenceId,
+        document_hash: documentHash,
+        signature_hash: signatureHash,
+        invoice_url: chargeResult?.invoiceUrl || null,
+      });
     }
 
     return json({ error: "Method not allowed" }, 405);
