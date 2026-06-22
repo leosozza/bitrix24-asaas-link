@@ -55,8 +55,13 @@ async function ensureFields(endpoint: string, accessToken: string, entityKind: "
   }
 }
 
-async function registerRobot(endpoint: string, accessToken: string) {
+async function registerRobot(endpoint: string, accessToken: string, templates: Array<{ id: string; name: string }> = []) {
   const handler = `${SUPABASE_URL}/functions/v1/bitrix-contract-robot`;
+  const templateOptions: Record<string, string> = {};
+  for (const t of templates) templateOptions[t.id] = t.name;
+  // Always include a fallback so the field is never empty in Bitrix
+  if (Object.keys(templateOptions).length === 0) templateOptions["__default__"] = "Template padrão";
+
   const params = {
     CODE: "asaas_contract_generate",
     HANDLER: handler,
@@ -64,24 +69,40 @@ async function registerRobot(endpoint: string, accessToken: string) {
     USE_SUBSCRIPTION: "Y",
     NAME: "ConnectPay: Gerar Contrato",
     PROPERTIES: {
-      template_id: { Name: "Template ID (UUID)", Type: "string", Required: "Y" },
-      payment_total: { Name: "Valor total (R$)", Type: "double" },
-      payment_qty: { Name: "Qtd parcelas", Type: "int" },
-      payment_method: { Name: "Método (PIX/BOLETO/CREDIT_CARD)", Type: "string" },
+      template_id: { Name: "Template do contrato", Type: "select", Required: "Y", Options: templateOptions },
+      payment_total: { Name: "Valor total (R$)", Type: "double", Required: "Y" },
+      payment_qty: { Name: "Qtd parcelas", Type: "int", Default: 1 },
+      payment_method: { Name: "Método (PIX/BOLETO/CREDIT_CARD)", Type: "select", Options: { PIX: "PIX", BOLETO: "Boleto", CREDIT_CARD: "Cartão", UNDEFINED: "Cliente escolhe" }, Default: "PIX" },
       payment_start: { Name: "Início (YYYY-MM-DD)", Type: "string" },
-      payment_interval_days: { Name: "Intervalo (dias)", Type: "int" },
+      payment_interval_days: { Name: "Intervalo (dias)", Type: "int", Default: 30 },
+      asaas_auto_charge: { Name: "Criar cobrança Asaas automaticamente", Type: "bool", Default: "Y" },
+      asaas_charge_mode: { Name: "Tipo de cobrança", Type: "select", Options: { unica: "Única", parcelada: "Parcelada", assinatura_mensal: "Assinatura mensal" }, Default: "parcelada" },
+      asaas_subscription_cycle: { Name: "Ciclo (assinatura)", Type: "select", Options: { MONTHLY: "Mensal", WEEKLY: "Semanal", BIWEEKLY: "Quinzenal", YEARLY: "Anual" }, Default: "MONTHLY" },
     },
     RETURN_PROPERTIES: {
       contract_url: { Name: "Link do contrato", Type: "string" },
       contract_pdf_url: { Name: "Link PDF", Type: "string" },
       contract_id: { Name: "ID do contrato", Type: "string" },
+      payment_link: { Name: "Link de pagamento Asaas", Type: "string" },
+      subscription_id: { Name: "ID da assinatura Asaas", Type: "string" },
     },
   };
-  const res = await callBitrix(endpoint, "bizproc.robot.add", params, accessToken);
-  if (res?.error && res.error !== "ERROR_ROBOT_VALIDATION_FAILURE" && !String(res.error_description || "").includes("already")) {
-    console.warn("[contract-setup] robot.add:", res.error, res.error_description);
+
+  // Try add; if already exists, update to refresh the template options
+  const addRes = await callBitrix(endpoint, "bizproc.robot.add", params, accessToken);
+  const alreadyExists = String(addRes?.error_description || addRes?.error || "").toLowerCase().includes("exist") || addRes?.error === "ERROR_ROBOT_VALIDATION_FAILURE";
+  if (alreadyExists) {
+    const upd = await callBitrix(endpoint, "bizproc.robot.update", params, accessToken);
+    if (upd?.error) console.warn("[contract-setup] robot.update:", upd.error, upd.error_description);
+    return upd;
   }
-  return res;
+  if (addRes?.error) console.warn("[contract-setup] robot.add:", addRes.error, addRes.error_description);
+  return addRes;
+}
+
+async function loadTemplatesForTenant(admin: any, tenantId: string) {
+  const { data } = await admin.from("contract_templates").select("id, name").eq("tenant_id", tenantId).order("name");
+  return (data || []) as Array<{ id: string; name: string }>;
 }
 
 serve(async (req) => {
@@ -95,12 +116,21 @@ serve(async (req) => {
 
     if (action === "setup_fields") {
       const tenantId = body.tenant_id;
-      const inst = await getInstallation(admin, tenantId);
+      const inst = await getInstallation(admin, tenantId, body.member_id);
       if (!inst?.client_endpoint || !inst?.access_token) return json({ error: "Instalação Bitrix não encontrada" }, 404);
       await ensureFields(inst.client_endpoint, inst.access_token, "deal");
       await ensureFields(inst.client_endpoint, inst.access_token, "lead");
-      const robot = await registerRobot(inst.client_endpoint, inst.access_token);
-      return json({ success: true, fields_installed: FIELDS.map((f) => f.code), robot });
+      const templates = await loadTemplatesForTenant(admin, inst.tenant_id);
+      const robot = await registerRobot(inst.client_endpoint, inst.access_token, templates);
+      return json({ success: true, fields_installed: FIELDS.map((f) => f.code), robot, templates_count: templates.length });
+    }
+
+    if (action === "sync_robot_templates") {
+      const inst = await getInstallation(admin, body.tenant_id, body.member_id);
+      if (!inst?.client_endpoint || !inst?.access_token) return json({ error: "Instalação Bitrix não encontrada" }, 404);
+      const templates = await loadTemplatesForTenant(admin, inst.tenant_id);
+      const robot = await registerRobot(inst.client_endpoint, inst.access_token, templates);
+      return json({ success: true, robot, templates_count: templates.length });
     }
 
     if (action === "update_entity") {
