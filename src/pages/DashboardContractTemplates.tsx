@@ -172,17 +172,6 @@ export default function DashboardContractTemplates() {
                 </div>
                 <div className="flex items-center gap-2"><Switch checked={!!editing.is_default} onCheckedChange={(v) => setEditing({ ...editing, is_default: v })} /><Label>Definir como padrão</Label></div>
               </div>
-              <div className="space-y-2">
-                <Label className="text-xs uppercase tracking-wide">Placeholders</Label>
-                <div className="space-y-1 max-h-[500px] overflow-y-auto pr-1">
-                  {PLACEHOLDERS.map(([code, desc]) => (
-                    <button key={code} onClick={() => { navigator.clipboard.writeText(code); toast({ title: "Copiado", description: code }); }} className="w-full text-left p-2 rounded border border-border hover:bg-muted text-xs">
-                      <div className="font-mono text-primary">{code}</div>
-                      <div className="text-muted-foreground">{desc}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
               <div className="lg:block hidden">
                 <BitrixFieldMapper
                   bodyHtml={editing.body_html || ""}
