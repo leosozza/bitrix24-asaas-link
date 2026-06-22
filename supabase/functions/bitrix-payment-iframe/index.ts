@@ -672,7 +672,7 @@ async function ensureAutomationRobots(
   
   // Step 3: Register missing robots (or all if forceRepair)
   console.log('[Robots Ensure] Registering robots...');
-  const registerResult = await registerAutomationRobots(clientEndpoint, accessToken, true);
+  const registerResult = await registerAutomationRobots(clientEndpoint, accessToken, true, supabase, tenantId);
   
   if (registerResult.success) {
     // Update database to mark robots as registered
