@@ -411,7 +411,79 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
   <table><thead><tr><th>Nome</th><th>Wallet ID</th><th>Valor</th><th>Ativo</th></tr></thead><tbody>${splitRows}</tbody></table>
 </div>
 
-<!-- WIZARD: NOVA COBRANÇA -->
+<!-- GERAR CONTRATO -->
+<div class="panel" id="panel-contract-gen">
+  <div class="head"><h3>Gerar Contrato a partir deste ${escHtml(ctx.entityType === 'lead' ? 'Lead' : 'Negócio')}</h3></div>
+  ${templates.length === 0 ? `<div class="info-banner">Nenhum template cadastrado. Crie um template na aba <b>Contratos → Templates</b> no app.</div>` : `
+  <div class="grid">
+    <div class="fg"><label>Template <span class="req">*</span></label>
+      <select id="cg_template">
+        ${templates.map((t: any) => `<option value="${escAttr(t.id)}">${escHtml(t.name)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="fg"><label>Nome do cliente <span class="req">*</span></label>
+      <input id="cg_name" value="${escAttr(customer?.name || '')}">
+    </div>
+    <div class="fg"><label>E-mail</label>
+      <input id="cg_email" value="${escAttr(customer?.email || '')}">
+    </div>
+    <div class="fg"><label>CPF/CNPJ</label>
+      <input id="cg_doc" value="${escAttr(customer?.document || '')}">
+    </div>
+    <div class="fg"><label>Telefone</label>
+      <input id="cg_phone" value="${escAttr(customer?.phone || '')}">
+    </div>
+    <div class="fg"><label>Valor total (R$)</label>
+      <input id="cg_total" type="number" step="0.01" min="0" value="${Number(dealProducts.total || 0).toFixed(2)}">
+    </div>
+  </div>
+  <div class="section">
+    <h4><span class="num">A</span> Cobrança Asaas (opcional)</h4>
+    <div class="grid-3">
+      <div class="fg"><label>Modo</label>
+        <select id="cg_mode">
+          <option value="">Não criar cobrança</option>
+          <option value="unica">Cobrança única</option>
+          <option value="parcelada">Parcelada</option>
+          <option value="assinatura_mensal">Assinatura mensal</option>
+        </select>
+      </div>
+      <div class="fg"><label>Forma</label>
+        <select id="cg_billing">
+          <option value="UNDEFINED">Cliente escolhe</option>
+          <option value="PIX">PIX</option>
+          <option value="BOLETO">Boleto</option>
+          <option value="CREDIT_CARD">Cartão</option>
+        </select>
+      </div>
+      <div class="fg"><label>Parcelas / Ciclo</label>
+        <input id="cg_count" type="number" min="1" value="1">
+      </div>
+    </div>
+  </div>
+  <button class="btn" type="button" onclick="generateContract()" id="cg_btn">${ICONS.contract}<span style="margin-left:6px">Gerar contrato</span></button>
+  <div class="msg" id="cg_msg"></div>
+  `}
+  ${contracts.length > 0 ? `
+  <h4 style="margin:18px 0 8px;font-size:13px;color:#475569">Contratos recentes deste ${escHtml(ctx.entityType === 'lead' ? 'lead' : 'negócio')}</h4>
+  <table>
+    <thead><tr><th>Cliente</th><th>Valor</th><th>Status</th><th>Criado</th><th>Ações</th></tr></thead>
+    <tbody>${contracts.map((c: any) => `
+      <tr>
+        <td>${escHtml(c.customer_name || '-')}</td>
+        <td>R$ ${Number(c.total_value || 0).toFixed(2).replace('.', ',')}</td>
+        <td><span class="badge">${escHtml(c.payment_status || c.status || '-')}</span></td>
+        <td>${c.created_at ? new Date(c.created_at).toLocaleDateString('pt-BR') : '-'}</td>
+        <td class="actions">
+          ${c.public_token ? `<a class="ico" target="_blank" href="/contrato/${escAttr(c.public_token)}" onclick="event.stopPropagation()">${ICONS.link}</a>` : ''}
+          ${c.public_token ? `<button class="ico" title="Copiar link" onclick="copyText(window.location.origin.replace(/^https?:\\/\\/[^/]+/, '') + '/contrato/${escAttr(c.public_token)}')">${ICONS.download}</button>` : ''}
+        </td>
+      </tr>`).join('')}
+    </tbody>
+  </table>
+  ` : ''}
+</div>
+
 <div class="modal" id="wizardModal">
   <div class="modal-box">
     <div class="modal-head">
