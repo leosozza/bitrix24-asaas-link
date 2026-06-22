@@ -109,6 +109,7 @@ export function useSaveTemplate() {
       qc.invalidateQueries({ queryKey: ["contract_templates"] });
       // fire-and-forget: keep Bitrix robot template list in sync
       supabase.functions.invoke("bitrix-contract-setup", { body: { action: "sync_robot_templates" } }).catch(() => {});
+    },
   });
 }
 
