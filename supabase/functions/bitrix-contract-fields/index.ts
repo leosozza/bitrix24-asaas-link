@@ -107,15 +107,16 @@ serve(async (req) => {
 
       const { data: template } = await admin
         .from("contract_templates")
-        .select("bitrix_field_map")
+        .select("bitrix_field_map, asaas_billing_map")
         .eq("id", templateId)
         .eq("tenant_id", tenantId)
         .maybeSingle();
       if (!template) return json({ error: "Template não encontrado" }, 404);
 
       const map = (template.bitrix_field_map || {}) as Record<string, { entity: string; field: string }>;
+      const asaasMap = (template.asaas_billing_map || {}) as Record<string, { entity: string; field: string }>;
       const neededEntities = new Set<string>([entityType]);
-      for (const m of Object.values(map)) {
+      for (const m of [...Object.values(map), ...Object.values(asaasMap)]) {
         if (m?.entity) neededEntities.add(String(m.entity).toLowerCase());
       }
 
@@ -150,7 +151,6 @@ serve(async (req) => {
         if (!val) continue;
         mapped++;
         const key = placeholder.replace(/[{}]/g, "").trim();
-        // Known customer shortcuts → fill the customer object
         if (key === "cliente_nome") customer.name = val;
         else if (key === "cliente_doc") customer.doc = val;
         else if (key === "cliente_email") customer.email = val;
@@ -167,7 +167,24 @@ serve(async (req) => {
         if (parts) customer.name = parts;
       }
 
-      return json({ success: true, customer, extra_vars, mapped_count: mapped });
+      // Resolve Asaas billing fields
+      const asaas_billing: Record<string, string> = {};
+      const asaas_billing_keys: string[] = [];
+      for (const [key, m] of Object.entries(asaasMap)) {
+        const ent = entities[m.entity];
+        if (!ent) continue;
+        const val = valueFromField(ent, m.field);
+        if (!val) continue;
+        asaas_billing[key] = val;
+        asaas_billing_keys.push(key);
+      }
+      // Sensible fallbacks
+      if (!asaas_billing.name && customer.name) asaas_billing.name = customer.name;
+      if (!asaas_billing.cpfCnpj && customer.doc) asaas_billing.cpfCnpj = customer.doc;
+      if (!asaas_billing.email && customer.email) asaas_billing.email = customer.email;
+      if (!asaas_billing.mobilePhone && customer.phone) asaas_billing.mobilePhone = customer.phone;
+
+      return json({ success: true, customer, extra_vars, asaas_billing, asaas_billing_keys, mapped_count: mapped });
     }
 
     return json({ error: "action inválida" }, 400);
