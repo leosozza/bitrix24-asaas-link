@@ -196,18 +196,35 @@ export function ContractTemplateEditor({ value, onChange }: Props) {
   return (
     <div className="grid lg:grid-cols-[1fr_220px] gap-3">
       <div className="space-y-2 min-w-0">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="inline-flex rounded-md border border-border overflow-hidden text-xs">
             <button type="button" onClick={() => setMode("visual")} className={`px-3 py-1 ${mode === "visual" ? "bg-primary text-primary-foreground" : "bg-card hover:bg-muted"}`}>Visual</button>
             <button type="button" onClick={() => { setHtmlDraft(valueRef.current); setMode("html"); }} className={`px-3 py-1 ${mode === "html" ? "bg-primary text-primary-foreground" : "bg-card hover:bg-muted"}`}><Code className="w-3 h-3 inline mr-1" />HTML</button>
           </div>
+          {mode === "visual" && (
+            <div className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              <span>Zoom</span>
+              {[0.75, 1, 1.25].map((z) => (
+                <button key={z} type="button" onClick={() => setZoom(z)} className={`px-2 py-0.5 rounded border ${zoom === z ? "bg-primary text-primary-foreground border-primary" : "bg-card border-border hover:bg-muted"}`}>
+                  {Math.round(z * 100)}%
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {mode === "visual" ? (
-          <>
-            <Toolbar editor={editor} />
-            <EditorContent editor={editor} />
-          </>
+          <div className="space-y-0">
+            <div className="docx-ribbon">
+              <Toolbar editor={editor} />
+            </div>
+            <div className="docx-ruler" style={{ width: `calc(21cm * ${zoom})` }} />
+            <div className="docx-canvas mt-2">
+              <div className="docx-zoom-wrap" style={{ transform: `scale(${zoom})`, width: "21cm", margin: "0 auto", height: zoom !== 1 ? `calc(29.7cm * ${zoom})` : undefined }}>
+                <EditorContent editor={editor} />
+              </div>
+            </div>
+          </div>
         ) : (
           <div className="space-y-2">
             <textarea
@@ -220,6 +237,7 @@ export function ContractTemplateEditor({ value, onChange }: Props) {
           </div>
         )}
       </div>
+
 
       <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
         <div>
