@@ -1071,6 +1071,42 @@ async function submitWizard(){
   btn.disabled = false; btn.textContent = 'Enviar ao Asaas';
 }
 
+async function generateContract(){
+  var btn = document.getElementById('cg_btn');
+  var msg = document.getElementById('cg_msg');
+  if (!btn) return;
+  btn.disabled = true;
+  msg.className = 'msg';
+  try {
+    var payload = {
+      action: 'generate_contract',
+      memberId: CTX.memberId, domain: CTX.domain, accessToken: CTX.accessToken,
+      entityType: CTX.entityType, entityId: CTX.entityId,
+      template_id: document.getElementById('cg_template').value,
+      name: document.getElementById('cg_name').value,
+      email: document.getElementById('cg_email').value,
+      doc: document.getElementById('cg_doc').value,
+      phone: document.getElementById('cg_phone').value,
+      total: Number(document.getElementById('cg_total').value) || 0,
+      mode: document.getElementById('cg_mode').value,
+      billing: document.getElementById('cg_billing').value,
+      count: Number(document.getElementById('cg_count').value) || 1,
+    };
+    var r = await fetch(CTX.supabaseUrl + '/functions/v1/bitrix-crm-detail-tab', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload),
+    });
+    var d = await r.json();
+    if (d.success && d.public_url) {
+      msg.className = 'msg ok';
+      msg.innerHTML = '✅ Contrato gerado! <a href="'+d.public_url+'" target="_blank" style="color:#0066cc;text-decoration:underline">Abrir contrato</a> · <button class="ico" onclick="copyText(\\''+d.public_url+'\\')">Copiar link</button>';
+      setTimeout(function(){ location.reload(); }, 4000);
+    } else {
+      msg.className = 'msg err'; msg.textContent = '❌ ' + (d.error || 'Falha ao gerar');
+    }
+  } catch(e){ msg.className='msg err'; msg.textContent='❌ '+e.message; }
+  btn.disabled = false;
+}
+
 async function rowAction(action, id){
   if (!confirm('Confirmar ação: ' + action + '?')) return;
   try {
