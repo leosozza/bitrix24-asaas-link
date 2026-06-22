@@ -23,7 +23,7 @@ export function Hero() {
             {/* Badge */}
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary text-sm font-medium mb-6 animate-fade-in">
               <Zap className="w-4 h-4" />
-              <span>Integração oficial para Bitrix24 Marketplace</span>
+              <span>Integração oficial para Bitrix24 Marketplace · by Thoth24</span>
             </div>
 
             {/* Headline */}
@@ -37,9 +37,8 @@ export function Hero() {
 
             {/* Subheadline */}
             <p className="text-lg md:text-xl text-muted-foreground max-w-xl mx-auto lg:mx-0 mb-8 animate-fade-in-up" style={{ animationDelay: "0.2s" }}>
-              Cobranças automáticas via PIX, boleto e cartão. 
-              Sincronização em tempo real com seu CRM. 
-              Menos trabalho manual, mais vendas fechadas.
+              Cobranças automáticas via PIX, boleto e cartão, geração de contratos vinculados ao Deal
+              e um painel embutido no Bitrix24 para configurar tudo sem sair do CRM.
             </p>
 
             {/* CTA Buttons */}
@@ -63,7 +62,7 @@ export function Hero() {
               </div>
               <div className="flex items-center gap-2">
                 <Shield className="w-5 h-5 text-accent" />
-                <span className="text-sm">Dados seguros</span>
+                <span className="text-sm">Contratos automáticos</span>
               </div>
               <div className="flex items-center gap-2">
                 <RefreshCw className="w-5 h-5 text-accent" />
@@ -115,12 +114,13 @@ export function Hero() {
                 </div>
 
                 {/* Payment methods */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                   {[
                     { label: "PIX", icon: "⚡", color: "text-accent" },
                     { label: "Boleto", icon: "📄", color: "text-primary" },
                     { label: "Cartão", icon: "💳", color: "text-primary" },
                     { label: "Recorrente", icon: "🔄", color: "text-accent" },
+                    { label: "Contrato", icon: "📝", color: "text-primary" },
                   ].map((item, index) => (
                     <div
                       key={index}
