@@ -5691,139 +5691,109 @@ serve(async (req) => {
         robots_registered: installation?.robots_registered
       });
       
-      // Lazy registration: pay systems, logos, and robots
+      // Lazy registration: pay systems, logos, and robots — runs in BACKGROUND
+      // so the iframe HTML returns immediately. Bitrix sync is heavy (30+ pay
+      // systems + 6 robots) and was blocking initial render for several seconds.
       if (installation) {
-        // Use access_token from POST params or from installation record
         const tokenForRegistration = paymentData.accessToken || installation.access_token;
-        // Get server endpoint from POST params (oauth.bitrix.info/rest/)
         const serverEndpoint = paymentData.serverEndpoint || 'https://oauth.bitrix.info/rest/';
-        // Use domain from POST params or from installation record (may be invalid/empty)
         const domainHint = paymentData.domain || installation.domain;
-        
-        if (tokenForRegistration) {
-          // Build client endpoint for direct API calls (needed for sale.* and bizproc.* methods)
-          let clientEndpoint: string | null = null;
-          let portalDomain = domainHint;
-          
-          // If we don't have a valid domain, try to get it from the API
-          if (!portalDomain || portalDomain.length < 5 || !portalDomain.includes('.')) {
-            console.log('Domain invalid, attempting to fetch from API...');
-            const fetchedDomain = await getPortalDomainFromProfile(serverEndpoint, tokenForRegistration);
-            if (fetchedDomain) {
-              portalDomain = fetchedDomain;
-              console.log('Fetched domain from API:', portalDomain);
+        const requestUrl = new URL(req.url);
+        const forceRepair = requestUrl.searchParams.get('repair') === 'true';
+
+        const backgroundSync = async () => {
+          try {
+            if (!tokenForRegistration) {
+              console.log('[bg-sync] skipped — missing access_token');
+              return;
             }
-          }
-          
-          if (portalDomain && portalDomain.includes('.')) {
-            clientEndpoint = `https://${portalDomain}/rest/`;
-            console.log('Client endpoint for lazy registration:', clientEndpoint);
-          }
-          
-          // 1. Lazy pay system registration
-          if (!installation.pay_systems_registered) {
-            console.log('Attempting lazy pay system registration...');
-            const registrationResult = await registerPaySystemsLazy(
-              domainHint,
-              tokenForRegistration,
-              serverEndpoint,
-              installation.id,
-              supabase
-            );
-            console.log('Lazy pay system registration result:', registrationResult);
-            
-            // Update portalDomain if registration succeeded
-            if (registrationResult.domain) {
-              portalDomain = registrationResult.domain;
+            let clientEndpoint: string | null = null;
+            let portalDomain = domainHint;
+
+            if (!portalDomain || portalDomain.length < 5 || !portalDomain.includes('.')) {
+              const fetchedDomain = await getPortalDomainFromProfile(serverEndpoint, tokenForRegistration);
+              if (fetchedDomain) portalDomain = fetchedDomain;
+            }
+            if (portalDomain && portalDomain.includes('.')) {
               clientEndpoint = `https://${portalDomain}/rest/`;
             }
-          } else {
-            console.log('Pay systems already registered');
-            
-            // Still try to update logos if we have a valid client endpoint
-            if (clientEndpoint) {
-              console.log('Updating pay system logos...');
+
+            // 1. Pay systems
+            if (!installation.pay_systems_registered) {
+              const registrationResult = await registerPaySystemsLazy(
+                domainHint, tokenForRegistration, serverEndpoint, installation.id, supabase,
+              );
+              if (registrationResult.domain) {
+                portalDomain = registrationResult.domain;
+                clientEndpoint = `https://${portalDomain}/rest/`;
+              }
+            } else if (clientEndpoint && forceRepair) {
+              // Only refresh logos on explicit repair, not on every iframe load
               await updatePaySystemsLogo(clientEndpoint, tokenForRegistration, installation.id, supabase);
             }
-          }
-          
-          // 2. Self-healing robots registration
-          // Check URL for repair parameter
-          const requestUrl = new URL(req.url);
-          const forceRepair = requestUrl.searchParams.get('repair') === 'true';
-          
-          if (clientEndpoint) {
-            // Always use ensureAutomationRobots - it will check if robots exist and repair if needed
-            console.log('Checking/ensuring automation robots...');
-            const robotsResult = await ensureAutomationRobots(
-              clientEndpoint, 
-              tokenForRegistration, 
-              installation.id, 
-              supabase,
-              forceRepair || !installation.robots_registered // Force repair if flag is set or robots not registered
-            );
-            
-            console.log('Robots ensure result:', robotsResult);
-            
-            // 3. Lazy placements registration
-            if (!installation.placements_registered) {
-              console.log('Registering CRM placements...');
-              const placementsResult = await registerPlacements(clientEndpoint, tokenForRegistration);
-              console.log('Placements result:', placementsResult);
-              
-              if (placementsResult.success) {
-                await supabase
-                  .from('bitrix_installations')
-                  .update({ placements_registered: true, updated_at: new Date().toISOString() })
-                  .eq('id', installation.id);
-              }
-            }
-            
-            // 4. Lazy badges registration
-            if (!installation.badges_registered) {
-              console.log('Registering CRM badges...');
-              const badgesResult = await registerBadges(clientEndpoint, tokenForRegistration);
-              console.log('Badges result:', badgesResult);
-              
-              if (badgesResult.success) {
-                await supabase
-                  .from('bitrix_installations')
-                  .update({ badges_registered: true, updated_at: new Date().toISOString() })
-                  .eq('id', installation.id);
-              }
-            }
 
-            // 5. Lazy Deal custom fields registration (UF_CRM_ASAAS_*)
-            if (!installation.deal_fields_registered || forceRepair) {
-              console.log('Ensuring Deal Asaas custom fields...');
-              const dealFieldsResult = await ensureDealAsaasFields(clientEndpoint, tokenForRegistration);
-              console.log('Deal fields result:', dealFieldsResult);
-              if (dealFieldsResult.success) {
-                await supabase
-                  .from('bitrix_installations')
-                  .update({ deal_fields_registered: true, updated_at: new Date().toISOString() })
+            if (clientEndpoint) {
+              // 2. Robots
+              await ensureAutomationRobots(
+                clientEndpoint, tokenForRegistration, installation.id, supabase,
+                forceRepair || !installation.robots_registered,
+              );
+
+              // 3. Placements
+              if (!installation.placements_registered) {
+                const placementsResult = await registerPlacements(clientEndpoint, tokenForRegistration);
+                if (placementsResult.success) {
+                  await supabase.from('bitrix_installations')
+                    .update({ placements_registered: true, updated_at: new Date().toISOString() })
+                    .eq('id', installation.id);
+                }
+              }
+
+              // 4. Badges
+              if (!installation.badges_registered) {
+                const badgesResult = await registerBadges(clientEndpoint, tokenForRegistration);
+                if (badgesResult.success) {
+                  await supabase.from('bitrix_installations')
+                    .update({ badges_registered: true, updated_at: new Date().toISOString() })
+                    .eq('id', installation.id);
+                }
+              }
+
+              // 5. Deal custom fields
+              if (!installation.deal_fields_registered || forceRepair) {
+                const dealFieldsResult = await ensureDealAsaasFields(clientEndpoint, tokenForRegistration);
+                if (dealFieldsResult.success) {
+                  await supabase.from('bitrix_installations')
+                    .update({ deal_fields_registered: true, updated_at: new Date().toISOString() })
+                    .eq('id', installation.id);
+                }
+              }
+
+              if (portalDomain && portalDomain.includes('.')) {
+                await supabase.from('bitrix_installations')
+                  .update({ domain: portalDomain, updated_at: new Date().toISOString() })
                   .eq('id', installation.id);
               }
             }
-            
-            
-            // Update domain if we got a valid one
-            if (portalDomain && portalDomain.includes('.')) {
-              await supabase
-                .from('bitrix_installations')
-                .update({ 
-                  domain: portalDomain,
-                  updated_at: new Date().toISOString()
-                })
-                .eq('id', installation.id);
-            }
-          } else {
-            console.log('Cannot ensure robots - missing client endpoint');
+          } catch (e) {
+            console.error('[bg-sync] error:', e);
           }
-        } else {
-          console.log('Cannot perform lazy registration - missing access_token');
+        };
+
+        // Fire and forget — keep alive after response with EdgeRuntime.waitUntil if available
+        try {
+          // @ts-ignore — EdgeRuntime is available in Supabase edge runtime
+          if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime.waitUntil) {
+            // @ts-ignore
+            EdgeRuntime.waitUntil(backgroundSync());
+          } else {
+            backgroundSync();
+          }
+        } catch {
+          backgroundSync();
         }
       }
+
       
       if (installation?.tenant_id) {
         const { data: config } = await supabase
