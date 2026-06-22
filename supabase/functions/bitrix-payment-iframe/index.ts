@@ -3421,6 +3421,7 @@ async function generateDashboardPage(
           case 'plan': loadPlan(); break;
           case 'notifications': loadNotifications(); break;
           case 'security': loadSecurity(); break;
+          case 'contracts': loadContracts(); break;
         }
       }
       
