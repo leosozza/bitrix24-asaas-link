@@ -146,7 +146,7 @@ export function useResolveBitrixContract() {
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
-      return data as { success: boolean; customer: Record<string, string>; extra_vars: Record<string, string>; mapped_count: number };
+      return data as { success: boolean; customer: Record<string, string>; extra_vars: Record<string, string>; asaas_billing: Record<string, string>; asaas_billing_keys: string[]; mapped_count: number };
     },
   });
 }
