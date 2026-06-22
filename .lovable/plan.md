@@ -1,32 +1,33 @@
-# Problema
 
-O robô de Bizproc `asaas_contract_generate` (ConnectPay: Gerar Contrato) só é registrado quando alguém chama explicitamente `bitrix-contract-setup` (ação `setup_fields` ou `sync_robot_templates`). Os fluxos automáticos de registro de robôs — usados na instalação do app e na auto‑reparação — registram apenas os 5 robôs antigos (`asaas_create_charge`, `asaas_check_payment`, `asaas_create_subscription`, `asaas_cancel_subscription`, `asaas_create_invoice`). Resultado: no tenant Delivery Real (e em qualquer tenant que não passou pelo setup manual), o robô de gerar contrato não aparece na lista do Bizproc.
+# Atualizar landing page (rota `/`)
 
-# Solução
-
-Incluir o robô `asaas_contract_generate` em todos os pontos onde os robôs são registrados/verificados, carregando dinamicamente os templates do tenant para preencher o select `template_id`.
+A página inicial ainda mostra "ConnectPay" no header/hero e não menciona os recursos novos (contratos automáticos e o placement embutido no Bitrix24 para preencher tudo).
 
 ## Mudanças
 
-1. **`supabase/functions/_shared/contract-robot-def.ts`** (novo)
-   - Exportar uma função `buildContractRobotParams(templates, supabaseUrl)` que devolve o objeto `PROPERTIES`/`RETURN_PROPERTIES`/`HANDLER` idêntico ao já usado em `bitrix-contract-setup` (CODE `asaas_contract_generate`, handler `${SUPABASE_URL}/functions/v1/bitrix-contract-robot`).
-   - Fallback `__default__` quando o tenant ainda não tem templates.
+### 1. `src/components/landing/Header.tsx`
+- Trocar o logo "Connect**Pay**" por "Asaas Pay **by Thoth**" (manter mesma estrutura/cores, só o texto).
+- Trocar o badge da logo de "C" para "A".
 
-2. **`supabase/functions/bitrix-contract-setup/index.ts`**
-   - Substituir o `registerRobot` local pela chamada à nova função compartilhada (sem mudar comportamento externo).
+### 2. `src/components/landing/Hero.tsx`
+- Badge superior: "Integração oficial para Bitrix24 Marketplace · by Thoth24".
+- Subheadline: incluir menção a **geração de contratos** e **preenchimento direto no Bitrix24** (placement embutido).
+- Adicionar mais um "trust indicator": "Contratos automáticos".
+- Adicionar "Contrato" como 5º método/recurso ao lado dos cards PIX/Boleto/Cartão/Recorrente (vira grid de 5 itens), ou substituir o quarto por "Contratos" — preferimos **adicionar** mantendo os 4 atuais + "Contrato" em md:grid-cols-5.
 
-3. **`supabase/functions/bitrix-payment-iframe/index.ts`**
-   - Em `registerAutomationRobots(...)`: após registrar os 5 robôs existentes, carregar os templates do tenant (`contract_templates` por `tenant_id`) e registrar também o `asaas_contract_generate` (delete + add).
-   - Em `ensureAutomationRobots(...)`: adicionar `'asaas_contract_generate'` ao array `expectedRobots`, para que a verificação periódica detecte ausência e force re‑registro.
+### 3. `src/components/landing/Features.tsx`
+Adicionar dois novos cards ao array `features`, refletindo o que foi entregue:
+- **Contratos Inteligentes** (ícone `ScrollText`): "Modelos prontos de contrato, geração automática, assinatura e cobrança vinculada ao Deal."
+- **Painel dentro do Bitrix24** (ícone `LayoutDashboard` ou `AppWindow`): "Preencha credenciais, templates de contrato e automações sem sair do Bitrix24, via placement embutido."
 
-4. **`supabase/functions/bitrix-install/index.ts`**
-   - No bloco que registra robôs durante a instalação, incluir o `asaas_contract_generate` (usando a função compartilhada e os templates do tenant, ou o fallback `__default__` se a instalação ainda não tiver templates).
+Remover/ajustar 2 cards menos relevantes para manter o grid simétrico (8 → 8 cards). Sugestão: substituir "Multi-empresa" e "Integração com Faturas" pelos novos, já que faturas se sobrepõe a contratos e multi-empresa não é diferencial vendido hoje.
 
-5. **Migração manual única (via supabase--insert opcional)**
-   - Para os tenants já instalados (incluindo Delivery Real `42bacd0a-...`), basta acionar o `ensureAutomationRobots` (já chamado pelo iframe na primeira abertura) — não é necessário script extra; o novo `expectedRobots` cuidará do registro.
+### 4. `src/components/landing/Footer.tsx`
+- Já mostra "Assas Pay by Thoth" — corrigir grafia para **"Asaas Pay by Thoth"** (estava "Assas" em vez de "Asaas").
 
-## Observações
+### 5. Varredura de grafia "Assas Pay" → "Asaas Pay"
+Na renomeação anterior ficou "Assas Pay by Thoth" (com um S a menos) em vários arquivos. Vou rodar substituição global em `src/` e `supabase/functions/` para corrigir para **"Asaas Pay by Thoth"**.
 
-- Nenhuma mudança de schema.
-- Nenhuma alteração no frontend.
-- Comportamento do robô já existe e funciona (rota `bitrix-contract-robot`); este plano apenas garante que ele seja registrado para todos os tenants automaticamente.
+## Fora do escopo
+- Sem mudanças de backend, schema ou edge functions de lógica (somente strings).
+- Sem mexer em outras rotas além da landing e textos de branding.

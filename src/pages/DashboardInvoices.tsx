@@ -179,7 +179,7 @@ export default function DashboardInvoices() {
   return (
     <>
       <Helmet>
-        <title>Notas Fiscais | Assas Pay by Thoth</title>
+        <title>Notas Fiscais | Asaas Pay by Thoth</title>
       </Helmet>
 
       <DashboardLayout title="Notas Fiscais" description="Gerencie suas notas fiscais de serviço">

@@ -11,7 +11,7 @@ export function Footer() {
               <div className="w-8 h-8 rounded-lg gradient-primary flex items-center justify-center">
                 <span className="text-primary-foreground font-bold text-sm">B+A</span>
               </div>
-              <span className="font-display font-bold text-xl">Assas Pay by Thoth</span>
+              <span className="font-display font-bold text-xl">Asaas Pay by Thoth</span>
             </div>
             <p className="text-background/70 text-sm leading-relaxed mb-4">
               A integração oficial do Asaas para o Bitrix24. 
@@ -108,7 +108,7 @@ export function Footer() {
         {/* Bottom */}
         <div className="pt-8 border-t border-background/10 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex flex-col md:flex-row items-center gap-2 text-sm text-background/50">
-            <span>© 2025 Assas Pay by Thoth. Todos os direitos reservados.</span>
+            <span>© 2025 Asaas Pay by Thoth. Todos os direitos reservados.</span>
             <span className="hidden md:inline">•</span>
             <a 
               href="https://thoth24.com" 

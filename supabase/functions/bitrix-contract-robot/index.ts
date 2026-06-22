@@ -1,4 +1,4 @@
-// Bizproc robot callback: generates a Assas Pay by Thoth contract for the workflow's CRM entity
+// Bizproc robot callback: generates a Asaas Pay by Thoth contract for the workflow's CRM entity
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { callBitrix } from "../_shared/bitrix-api.ts";

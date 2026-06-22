@@ -5,7 +5,7 @@ const Index = () => {
   return (
     <>
       <Helmet>
-        <title>Assas Pay by Thoth - Integração Bitrix24 + Asaas | Automatize Pagamentos</title>
+        <title>Asaas Pay by Thoth - Integração Bitrix24 + Asaas | Automatize Pagamentos</title>
         <meta 
           name="description" 
           content="Conecte o Bitrix24 ao Asaas e automatize cobranças via PIX, boleto e cartão. Integração oficial para o marketplace do Bitrix24. Teste grátis por 14 dias." 
