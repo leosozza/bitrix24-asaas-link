@@ -17,10 +17,12 @@ export type Database = {
       asaas_configurations: {
         Row: {
           api_key: string | null
+          bitrix_invoice_paid_stage_id: string | null
           created_at: string
           environment: Database["public"]["Enums"]["asaas_environment"]
           id: string
           is_active: boolean
+          sync_bitrix_invoices: boolean
           tenant_id: string
           updated_at: string
           webhook_configured: boolean
@@ -29,10 +31,12 @@ export type Database = {
         }
         Insert: {
           api_key?: string | null
+          bitrix_invoice_paid_stage_id?: string | null
           created_at?: string
           environment?: Database["public"]["Enums"]["asaas_environment"]
           id?: string
           is_active?: boolean
+          sync_bitrix_invoices?: boolean
           tenant_id: string
           updated_at?: string
           webhook_configured?: boolean
@@ -41,10 +45,12 @@ export type Database = {
         }
         Update: {
           api_key?: string | null
+          bitrix_invoice_paid_stage_id?: string | null
           created_at?: string
           environment?: Database["public"]["Enums"]["asaas_environment"]
           id?: string
           is_active?: boolean
+          sync_bitrix_invoices?: boolean
           tenant_id?: string
           updated_at?: string
           webhook_configured?: boolean
@@ -1071,6 +1077,7 @@ export type Database = {
           bitrix_entity_type:
             | Database["public"]["Enums"]["bitrix_entity_type"]
             | null
+          bitrix_invoice_id: number | null
           created_at: string
           customer_document: string | null
           customer_email: string | null
@@ -1093,6 +1100,7 @@ export type Database = {
           bitrix_entity_type?:
             | Database["public"]["Enums"]["bitrix_entity_type"]
             | null
+          bitrix_invoice_id?: number | null
           created_at?: string
           customer_document?: string | null
           customer_email?: string | null
@@ -1115,6 +1123,7 @@ export type Database = {
           bitrix_entity_type?:
             | Database["public"]["Enums"]["bitrix_entity_type"]
             | null
+          bitrix_invoice_id?: number | null
           created_at?: string
           customer_document?: string | null
           customer_email?: string | null

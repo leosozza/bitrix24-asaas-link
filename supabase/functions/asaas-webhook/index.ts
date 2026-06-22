@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { updateBitrixInvoiceStage } from "../_shared/bitrix-invoice.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -575,8 +576,39 @@ serve(async (req) => {
         if (transaction.bitrix_activity_id && clientEndpoint && token) {
           await updateActivityBadge(clientEndpoint, token, transaction.bitrix_activity_id, 'asaas_charge_paid', true, payment.value, 'Pago');
         }
+
+        // Mark linked Bitrix SmartInvoice as paid (if configured)
+        if ((transaction as any).bitrix_invoice_id && clientEndpoint && token) {
+          try {
+            const { data: cfg } = await supabase
+              .from('asaas_configurations')
+              .select('sync_bitrix_invoices, bitrix_invoice_paid_stage_id')
+              .eq('tenant_id', tenantId)
+              .eq('is_active', true)
+              .maybeSingle();
+            if (cfg?.sync_bitrix_invoices && cfg.bitrix_invoice_paid_stage_id) {
+              const ok = await updateBitrixInvoiceStage(
+                clientEndpoint,
+                token,
+                (transaction as any).bitrix_invoice_id,
+                cfg.bitrix_invoice_paid_stage_id,
+              );
+              await supabase.from('integration_logs').insert({
+                tenant_id: tenantId,
+                action: 'bitrix_invoice_mark_paid',
+                entity_type: 'invoice',
+                entity_id: String((transaction as any).bitrix_invoice_id),
+                status: ok ? 'success' : 'error',
+                response_data: { stageId: cfg.bitrix_invoice_paid_stage_id },
+              });
+            }
+          } catch (invErr) {
+            console.error('[Webhook] Failed to mark Bitrix invoice as paid:', invErr);
+          }
+        }
       }
     }
+
     
     // If overdue, update badge
     if (newStatus === 'overdue' && transaction.bitrix_activity_id) {

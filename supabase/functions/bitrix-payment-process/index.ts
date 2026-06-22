@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createBitrixInvoice } from "../_shared/bitrix-invoice.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -445,6 +446,66 @@ serve(async (req) => {
           console.error('Error creating activity:', actErr);
         }
       }
+
+      // OPTIONAL: Create a SmartInvoice in Bitrix24 linked to the Deal/Order
+      if (insertedTransaction?.id) {
+        try {
+          const { data: cfg } = await supabase
+            .from('asaas_configurations')
+            .select('sync_bitrix_invoices')
+            .eq('tenant_id', installation.tenant_id)
+            .eq('is_active', true)
+            .maybeSingle();
+
+          if (cfg?.sync_bitrix_invoices) {
+            const { data: inst2 } = await supabase
+              .from('bitrix_installations')
+              .select('client_endpoint, access_token, domain')
+              .eq('member_id', paymentRequest.memberId)
+              .order('updated_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            const endpoint2 = inst2?.client_endpoint || (inst2?.domain ? `https://${inst2.domain}/rest/` : '');
+            if (endpoint2 && inst2?.access_token) {
+              const invoiceId = await createBitrixInvoice({
+                endpoint: endpoint2,
+                token: inst2.access_token,
+                title: `Asaas ${payment.id}`,
+                amount,
+                dueDate: payment.dueDate,
+                dealId: parseInt(paymentRequest.orderId) || null,
+                asaasPaymentId: payment.id,
+              });
+              if (invoiceId) {
+                await supabase.from('transactions')
+                  .update({ bitrix_invoice_id: invoiceId })
+                  .eq('id', insertedTransaction.id);
+                console.log('[BitrixInvoice] Created invoice', invoiceId, 'for transaction', insertedTransaction.id);
+                await supabase.from('integration_logs').insert({
+                  tenant_id: installation.tenant_id,
+                  action: 'bitrix_invoice_create',
+                  entity_type: 'invoice',
+                  entity_id: String(invoiceId),
+                  status: 'success',
+                  response_data: { invoiceId, asaasPaymentId: payment.id },
+                });
+              } else {
+                await supabase.from('integration_logs').insert({
+                  tenant_id: installation.tenant_id,
+                  action: 'bitrix_invoice_create',
+                  entity_type: 'invoice',
+                  entity_id: payment.id,
+                  status: 'error',
+                });
+              }
+            }
+          }
+        } catch (invErr) {
+          console.error('[BitrixInvoice] sync failure:', invErr);
+        }
+      }
+
+
       
       // Store applied splits
       if (insertedTransaction && appliedSplits.length > 0) {

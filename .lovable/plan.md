@@ -1,33 +1,57 @@
+## Objetivo
 
-# Atualizar landing page (rota `/`)
+Adicionar, na configuração da integração Asaas, uma opção (toggle) para sincronizar **Faturas do Bitrix24 (SmartInvoice / entityTypeId = 31)** com as cobranças do Asaas.
 
-A página inicial ainda mostra "ConnectPay" no header/hero e não menciona os recursos novos (contratos automáticos e o placement embutido no Bitrix24 para preencher tudo).
+Quando ativado:
+- Cada nova cobrança Asaas (criada via robô, contrato ou Pay System) também cria uma **Fatura no Bitrix24** vinculada ao Deal/Contato/Cliente.
+- Quando o webhook Asaas confirma o pagamento (`PAYMENT_RECEIVED` / `PAYMENT_CONFIRMED`), a Fatura no Bitrix é atualizada para o status **"Convertido / Pago"** (`stageId` final do SmartInvoice).
+
+Quando desativado: nada muda no fluxo atual.
 
 ## Mudanças
 
-### 1. `src/components/landing/Header.tsx`
-- Trocar o logo "Connect**Pay**" por "Asaas Pay **by Thoth**" (manter mesma estrutura/cores, só o texto).
-- Trocar o badge da logo de "C" para "A".
+### 1. Banco (migration)
+Adicionar em `asaas_configurations`:
+- `sync_bitrix_invoices boolean default false`
+- `bitrix_invoice_paid_stage_id text` (opcional — stage usada como "Pago/Convertido"; default detectado automaticamente)
 
-### 2. `src/components/landing/Hero.tsx`
-- Badge superior: "Integração oficial para Bitrix24 Marketplace · by Thoth24".
-- Subheadline: incluir menção a **geração de contratos** e **preenchimento direto no Bitrix24** (placement embutido).
-- Adicionar mais um "trust indicator": "Contratos automáticos".
-- Adicionar "Contrato" como 5º método/recurso ao lado dos cards PIX/Boleto/Cartão/Recorrente (vira grid de 5 itens), ou substituir o quarto por "Contratos" — preferimos **adicionar** mantendo os 4 atuais + "Contrato" em md:grid-cols-5.
+Adicionar em `transactions`:
+- `bitrix_invoice_id bigint` (id da fatura SmartInvoice criada no Bitrix)
 
-### 3. `src/components/landing/Features.tsx`
-Adicionar dois novos cards ao array `features`, refletindo o que foi entregue:
-- **Contratos Inteligentes** (ícone `ScrollText`): "Modelos prontos de contrato, geração automática, assinatura e cobrança vinculada ao Deal."
-- **Painel dentro do Bitrix24** (ícone `LayoutDashboard` ou `AppWindow`): "Preencha credenciais, templates de contrato e automações sem sair do Bitrix24, via placement embutido."
+### 2. UI — `src/pages/DashboardIntegrations.tsx` (e/ou `DashboardSettings.tsx`)
+Dentro do card de configuração Asaas, novo bloco **"Integração com Faturas do Bitrix24"**:
+- Switch "Criar Fatura no Bitrix24 para cada cobrança"
+- Quando ligado: select carregado via `crm.item.fields` + `crm.category.stage.list` para escolher qual stage representa "Pago/Convertido" (auto-seleciona a stage com semântica `S` (success) se houver).
+- Texto explicativo: "Ao criar uma cobrança Asaas, geraremos automaticamente uma Fatura vinculada ao Deal/Contato. Quando o cliente pagar, a Fatura será marcada como Convertida."
 
-Remover/ajustar 2 cards menos relevantes para manter o grid simétrico (8 → 8 cards). Sugestão: substituir "Multi-empresa" e "Integração com Faturas" pelos novos, já que faturas se sobrepõe a contratos e multi-empresa não é diferencial vendido hoje.
+### 3. Edge Functions
 
-### 4. `src/components/landing/Footer.tsx`
-- Já mostra "Assas Pay by Thoth" — corrigir grafia para **"Asaas Pay by Thoth"** (estava "Assas" em vez de "Asaas").
+**Novo helper** `supabase/functions/_shared/bitrix-invoice.ts`:
+- `createBitrixInvoice({ endpoint, token, dealId, contactId, companyId, amount, title, dueDate, asaasPaymentId })` → usa `crm.item.add` com `entityTypeId=31`, popula `parentId2` (deal), `contactId`, `companyId`, `opportunity` (valor), `title`, `accountNumber` (id Asaas).
+- `markBitrixInvoicePaid({ endpoint, token, invoiceId, paidStageId })` → `crm.item.update` com `stageId`.
 
-### 5. Varredura de grafia "Assas Pay" → "Asaas Pay"
-Na renomeação anterior ficou "Assas Pay by Thoth" (com um S a menos) em vários arquivos. Vou rodar substituição global em `src/` e `supabase/functions/` para corrigir para **"Asaas Pay by Thoth"**.
+**Pontos de integração (criação)** — após criar cobrança no Asaas, se `sync_bitrix_invoices = true`, criar fatura e salvar `bitrix_invoice_id` em `transactions`:
+- `supabase/functions/bitrix-payment-process/index.ts`
+- `supabase/functions/bitrix-subscription-process/index.ts`
+- `supabase/functions/_shared/asaas-contract-billing.ts` (cobranças de contratos)
+- `supabase/functions/bitrix-contract-robot/index.ts` (caminho do robô)
+
+**Ponto de integração (atualização para pago)** — `supabase/functions/asaas-webhook/index.ts`:
+- Nos eventos `PAYMENT_RECEIVED` / `PAYMENT_CONFIRMED`, se a `transaction` tiver `bitrix_invoice_id` e a config tiver `sync_bitrix_invoices = true`, chamar `markBitrixInvoicePaid` com `bitrix_invoice_paid_stage_id`.
+- Em `PAYMENT_REFUNDED` / `PAYMENT_DELETED`: opcional — voltar a fatura para stage "Cancelado" (fora do escopo desta versão, ficará só logado).
+
+### 4. Logs
+Registrar em `integration_logs` as ações `bitrix_invoice_create` e `bitrix_invoice_mark_paid` (sucesso/erro), sem quebrar o fluxo principal se a chamada Bitrix falhar (apenas loga).
+
+## Detalhes técnicos
+
+- API Bitrix usada: **SmartInvoice universal** (`crm.item.add` / `crm.item.update` com `entityTypeId=31`) — substitui `crm.invoice.add` (deprecated).
+- Stages da fatura são lidas via `crm.category.stage.list?entityTypeId=31` (não há `categoryId` em SmartInvoice na maioria dos portais — usar `entityTypeId=31` direto).
+- Vínculo com Deal: campo `parentId2` em SmartInvoice corresponde ao Deal pai.
+- O campo `opportunity` carrega o valor; `currencyId` = `BRL`.
+- `accountNumber` recebe o `id` do payment Asaas para rastreabilidade.
+- Idempotência: ao criar, se `transactions.bitrix_invoice_id` já existir, pular criação.
 
 ## Fora do escopo
-- Sem mudanças de backend, schema ou edge functions de lógica (somente strings).
-- Sem mexer em outras rotas além da landing e textos de branding.
+- Sincronização reversa (Fatura criada no Bitrix → cobrança Asaas).
+- Mapeamento de impostos/itens da fatura — usaremos uma linha única com o valor total.

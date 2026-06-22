@@ -51,6 +51,12 @@ export default function DashboardSettings() {
   const [editApiKey, setEditApiKey] = useState('');
   const [editEnv, setEditEnv] = useState<'sandbox' | 'production'>('production');
   const [savingAsaas, setSavingAsaas] = useState(false);
+  // Bitrix invoice sync
+  const [syncBitrixInvoices, setSyncBitrixInvoices] = useState(false);
+  const [invoicePaidStageId, setInvoicePaidStageId] = useState<string>('');
+  const [invoiceStages, setInvoiceStages] = useState<Array<{ statusId: string; name: string; semantics?: string | null }>>([]);
+  const [loadingStages, setLoadingStages] = useState(false);
+  const [savingInvoiceSync, setSavingInvoiceSync] = useState(false);
 
   // ===== Webhook =====
   const [webhookUrl, setWebhookUrl] = useState('');
@@ -135,7 +141,7 @@ export default function DashboardSettings() {
       setWebhookUrl(`${supaUrl}/functions/v1/asaas-webhook`);
       const { data: cfg } = await supabase
         .from('asaas_configurations')
-        .select('api_key, environment, is_active, webhook_secret, webhook_configured')
+        .select('api_key, environment, is_active, webhook_secret, webhook_configured, sync_bitrix_invoices, bitrix_invoice_paid_stage_id')
         .eq('tenant_id', user.id)
         .eq('is_active', true)
         .maybeSingle();
@@ -145,6 +151,8 @@ export default function DashboardSettings() {
         setAsaasConnected(!!cfg.is_active);
         setWebhookSecret(cfg.webhook_secret || '');
         setWebhookConfigured(!!cfg.webhook_configured);
+        setSyncBitrixInvoices(!!(cfg as any).sync_bitrix_invoices);
+        setInvoicePaidStageId((cfg as any).bitrix_invoice_paid_stage_id || '');
       }
       // Fiscal
       const { data: fc } = await supabase
@@ -250,6 +258,7 @@ export default function DashboardSettings() {
   const openAsaasDialog = () => {
     setEditApiKey(asaasApiKey); setEditEnv(asaasEnv);
     setShowAsaasDialog(true);
+    if (syncBitrixInvoices && invoiceStages.length === 0) loadInvoiceStages();
   };
   const saveAsaas = async () => {
     if (!user) return;
@@ -267,6 +276,49 @@ export default function DashboardSettings() {
     setShowAsaasDialog(false);
     toast.success('Configuração Asaas salva');
   };
+
+  const loadInvoiceStages = async () => {
+    if (!user) return;
+    setLoadingStages(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('bitrix-invoice-stages', {
+        body: { tenant_id: user.id },
+      });
+      if (error) throw error;
+      const stages = (data?.stages || []) as Array<{ statusId: string; name: string; semantics?: string | null }>;
+      setInvoiceStages(stages);
+      if (!invoicePaidStageId) {
+        const success = stages.find(s => (s.semantics || '').toUpperCase() === 'S');
+        if (success) setInvoicePaidStageId(success.statusId);
+      }
+    } catch (e: any) {
+      toast.error('Não foi possível carregar os estágios das Faturas do Bitrix24');
+    } finally {
+      setLoadingStages(false);
+    }
+  };
+
+  const saveInvoiceSync = async () => {
+    if (!user) return;
+    if (syncBitrixInvoices && !invoicePaidStageId) {
+      toast.error('Escolha o estágio "Pago/Convertido" da Fatura');
+      return;
+    }
+    setSavingInvoiceSync(true);
+    const { error } = await supabase
+      .from('asaas_configurations')
+      .update({
+        sync_bitrix_invoices: syncBitrixInvoices,
+        bitrix_invoice_paid_stage_id: syncBitrixInvoices ? invoicePaidStageId : null,
+      })
+      .eq('tenant_id', user.id)
+      .eq('is_active', true);
+    setSavingInvoiceSync(false);
+    if (error) return toast.error('Erro: ' + error.message);
+    toast.success('Integração com Faturas Bitrix atualizada');
+  };
+
+
 
   const saveManualSecret = async () => {
     if (!user || !manualSecret.trim()) return;
@@ -868,6 +920,56 @@ export default function DashboardSettings() {
                   {savingAsaas ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                   Salvar Configuração
                 </Button>
+              </div>
+              <Separator />
+              <div>
+                <h4 className="font-medium mb-1">Integração com Faturas do Bitrix24</h4>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Ao criar uma cobrança no Asaas, geramos automaticamente uma Fatura vinculada ao Deal.
+                  Quando o cliente pagar, a Fatura é movida para "Pago/Convertido".
+                </p>
+                <div className="flex items-center justify-between mb-3">
+                  <Label htmlFor="sync-bitrix-invoices" className="text-sm">Criar Fatura no Bitrix24 para cada cobrança</Label>
+                  <Switch
+                    id="sync-bitrix-invoices"
+                    checked={syncBitrixInvoices}
+                    onCheckedChange={(v) => {
+                      setSyncBitrixInvoices(v);
+                      if (v && invoiceStages.length === 0) loadInvoiceStages();
+                    }}
+                  />
+                </div>
+                {syncBitrixInvoices && (
+                  <div className="space-y-2">
+                    <Label className="text-xs">Estágio "Pago / Convertido" da Fatura</Label>
+                    <div className="flex gap-2">
+                      <Select value={invoicePaidStageId} onValueChange={setInvoicePaidStageId} disabled={loadingStages || invoiceStages.length === 0}>
+                        <SelectTrigger>
+                          <SelectValue placeholder={loadingStages ? 'Carregando estágios...' : 'Selecione o estágio'} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {invoiceStages.map(s => (
+                            <SelectItem key={s.statusId} value={s.statusId}>
+                              {s.name} {(s.semantics || '').toUpperCase() === 'S' ? '✓' : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button type="button" variant="outline" size="sm" onClick={loadInvoiceStages} disabled={loadingStages}>
+                        {loadingStages ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Recarregar'}
+                      </Button>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Estágios são lidos do Bitrix24 (SmartInvoice). Marcamos automaticamente o que tem semântica de sucesso.
+                    </p>
+                  </div>
+                )}
+                <div className="flex justify-end mt-3">
+                  <Button onClick={saveInvoiceSync} disabled={savingInvoiceSync} size="sm">
+                    {savingInvoiceSync ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                    Salvar integração de Faturas
+                  </Button>
+                </div>
               </div>
               <Separator />
               <div>
