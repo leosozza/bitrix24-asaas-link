@@ -2616,13 +2616,35 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
     }
     
     case 'contract_templates_list': {
-      const { data: rows, error } = await supabase
+      let { data: rows, error } = await supabase
         .from('contract_templates')
         .select('id,name,description,body_html,is_default,bitrix_field_map,asaas_billing_map,cover_style,updated_at')
         .eq('tenant_id', tenantId)
         .order('is_default', { ascending: false })
         .order('updated_at', { ascending: false });
       if (error) return jsonError(error.message);
+
+      // Auto-seed default templates if tenant has none
+      if (!rows || rows.length === 0) {
+        const inserts = DEFAULT_TEMPLATES.map((t: any) => ({
+          tenant_id: tenantId,
+          name: t.name,
+          description: t.description,
+          body_html: t.body_html,
+          cover_style: t.cover_style,
+          is_default: !!t.is_default,
+          bitrix_field_map: t.bitrix_field_map ?? {},
+        }));
+        const { error: insErr } = await supabase.from('contract_templates').insert(inserts);
+        if (insErr) console.error('[contract_templates_list] auto-seed error:', insErr.message);
+        const re = await supabase
+          .from('contract_templates')
+          .select('id,name,description,body_html,is_default,bitrix_field_map,asaas_billing_map,cover_style,updated_at')
+          .eq('tenant_id', tenantId)
+          .order('is_default', { ascending: false })
+          .order('updated_at', { ascending: false });
+        rows = re.data || [];
+      }
       return jsonSuccess({ templates: rows || [] });
     }
     case 'contract_template_save': {
