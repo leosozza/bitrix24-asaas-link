@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Menu, X } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import logoAsset from "@/assets/asaas-pay-thoth-logo.png.asset.json";
 
 export function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -11,14 +12,12 @@ export function Header() {
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-2.5 group">
-            <div className="w-9 h-9 rounded-xl gradient-primary flex items-center justify-center shadow-md group-hover:shadow-glow transition-shadow">
-              <span className="text-primary-foreground font-bold text-sm">A</span>
-            </div>
-            <span className="font-display font-bold text-xl text-foreground">
-              Asaas <span className="text-primary">Pay</span>
-              <span className="text-muted-foreground font-normal text-sm ml-1">by Thoth24</span>
-            </span>
+          <Link to="/" className="flex items-center group">
+            <img
+              src={logoAsset.url}
+              alt="Asaas Pay by Thoth24"
+              className="h-9 md:h-10 w-auto"
+            />
           </Link>
 
           {/* Desktop Navigation */}

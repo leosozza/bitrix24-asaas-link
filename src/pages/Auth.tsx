@@ -6,8 +6,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LoginForm } from '@/components/auth/LoginForm';
 import { SignupForm } from '@/components/auth/SignupForm';
 import { useAuth } from '@/contexts/AuthContext';
-import { Zap } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import logoAsset from '@/assets/asaas-pay-thoth-logo.png.asset.json';
 
 export default function Auth() {
   const [activeTab, setActiveTab] = useState('login');
@@ -42,11 +42,12 @@ export default function Auth() {
       </Helmet>
 
       <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-background via-background to-muted/30 p-4">
-        <Link to="/" className="flex items-center gap-2 mb-8">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center">
-            <Zap className="w-6 h-6 text-primary-foreground" />
-          </div>
-          <span className="text-2xl font-bold text-foreground">Asaas Pay by Thoth24</span>
+        <Link to="/" className="mb-8 inline-block">
+          <img
+            src={logoAsset.url}
+            alt="Asaas Pay by Thoth24"
+            className="h-12 w-auto"
+          />
         </Link>
 
         <Card className="w-full max-w-md border-border/50 bg-card/80 backdrop-blur-sm">

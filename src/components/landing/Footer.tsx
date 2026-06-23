@@ -1,4 +1,5 @@
 import { Mail, Linkedin, Instagram, Phone, MapPin, ExternalLink } from "lucide-react";
+import logoWhiteAsset from "@/assets/asaas-pay-thoth-logo-white.png.asset.json";
 
 export function Footer() {
   return (
@@ -7,11 +8,12 @@ export function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">
           {/* Brand */}
           <div className="md:col-span-1">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-                <span className="text-primary-foreground font-bold text-sm">T</span>
-              </div>
-              <span className="font-display font-bold text-xl">Asaas Pay by Thoth24</span>
+            <div className="mb-4">
+              <img
+                src={logoWhiteAsset.url}
+                alt="Asaas Pay by Thoth24"
+                className="h-10 w-auto"
+              />
             </div>
             <p className="text-background/70 text-sm leading-relaxed mb-4">
               A integração oficial do Asaas para o Bitrix24. 

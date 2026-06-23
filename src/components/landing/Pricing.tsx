@@ -122,9 +122,9 @@ export function Pricing() {
                 {plan.features.map((feature, featureIndex) => (
                   <li key={featureIndex} className="flex items-start gap-3">
                     <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                      plan.popular ? 'bg-accent/20' : 'bg-accent/10'
+                      plan.popular ? 'bg-primary/20' : 'bg-primary/10'
                     }`}>
-                      <Check className="w-3 h-3 text-accent" />
+                      <Check className="w-3 h-3 text-primary" />
                     </div>
                     <span className="text-foreground text-sm">{feature}</span>
                   </li>

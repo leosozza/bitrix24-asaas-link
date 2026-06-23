@@ -61,14 +61,14 @@ export function DashboardSidebar() {
     <Sidebar collapsible="icon" className="border-r border-border/50">
       <SidebarHeader className="p-4">
         <NavLink to="/dashboard" className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center flex-shrink-0">
-            <Zap className="w-5 h-5 text-primary-foreground" />
-          </div>
-          {!collapsed && (
-            <div className="flex flex-col leading-tight">
-              <span className="text-lg font-bold text-foreground">Asaas Pay</span>
-              <span className="text-[10px] text-muted-foreground tracking-wide">by Thoth24</span>
-            </div>
+          {collapsed ? (
+            <img src="/favicon.png" alt="Thoth24" className="w-8 h-8 rounded-lg flex-shrink-0" />
+          ) : (
+            <img
+              src={logoAsset.url}
+              alt="Asaas Pay by Thoth24"
+              className="h-9 w-auto"
+            />
           )}
         </NavLink>
       </SidebarHeader>
