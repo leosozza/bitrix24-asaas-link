@@ -113,6 +113,17 @@ serve(async (req) => {
       });
     };
 
+    const EXCLUDED_TX_STATUSES = ['cancelled', 'canceled', 'refunded', 'failed'];
+
+    async function countTxForPeriod(tenantId: string, periodStart: string | null, periodEnd: string | null) {
+      let q = admin.from('transactions').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId);
+      if (periodStart) q = q.gte('created_at', periodStart);
+      if (periodEnd) q = q.lte('created_at', `${periodEnd}T23:59:59`);
+      q = q.not('status', 'in', `(${EXCLUDED_TX_STATUSES.join(',')})`);
+      const { count } = await q;
+      return count || 0;
+    }
+
     switch (action) {
       case 'list_tenants': {
         const { data: profiles } = await admin
@@ -135,12 +146,19 @@ serve(async (req) => {
         const subMap = new Map((subs || []).map(s => [s.tenant_id, s]));
         const instMap = new Map((installs || []).map(i => [i.tenant_id, i]));
 
+        // Live transaction counts per tenant for current period
+        const usageEntries = await Promise.all(
+          (subs || []).map(async (s: any) => [s.tenant_id, await countTxForPeriod(s.tenant_id, s.current_period_start, s.current_period_end)] as const)
+        );
+        const usageMap = new Map(usageEntries);
+
         const tenants = (profiles || []).map(p => {
-          const s = subMap.get(p.id);
+          const s: any = subMap.get(p.id);
           const plan = s ? planMap.get(s.plan_id) : null;
+          const subWithUsage = s ? { ...s, transactions_used: usageMap.get(p.id) ?? s.transactions_used ?? 0 } : null;
           return {
             ...p,
-            subscription: s || null,
+            subscription: subWithUsage,
             plan: plan || null,
             bitrix: instMap.get(p.id) || null,
           };
@@ -156,10 +174,12 @@ serve(async (req) => {
         const { data: sub } = await admin.from('tenant_subscriptions').select('*').eq('tenant_id', tenantId).maybeSingle();
         const { data: plan } = sub ? await admin.from('subscription_plans').select('*').eq('id', sub.plan_id).maybeSingle() : { data: null };
         const { data: install } = await admin.from('bitrix_installations').select('*').eq('tenant_id', tenantId).maybeSingle();
-        const { data: txCount } = await admin.from('transactions').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId);
+        const periodUsed = sub ? await countTxForPeriod(tenantId, (sub as any).current_period_start, (sub as any).current_period_end) : 0;
+        const subWithUsage = sub ? { ...sub, transactions_used: periodUsed } : null;
         const { data: logs } = await admin.from('integration_logs').select('*').eq('tenant_id', tenantId).order('created_at', { ascending: false }).limit(50);
-        return json({ success: true, profile, subscription: sub, plan, bitrix: install, transactions_count: (txCount as any) ?? null, logs: logs || [] });
+        return json({ success: true, profile, subscription: subWithUsage, plan, bitrix: install, transactions_count: periodUsed, logs: logs || [] });
       }
+
 
       case 'change_plan': {
         const { tenant_id, plan_id } = body;
