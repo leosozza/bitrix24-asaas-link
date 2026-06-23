@@ -1,50 +1,42 @@
-# Landing 100% no azul royal + logos novos
+## Problema
 
-Padronizar toda a landing no token `--primary` (azul royal `#1E48D6`) e substituir as marcas montadas (quadrados com "A"/"T"/"B+A") pelos dois logos oficiais enviados.
+A coluna **Uso** mostra `0/500` para todos os tenants porque `tenant_subscriptions.transactions_used` nunca é incrementado em lugar nenhum do código (nem por trigger, nem pelos webhooks/edge functions que inserem em `transactions`). O valor fica preso no DEFAULT 0 da criação.
 
-## 1. Subir os dois logos como assets
+## Solução
 
-- `IMG_0769.jpeg` (azul sobre branco) → `src/assets/asaas-pay-thoth-logo.png.asset.json` — usado em fundos claros (Header, Auth, Sidebar dashboard).
-- `IMG_0770.jpeg` (branco sobre azul) → `src/assets/asaas-pay-thoth-logo-white.png.asset.json` — usado em fundos escuros (Footer, CTA azul).
+Calcular o uso **ao vivo** a partir da tabela `transactions`, contando as transações de cada tenant dentro do período atual da assinatura (`current_period_start` → `current_period_end`). Sem migrações, sem triggers, sem risco de dessincronia.
 
-> Subir via `lovable-assets create` direto de `/mnt/user-uploads/`, sem copiar binário pro repo. Importar como JSON e usar `.url`.
+### Mudanças
 
-## 2. Trocar a marca em 4 lugares
+1. **`supabase/functions/admin-tenant-management/index.ts` — case `list_tenants`**
+   - Após carregar `subs`, para cada subscription rodar uma contagem:
+     ```ts
+     supabase.from('transactions')
+       .select('id', { count: 'exact', head: true })
+       .eq('tenant_id', sub.tenant_id)
+       .gte('created_at', sub.current_period_start)
+       .lte('created_at', sub.current_period_end + 'T23:59:59');
+     ```
+   - Executar em paralelo com `Promise.all` para todos os tenants.
+   - Sobrescrever `subscription.transactions_used` com o count real antes de devolver para o front.
+   - Considerar apenas transações com `status` relevante (`confirmed`, `received`, `pending`) — confirmar lista olhando os status já usados em `asaas-webhook`. Default: contar todas exceto `cancelled`/`refunded`/`failed`.
 
-**`src/components/landing/Header.tsx`** (linhas 14–22): remover quadradinho `A` + texto "Asaas Pay by Thoth24". Renderizar `<img src={logo.url} alt="Asaas Pay by Thoth24" className="h-9 md:h-10 w-auto" />`.
+2. **`supabase/functions/admin-tenant-management/index.ts` — case `get_tenant`**
+   - Aplicar a mesma contagem por período no `transactions_count` retornado, para o drawer/detalhe ficar consistente.
 
-**`src/components/landing/Footer.tsx`** (linhas 11–17): trocar quadradinho `T` + texto pelo logo branco (`h-10 w-auto`).
+3. **`src/pages/DashboardSettings.tsx`** (visão do próprio tenant)
+   - Em vez de ler `sub.transactions_used`, fazer a mesma contagem no client (já tem RLS por tenant) usando `current_period_start`/`current_period_end`.
+   - Mesma lógica em `bitrix-payment-iframe` (linhas ~2629/2644) para o painel embedded.
 
-**`src/pages/Auth.tsx`** (linhas 49–53): trocar `<Zap>` + "Asaas Pay by Thoth24" pelo logo azul (`h-10 w-auto`).
+### Fora de escopo
 
-**`src/components/dashboard/DashboardSidebar.tsx`** (linhas 63–73): quando expandido, mostrar o logo azul. Quando colapsado (`collapsed === true`), mostrar apenas a marca quadrada favicon (`/favicon.png` que já existe no `public/`).
+- Não vamos criar trigger de incremento agora (mais frágil: reset por período, rollback em refund, etc.). Se quiser persistir o contador depois, dá pra adicionar numa segunda iteração.
+- Não vamos alterar schema nem migrações.
 
-## 3. Limpar variações de cor na landing
+### Validação
 
-**`src/components/landing/Hero.tsx`:**
-- Linha 32–34: trocar `<span className="text-bitrix">Bitrix24</span>` e `<span className="text-asaas">Asaas</span>` para `text-primary` (palavras destacadas ficam no mesmo azul).
-- Linha 95 e 99: substituir gradients hard-coded `from-[hsl(195,91%,57%)]` e `to-[hsl(155,100%,33%)]` por `from-primary/30 to-primary` e `from-primary to-primary/30`.
-- Trocar **todos** os `text-accent` / `bg-accent/*` (linhas 60, 64, 68, 119, 122, 139, 140, 144) por `text-primary` / `bg-primary/*` — landing fica monocromática no azul.
-- Linha 15: `bg-accent/5` → `bg-primary/5`.
+- Abrir `/admin/tenants` no mobile → coluna **Uso** deve refletir o número real de transações do período (ex.: `3 / 500`).
+- Tenant sem transações continua `0 / 500`.
+- Drawer de detalhe e `DashboardSettings` mostram o mesmo número.
 
-**`src/components/landing/Features.tsx`:**
-- Remover o toggle `color: 'accent' | 'primary'` no array `features` (linhas 17, 23, 29, 35, 41, 47, 53, 59).
-- Linhas 99–100: usar sempre `bg-primary/10` + `text-primary`.
-- Linha 77: badge "Recursos" usa `bg-primary/10 text-primary` em vez de accent.
-
-**`src/components/landing/Pricing.tsx`** (linhas 125, 127): check icon e fundo → `bg-primary/10` / `text-primary` (mantém o destaque do "popular" usando `bg-primary/20` em vez de accent).
-
-**`src/components/landing/FAQ.tsx`** (linha 49): badge "FAQ" → `bg-primary/10 text-primary`.
-
-**`src/components/landing/CTA.tsx`** (linha 14): `bg-accent/10` blur → `bg-primary/15`.
-
-## 4. Fora de escopo
-- Não removo o token `--accent` do `index.css` (já é azul-family e usado em dashboard/forms — segue como variação clara do primary fora da landing).
-- Status semânticos (`--success` verde para "Pago") permanecem.
-- Logos antigos `bitrix24-logo.png` e `asaas-logo.png` continuam sendo usados **dentro do card de integração do Hero** (mostram tecnicamente quem está sendo conectado — é informação, não marca do produto).
-
-## Validação
-- `rg "text-accent|bg-accent|text-bitrix|text-asaas|hsl\(" src/components/landing src/pages/Auth.tsx` → vazio.
-- Inspeção visual: Header, Hero, Features, Pricing, FAQ, CTA, Footer, Auth e Sidebar todos no mesmo azul royal.
-
-Aplico?
+Posso aplicar?
