@@ -12,6 +12,7 @@ import {
   ScrollText,
   Shield
 } from 'lucide-react';
+import logoAsset from '@/assets/asaas-pay-thoth-logo.png.asset.json';
 
 import { useIsSuperAdmin } from '@/hooks/useIsSuperAdmin';
 import { cn } from '@/lib/utils';
