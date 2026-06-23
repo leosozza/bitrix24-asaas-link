@@ -42,3 +42,19 @@ verify_jwt = false
 [functions.asaas-contract-webhook]
 verify_jwt = false
 
+[functions.bitrix-contract-robot]
+verify_jwt = false
+
+[functions.bitrix-contract-fields]
+verify_jwt = false
+
+[functions.bitrix-contract-setup]
+verify_jwt = false
+
+[functions.bitrix-invoice-stages]
+verify_jwt = false
+
+[functions.thoth-asaas-webhook]
+verify_jwt = false
+
+
