@@ -87,7 +87,7 @@ export default function DashboardTransactions() {
   return (
     <>
       <Helmet>
-        <title>Transações | Asaas Pay by Thoth</title>
+        <title>Transações | Asaas Pay by Thoth24</title>
       </Helmet>
 
       <DashboardLayout title="Transações" description="Gerencie todas as suas transações">

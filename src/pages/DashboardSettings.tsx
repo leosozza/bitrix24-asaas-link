@@ -512,7 +512,7 @@ export default function DashboardSettings() {
 
   return (
     <>
-      <Helmet><title>Configurações | Asaas Pay by Thoth</title></Helmet>
+      <Helmet><title>Configurações | Asaas Pay by Thoth24</title></Helmet>
       <DashboardLayout title="Configurações" description="Gerencie sua conta e preferências">
         <div className="space-y-6 max-w-4xl">
           {/* Top action */}
@@ -678,7 +678,7 @@ export default function DashboardSettings() {
             </CardHeader>
           </Card>
 
-          {/* ============= ASSINATURA CONNECTPAY ============= */}
+          {/* ============= ASSINATURA THOTH24 ============= */}
           <Card className="border-border/50">
             <CardHeader>
               <div className="flex items-center gap-3">
@@ -687,7 +687,7 @@ export default function DashboardSettings() {
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center justify-between">
-                    <CardTitle>Assinatura Asaas Pay by Thoth</CardTitle>
+                    <CardTitle>Assinatura Asaas Pay by Thoth24</CardTitle>
                     <div className="flex items-center gap-2">
                       {(() => {
                         if (!planCurrent) return null;

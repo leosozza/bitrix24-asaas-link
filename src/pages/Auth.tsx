@@ -37,8 +37,8 @@ export default function Auth() {
   return (
     <>
       <Helmet>
-        <title>Login | Asaas Pay by Thoth - Integração Bitrix24 + Asaas</title>
-        <meta name="description" content="Acesse sua conta Asaas Pay by Thoth para gerenciar integrações de pagamento entre Bitrix24 e Asaas." />
+        <title>Login | Asaas Pay by Thoth24 - Integração Bitrix24 + Asaas</title>
+        <meta name="description" content="Acesse sua conta Asaas Pay by Thoth24 para gerenciar integrações de pagamento entre Bitrix24 e Asaas." />
       </Helmet>
 
       <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-background via-background to-muted/30 p-4">
@@ -46,7 +46,7 @@ export default function Auth() {
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center">
             <Zap className="w-6 h-6 text-primary-foreground" />
           </div>
-          <span className="text-2xl font-bold text-foreground">Asaas Pay by Thoth</span>
+          <span className="text-2xl font-bold text-foreground">Asaas Pay by Thoth24</span>
         </Link>
 
         <Card className="w-full max-w-md border-border/50 bg-card/80 backdrop-blur-sm">

@@ -114,7 +114,7 @@ export function PlanCheckoutModal({ open, onOpenChange, initialPlanId, onCheckou
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Contratar plano Asaas Pay by Thoth</DialogTitle>
+          <DialogTitle>Contratar plano Asaas Pay by Thoth24</DialogTitle>
           <DialogDescription>
             {step < 4 ? `Passo ${step} de 3` : 'Pagamento gerado'}
           </DialogDescription>

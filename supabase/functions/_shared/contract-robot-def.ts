@@ -1,4 +1,4 @@
-// Shared definition for the "Asaas Pay by Thoth: Gerar Contrato" Bizproc robot.
+// Shared definition for the "Asaas Pay by Thoth24: Gerar Contrato" Bizproc robot.
 // Used by bitrix-contract-setup, bitrix-payment-iframe (ensure/register), etc.
 
 export const CONTRACT_ROBOT_CODE = "asaas_contract_generate";
@@ -18,7 +18,7 @@ export function buildContractRobotParams(
     HANDLER: `${supabaseUrl}/functions/v1/bitrix-contract-robot`,
     AUTH_USER_ID: 1,
     USE_SUBSCRIPTION: "Y",
-    NAME: "Asaas Pay by Thoth: Gerar Contrato",
+    NAME: "Asaas Pay by Thoth24: Gerar Contrato",
     PROPERTIES: {
       template_id: { Name: "Template do contrato", Type: "select", Required: "Y", Options: templateOptions },
       payment_total: { Name: "Valor total (R$)", Type: "double", Required: "Y" },

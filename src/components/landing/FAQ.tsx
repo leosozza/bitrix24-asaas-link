@@ -82,7 +82,7 @@ export function FAQ() {
           <p className="text-muted-foreground mb-2">
             Não encontrou sua resposta?
           </p>
-          <a href="mailto:suporte@connectpay.com.br" className="text-primary hover:underline font-medium">
+          <a href="mailto:contato@thoth24.com" className="text-primary hover:underline font-medium">
             Entre em contato com nosso suporte
           </a>
         </div>

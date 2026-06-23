@@ -39,7 +39,7 @@ async function registerThothWebhook() {
   if (!THOTH_ASAAS_API_KEY) return { ok: false, error: 'THOTH_ASAAS_API_KEY not configured' };
   const events = ['PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED', 'PAYMENT_OVERDUE', 'SUBSCRIPTION_UPDATED', 'SUBSCRIPTION_DELETED'];
   const payload = {
-    name: 'Asaas Pay by Thoth Thoth24 Billing',
+    name: 'Asaas Pay by Thoth24 Billing',
     url: webhookUrl,
     email: 'contato@thoth24.com',
     enabled: true,
@@ -306,7 +306,7 @@ serve(async (req) => {
             value: Number(plan.price),
             cycle: 'MONTHLY',
             nextDueDate: nextDue,
-            description: `Asaas Pay by Thoth - Plano ${plan.name}`,
+            description: `Asaas Pay by Thoth24 - Plano ${plan.name}`,
           }),
         });
         if (!createSub.ok) { await logAction('create_asaas_subscription', body, 'error', createSub.data); return json({ error: 'Failed to create subscription', detail: createSub.data }, 400); }

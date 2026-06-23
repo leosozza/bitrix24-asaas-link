@@ -67,7 +67,7 @@ export function DashboardSidebar() {
           {!collapsed && (
             <div className="flex flex-col leading-tight">
               <span className="text-lg font-bold text-foreground">Asaas Pay</span>
-              <span className="text-[10px] text-muted-foreground tracking-wide">by Thoth</span>
+              <span className="text-[10px] text-muted-foreground tracking-wide">by Thoth24</span>
             </div>
           )}
         </NavLink>

@@ -17,7 +17,7 @@ export function Header() {
             </div>
             <span className="font-display font-bold text-xl text-foreground">
               Asaas <span className="text-primary">Pay</span>
-              <span className="text-muted-foreground font-normal text-sm ml-1">by Thoth</span>
+              <span className="text-muted-foreground font-normal text-sm ml-1">by Thoth24</span>
             </span>
           </Link>
 
