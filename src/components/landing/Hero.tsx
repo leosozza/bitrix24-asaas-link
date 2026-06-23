@@ -12,7 +12,7 @@ export function Hero() {
       {/* Decorative elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-20 left-10 w-72 h-72 bg-primary/5 rounded-full blur-3xl" />
-        <div className="absolute bottom-20 right-10 w-96 h-96 bg-accent/5 rounded-full blur-3xl" />
+        <div className="absolute bottom-20 right-10 w-96 h-96 bg-primary/10 rounded-full blur-3xl" />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-gradient-radial from-primary/3 to-transparent rounded-full" />
       </div>
 
@@ -29,9 +29,9 @@ export function Hero() {
             {/* Headline */}
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-display font-bold text-foreground leading-[1.1] mb-6 animate-fade-in-up" style={{ animationDelay: "0.1s" }}>
               Conecte o{" "}
-              <span className="text-bitrix">Bitrix24</span>
+              <span className="text-primary">Bitrix24</span>
               {" "}ao{" "}
-              <span className="text-asaas">Asaas</span>
+              <span className="text-primary">Asaas</span>
               {" "}e automatize pagamentos
             </h1>
 
@@ -57,15 +57,15 @@ export function Hero() {
             {/* Trust indicators */}
             <div className="flex flex-wrap items-center justify-center lg:justify-start gap-6 text-muted-foreground animate-fade-in-up" style={{ animationDelay: "0.4s" }}>
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-5 h-5 text-accent" />
+                <CheckCircle2 className="w-5 h-5 text-primary" />
                 <span className="text-sm">14 dias grátis</span>
               </div>
               <div className="flex items-center gap-2">
-                <Shield className="w-5 h-5 text-accent" />
+                <Shield className="w-5 h-5 text-primary" />
                 <span className="text-sm">Contratos automáticos</span>
               </div>
               <div className="flex items-center gap-2">
-                <RefreshCw className="w-5 h-5 text-accent" />
+                <RefreshCw className="w-5 h-5 text-primary" />
                 <span className="text-sm">Sync em tempo real</span>
               </div>
             </div>
@@ -92,11 +92,11 @@ export function Hero() {
                   {/* Connection animation */}
                   <div className="flex flex-col items-center gap-2">
                     <div className="flex items-center gap-2">
-                      <div className="w-8 md:w-12 h-0.5 bg-gradient-to-r from-[hsl(195,91%,57%)] to-primary rounded" />
+                      <div className="w-8 md:w-12 h-0.5 bg-gradient-to-r from-primary/30 to-primary rounded" />
                       <div className="w-10 h-10 md:w-12 md:h-12 rounded-full gradient-primary flex items-center justify-center animate-pulse-glow">
                         <RefreshCw className="w-5 h-5 md:w-6 md:h-6 text-primary-foreground" />
                       </div>
-                      <div className="w-8 md:w-12 h-0.5 bg-gradient-to-r from-primary to-[hsl(155,100%,33%)] rounded" />
+                      <div className="w-8 md:w-12 h-0.5 bg-gradient-to-r from-primary to-primary/30 rounded" />
                     </div>
                     <span className="text-xs text-muted-foreground">Sincronização</span>
                   </div>
@@ -116,11 +116,11 @@ export function Hero() {
                 {/* Payment methods */}
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                   {[
-                    { label: "PIX", icon: "⚡", color: "text-accent" },
-                    { label: "Boleto", icon: "📄", color: "text-primary" },
-                    { label: "Cartão", icon: "💳", color: "text-primary" },
-                    { label: "Recorrente", icon: "🔄", color: "text-accent" },
-                    { label: "Contrato", icon: "📝", color: "text-primary" },
+                    { label: "PIX", icon: "⚡" },
+                    { label: "Boleto", icon: "📄" },
+                    { label: "Cartão", icon: "💳" },
+                    { label: "Recorrente", icon: "🔄" },
+                    { label: "Contrato", icon: "📝" },
                   ].map((item, index) => (
                     <div
                       key={index}
@@ -136,12 +136,12 @@ export function Hero() {
               {/* Floating stats cards */}
               <div className="absolute -top-4 -right-4 bg-card rounded-xl border border-border shadow-lg p-3 animate-float hidden md:block">
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center">
-                    <CheckCircle2 className="w-4 h-4 text-accent" />
+                  <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <CheckCircle2 className="w-4 h-4 text-primary" />
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Pagamento</p>
-                    <p className="text-sm font-semibold text-accent">Confirmado</p>
+                    <p className="text-sm font-semibold text-primary">Confirmado</p>
                   </div>
                 </div>
               </div>

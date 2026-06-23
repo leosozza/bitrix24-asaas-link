@@ -46,7 +46,7 @@ export function FAQ() {
       <div className="container mx-auto px-4">
         {/* Section header */}
         <div className="max-w-3xl mx-auto text-center mb-16">
-          <span className="inline-block px-4 py-1.5 rounded-full bg-accent/10 text-accent text-sm font-medium mb-4">
+          <span className="inline-block px-4 py-1.5 rounded-full bg-primary/10 text-primary text-sm font-medium mb-4">
             FAQ
           </span>
           <h2 className="text-3xl md:text-4xl font-display font-bold text-foreground mb-4">

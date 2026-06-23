@@ -14,49 +14,41 @@ const features = [
     icon: CreditCard,
     title: "Múltiplos Métodos",
     description: "PIX, boleto bancário e cartão de crédito integrados diretamente no seu Bitrix24.",
-    color: "primary",
   },
   {
     icon: RefreshCw,
     title: "Assinaturas Recorrentes",
     description: "Crie planos de assinatura e gerencie cobranças recorrentes automaticamente.",
-    color: "accent",
   },
   {
     icon: ScrollText,
     title: "Contratos Inteligentes",
     description: "Modelos prontos, geração automática, assinatura digital e cobrança vinculada ao Deal.",
-    color: "primary",
   },
   {
     icon: AppWindow,
     title: "Painel dentro do Bitrix24",
     description: "Configure credenciais, templates de contrato e automações sem sair do CRM, via placement embutido.",
-    color: "accent",
   },
   {
     icon: Bell,
     title: "Notificações Real-time",
     description: "Receba alertas de pagamento confirmado, vencido ou cancelado direto no CRM.",
-    color: "primary",
   },
   {
     icon: Zap,
     title: "Automações Inteligentes",
     description: "Robôs Bizproc para criar cobranças, assinaturas, NFS-e e contratos a partir de mudanças no Deal.",
-    color: "accent",
   },
   {
     icon: Users,
     title: "Sync de Contatos",
     description: "Clientes do Asaas sincronizados com Contatos e Empresas do Bitrix24.",
-    color: "primary",
   },
   {
     icon: BarChart3,
     title: "Dashboard Financeiro",
     description: "Visualize métricas de pagamento, inadimplência e receita dentro do Bitrix24.",
-    color: "accent",
   },
 ];
 
@@ -74,7 +66,7 @@ export function Features() {
       <div className="container mx-auto px-4 relative z-10">
         {/* Section header */}
         <div className="max-w-3xl mx-auto text-center mb-16">
-          <span className="inline-block px-4 py-1.5 rounded-full bg-accent/10 text-accent text-sm font-medium mb-4">
+          <span className="inline-block px-4 py-1.5 rounded-full bg-primary/10 text-primary text-sm font-medium mb-4">
             Recursos
           </span>
           <h2 className="text-3xl md:text-4xl lg:text-5xl font-display font-bold text-foreground mb-5">
@@ -96,8 +88,8 @@ export function Features() {
               <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
               
               <div className="relative">
-                <div className={`w-12 h-12 rounded-xl ${feature.color === 'accent' ? 'bg-accent/10' : 'bg-primary/10'} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
-                  <feature.icon className={`w-6 h-6 ${feature.color === 'accent' ? 'text-accent' : 'text-primary'}`} />
+                <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                  <feature.icon className="w-6 h-6 text-primary" />
                 </div>
                 <h3 className="text-lg font-display font-semibold text-foreground mb-2">
                   {feature.title}
