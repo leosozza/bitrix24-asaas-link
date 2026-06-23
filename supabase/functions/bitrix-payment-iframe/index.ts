@@ -2635,17 +2635,29 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
         .eq('is_active', true)
         .order('price', { ascending: true });
       const fmtDate = (d: any) => d ? new Date(d).toLocaleDateString('pt-BR') : null;
+      let usedCount = 0;
+      if (sub) {
+        const { count } = await supabase
+          .from('transactions')
+          .select('id', { count: 'exact', head: true })
+          .eq('tenant_id', tenantId)
+          .gte('created_at', (sub as any).current_period_start)
+          .lte('created_at', `${(sub as any).current_period_end}T23:59:59`)
+          .not('status', 'in', '(cancelled,canceled,refunded,failed)');
+        usedCount = count || 0;
+      }
       const current = sub ? {
         plan_id: sub.plan_id,
         plan_name: (sub as any).subscription_plans?.name,
         status: sub.status,
         period_start: fmtDate(sub.current_period_start),
         period_end: fmtDate(sub.current_period_end),
-        used: sub.transactions_used || 0,
+        used: usedCount,
         limit: (sub as any).subscription_plans?.transaction_limit ?? 0,
       } : null;
       return jsonSuccess({ current, plans: plans || [] });
     }
+
     
     case 'get_notifications': {
       const { data: prefs } = await supabase
