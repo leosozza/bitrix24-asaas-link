@@ -180,6 +180,13 @@ export default function DashboardSettings() {
         .eq('tenant_id', user.id)
         .maybeSingle();
       if (sub) {
+        const { count: usedCount } = await supabase
+          .from('transactions')
+          .select('id', { count: 'exact', head: true })
+          .eq('tenant_id', user.id)
+          .gte('created_at', sub.current_period_start)
+          .lte('created_at', `${sub.current_period_end}T23:59:59`)
+          .not('status', 'in', '(cancelled,canceled,refunded,failed)');
         setPlanCurrent({
           plan_id: sub.plan_id,
           plan_name: (sub as any).subscription_plans?.name,
@@ -188,7 +195,7 @@ export default function DashboardSettings() {
           period_start: sub.current_period_start,
           period_end: sub.current_period_end,
           trial_ends_at: sub.trial_ends_at,
-          used: sub.transactions_used || 0,
+          used: usedCount || 0,
           limit: (sub as any).subscription_plans?.transaction_limit ?? 0,
           asaas_subscription_id: sub.asaas_subscription_id,
           asaas_customer_id: sub.asaas_customer_id,
@@ -197,6 +204,7 @@ export default function DashboardSettings() {
           invoice_url: (sub as any).invoice_url,
         });
       }
+
       // Notifications
       const { data: np } = await supabase
         .from('notification_preferences')
