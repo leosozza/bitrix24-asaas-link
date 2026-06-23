@@ -1,4 +1,5 @@
 import { Mail, Linkedin, Instagram, Phone, MapPin, ExternalLink } from "lucide-react";
+import { Link } from "react-router-dom";
 import logoWhiteAsset from "@/assets/asaas-pay-thoth-logo-white.png.asset.json";
 
 export function Footer() {
@@ -84,23 +85,23 @@ export function Footer() {
             <h4 className="font-display font-semibold mb-4">Empresa</h4>
             <ul className="space-y-3 text-sm text-background/70">
               <li>
-                <a href="#" className="hover:text-background transition-colors">
-                  Sobre Nós
-                </a>
+                <Link to="/suporte" className="hover:text-background transition-colors">
+                  Suporte
+                </Link>
               </li>
               <li>
-                <a href="#" className="hover:text-background transition-colors">
-                  Blog
-                </a>
+                <Link to="/demo" className="hover:text-background transition-colors">
+                  Solicitar demo
+                </Link>
               </li>
               <li>
-                <a href="#" className="hover:text-background transition-colors">
+                <a href="mailto:contato@thoth24.com" className="hover:text-background transition-colors">
                   Contato
                 </a>
               </li>
               <li>
-                <a href="#" className="hover:text-background transition-colors">
-                  Parceiros
+                <a href="https://thoth24.com" target="_blank" rel="noopener noreferrer" className="hover:text-background transition-colors">
+                  Sobre a Thoth24
                 </a>
               </li>
             </ul>
@@ -124,12 +125,15 @@ export function Footer() {
           </div>
 
           <div className="flex items-center gap-6">
-            <a href="#" className="text-sm text-background/70 hover:text-background transition-colors">
+            <Link to="/eula" className="text-sm text-background/70 hover:text-background transition-colors">
               Termos de Uso
-            </a>
-            <a href="#" className="text-sm text-background/70 hover:text-background transition-colors">
+            </Link>
+            <Link to="/privacidade" className="text-sm text-background/70 hover:text-background transition-colors">
               Privacidade
-            </a>
+            </Link>
+            <Link to="/suporte" className="text-sm text-background/70 hover:text-background transition-colors">
+              Suporte
+            </Link>
           </div>
 
           <div className="flex items-center gap-4">
