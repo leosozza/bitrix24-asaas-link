@@ -88,7 +88,7 @@ serve(async (req) => {
         billingType: billing_type,
         value: 5.00,
         dueDate: due.toISOString().slice(0, 10),
-        description: 'Cobrança de teste - Asaas Pay by Thoth (Lovable)',
+        description: 'Cobrança de teste - Asaas Pay by Thoth24',
         externalReference: `test-${Date.now()}`,
       }),
     });
