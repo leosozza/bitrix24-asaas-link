@@ -1,42 +1,84 @@
-## Problema
 
-A coluna **Uso** mostra `0/500` para todos os tenants porque `tenant_subscriptions.transactions_used` nunca é incrementado em lugar nenhum do código (nem por trigger, nem pelos webhooks/edge functions que inserem em `transactions`). O valor fica preso no DEFAULT 0 da criação.
+## Objetivo
 
-## Solução
+Criar 4 novas rotas públicas no app, no padrão visual azul royal (#1E48D6) da landing, e entregar os textos prontos (Descrição completa, Palavras-chave, Descrição da instalação, Informações de suporte) para o formulário do Bitrix24 Marketplace.
 
-Calcular o uso **ao vivo** a partir da tabela `transactions`, contando as transações de cada tenant dentro do período atual da assinatura (`current_period_start` → `current_period_end`). Sem migrações, sem triggers, sem risco de dessincronia.
+**Dados oficiais Thoth24 usados em todas as páginas:**
+- CNPJ: 54.727.112/0001-78
+- Razão social: Thoth24
+- Email: contato@thoth24.com
+- Domínio: https://asaas.thoth24.com
 
-### Mudanças
+## Páginas a criar
 
-1. **`supabase/functions/admin-tenant-management/index.ts` — case `list_tenants`**
-   - Após carregar `subs`, para cada subscription rodar uma contagem:
-     ```ts
-     supabase.from('transactions')
-       .select('id', { count: 'exact', head: true })
-       .eq('tenant_id', sub.tenant_id)
-       .gte('created_at', sub.current_period_start)
-       .lte('created_at', sub.current_period_end + 'T23:59:59');
-     ```
-   - Executar em paralelo com `Promise.all` para todos os tenants.
-   - Sobrescrever `subscription.transactions_used` com o count real antes de devolver para o front.
-   - Considerar apenas transações com `status` relevante (`confirmed`, `received`, `pending`) — confirmar lista olhando os status já usados em `asaas-webhook`. Default: contar todas exceto `cancelled`/`refunded`/`failed`.
+Todas usando o `Header` + `Footer` da landing, container centralizado, tipografia e tokens já existentes (`bg-primary`, `text-primary`, azul royal `#1E48D6`). Cada página adiciona `<Helmet>` com title/description próprios (instalar `react-helmet-async` se ainda não estiver).
 
-2. **`supabase/functions/admin-tenant-management/index.ts` — case `get_tenant`**
-   - Aplicar a mesma contagem por período no `transactions_count` retornado, para o drawer/detalhe ficar consistente.
+### 1. `src/pages/Eula.tsx` — rota `/eula`
+EULA (Contrato de Licença de Usuário Final) com seções:
+1. Definições (Thoth24, Aplicativo, Usuário, Bitrix24, Asaas)
+2. Objeto da licença (uso não exclusivo, intransferível)
+3. Cadastro e conta
+4. Planos, pagamentos e período de teste
+5. Obrigações do usuário (uso lícito, credenciais Asaas próprias)
+6. Propriedade intelectual (código pertence à Thoth24)
+7. Limitação de responsabilidade
+8. Suspensão e rescisão
+9. Atualizações do aplicativo
+10. Foro (Comarca da sede da Thoth24) e legislação brasileira
+Rodapé: "Thoth24 — CNPJ 54.727.112/0001-78 — contato@thoth24.com — Última atualização: 23/06/2026"
 
-3. **`src/pages/DashboardSettings.tsx`** (visão do próprio tenant)
-   - Em vez de ler `sub.transactions_used`, fazer a mesma contagem no client (já tem RLS por tenant) usando `current_period_start`/`current_period_end`.
-   - Mesma lógica em `bitrix-payment-iframe` (linhas ~2629/2644) para o painel embedded.
+### 2. `src/pages/Privacidade.tsx` — rota `/privacidade`
+Política de Privacidade compatível com LGPD:
+1. Controlador (Thoth24, CNPJ, email DPO: contato@thoth24.com)
+2. Dados coletados (cadastro, dados Bitrix24 via OAuth, dados Asaas via API key, dados de cobrança dos clientes finais do tenant)
+3. Finalidade (operar a integração, emitir cobranças, NFSe, automações)
+4. Base legal (execução de contrato, legítimo interesse, consentimento)
+5. Compartilhamento (Asaas, Bitrix24, infraestrutura Supabase/Lovable Cloud)
+6. Armazenamento e segurança (RLS, criptografia, isolamento por tenant)
+7. Retenção (durante vigência + 5 anos fiscais)
+8. Direitos do titular (acesso, correção, exclusão, portabilidade)
+9. Cookies (somente essenciais de sessão)
+10. Contato do encarregado
 
-### Fora de escopo
+### 3. `src/pages/Suporte.tsx` — rota `/suporte`
+Página de suporte com:
+- Hero curto "Como podemos ajudar?"
+- 3 cards: Email (`contato@thoth24.com`), WhatsApp (placeholder — usar `contato@thoth24.com` enquanto não houver número), Central de Ajuda (link para `/eula` e `/privacidade`)
+- FAQ rápido (4 perguntas reaproveitadas da landing)
+- SLA de resposta: dias úteis, até 24h
+- Bloco "Empresa": Thoth24, CNPJ 54.727.112/0001-78
 
-- Não vamos criar trigger de incremento agora (mais frágil: reset por período, rollback em refund, etc.). Se quiser persistir o contador depois, dá pra adicionar numa segunda iteração.
-- Não vamos alterar schema nem migrações.
+### 4. `src/pages/Demo.tsx` — rota `/demo`
+Página de solicitação de demo:
+- Hero "Agende uma demonstração ao vivo"
+- Formulário (nome, empresa, email, telefone, portal Bitrix24, mensagem) que dispara `mailto:contato@thoth24.com` com corpo pré-formatado (sem backend novo — mantém escopo mínimo)
+- Bloco lateral: o que será mostrado (PIX, Boleto, Cartão, Assinaturas, NFSe, Automações)
+- Contato direto: contato@thoth24.com
 
-### Validação
+## Integração de rotas
 
-- Abrir `/admin/tenants` no mobile → coluna **Uso** deve refletir o número real de transações do período (ex.: `3 / 500`).
-- Tenant sem transações continua `0 / 500`.
-- Drawer de detalhe e `DashboardSettings` mostram o mesmo número.
+Em `src/App.tsx`, adicionar 4 `<Route>` públicas (fora de `ProtectedRoute`) apontando para os novos componentes.
+
+Em `src/components/landing/Footer.tsx`, garantir que os links de EULA, Privacidade, Suporte e Demo apontem para as novas rotas internas (`<Link to="/eula">` etc.), substituindo âncoras `#` se existirem.
+
+## Setup técnico
+
+- Verificar se `react-helmet-async` já está instalado; se não, `bun add react-helmet-async` e envolver `<App />` em `<HelmetProvider>` em `src/main.tsx`.
+- Nenhuma mudança de backend, schema ou edge function.
+
+## Entregáveis de texto para o formulário Marketplace
+
+Junto com as páginas, vou entregar no chat (prontos para copiar/colar) os 4 blocos do formulário visível no screenshot:
+
+1. **Descrição completa** (~1500 chars) — descrição rica do conector Asaas + Bitrix24, recursos (PIX/Boleto/Cartão, assinaturas, NFSe, robôs Bizproc, split, webhook), benefícios e diferenciais Thoth24.
+2. **Palavras-chave de pesquisa** (lista separada por vírgula, < 2000 chars) — asaas, pagamentos, pix, boleto, cartão de crédito, cobrança, assinatura recorrente, nfse, nota fiscal de serviço, bizproc, automação, crm, bitrix24, integração financeira, gateway de pagamento, split de pagamento, conector asaas, recebíveis, thoth24, etc.
+3. **Descrição da instalação** — passo a passo: instalar pelo Marketplace → abrir o app no Bitrix24 → informar API key Asaas (produção/sandbox) → salvar → o app registra automaticamente webhook, pay system, robôs e aba CRM.
+4. **Informações de suporte e contatos** — Thoth24 / CNPJ 54.727.112/0001-78 / contato@thoth24.com / https://asaas.thoth24.com/suporte / SLA dias úteis até 24h / links para EULA e Privacidade.
+
+## Validação
+
+- Abrir `/eula`, `/privacidade`, `/suporte`, `/demo` direto na URL — devem renderizar com Header+Footer azul royal, sem 404.
+- Footer da landing leva às novas rotas.
+- Formulário de `/demo` abre o cliente de email com destino `contato@thoth24.com`.
 
 Posso aplicar?

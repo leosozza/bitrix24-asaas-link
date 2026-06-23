@@ -20,6 +20,10 @@ import DashboardContracts from "./pages/DashboardContracts";
 import DashboardContractTemplates from "./pages/DashboardContractTemplates";
 import PublicContract from "./pages/PublicContract";
 import BitrixPreview from "./pages/BitrixPreview";
+import Eula from "./pages/Eula";
+import Privacidade from "./pages/Privacidade";
+import Suporte from "./pages/Suporte";
+import Demo from "./pages/Demo";
 
 import AdminOverview from "./pages/admin/AdminOverview";
 import AdminTenants from "./pages/admin/AdminTenants";
@@ -112,6 +116,12 @@ const App = () => (
               <Route path="/admin" element={<ProtectedRoute><AdminGuard><AdminOverview /></AdminGuard></ProtectedRoute>} />
               <Route path="/admin/tenants" element={<ProtectedRoute><AdminGuard><AdminTenants /></AdminGuard></ProtectedRoute>} />
               <Route path="/admin/plans" element={<ProtectedRoute><AdminGuard><AdminPlans /></AdminGuard></ProtectedRoute>} />
+
+              <Route path="/eula" element={<Eula />} />
+              <Route path="/privacidade" element={<Privacidade />} />
+              <Route path="/suporte" element={<Suporte />} />
+              <Route path="/demo" element={<Demo />} />
+
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>
