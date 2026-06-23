@@ -6,118 +6,118 @@
 
 @layer base {
   :root {
-    /* Brand Colors - Bitrix24 Blue + Asaas Green fusion */
-    --background: 220 20% 97%;
-    --foreground: 222 47% 11%;
+    /* Brand: Royal Blue (Thoth24 logo) */
+    --background: 225 30% 98%;
+    --foreground: 225 50% 12%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 225 50% 12%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
+    --popover-foreground: 225 50% 12%;
 
-    /* Primary: Deep tech blue */
-    --primary: 220 90% 45%;
+    /* Primary: Royal blue from the Asaas Pay by Thoth24 logo (~#1E48D6) */
+    --primary: 225 75% 48%;
     --primary-foreground: 0 0% 100%;
 
-    /* Secondary: Soft blue-gray */
-    --secondary: 220 25% 93%;
-    --secondary-foreground: 222 47% 11%;
+    /* Secondary: cool blue-tinted neutral */
+    --secondary: 225 35% 95%;
+    --secondary-foreground: 225 50% 12%;
 
-    --muted: 220 20% 94%;
-    --muted-foreground: 220 15% 45%;
+    --muted: 225 25% 95%;
+    --muted-foreground: 225 18% 42%;
 
-    /* Accent: Asaas-inspired green */
-    --accent: 155 70% 40%;
+    /* Accent: brighter sibling of primary (stays in the blue family) */
+    --accent: 225 90% 58%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 20% 88%;
-    --input: 220 20% 88%;
-    --ring: 220 90% 45%;
+    --border: 225 25% 90%;
+    --input: 225 25% 90%;
+    --ring: 225 75% 48%;
 
     --radius: 0.75rem;
 
-    /* Custom tokens */
-    --success: 155 70% 40%;
+    /* Semantic feedback (functional, not brand) */
+    --success: 155 65% 40%;
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
 
-    /* Gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(220 90% 45%) 0%, hsl(240 80% 55%) 100%);
-    --gradient-accent: linear-gradient(135deg, hsl(155 70% 40%) 0%, hsl(170 65% 45%) 100%);
-    --gradient-hero: linear-gradient(180deg, hsl(220 20% 97%) 0%, hsl(220 30% 94%) 100%);
-    --gradient-card: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(220 20% 98%) 100%);
+    /* Gradients — all within the royal blue family */
+    --gradient-primary: linear-gradient(135deg, hsl(225 75% 48%) 0%, hsl(230 82% 58%) 100%);
+    --gradient-accent: linear-gradient(135deg, hsl(225 90% 58%) 0%, hsl(220 85% 50%) 100%);
+    --gradient-hero: linear-gradient(180deg, hsl(225 30% 98%) 0%, hsl(225 40% 94%) 100%);
+    --gradient-card: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(225 30% 98%) 100%);
 
     /* Shadows */
-    --shadow-sm: 0 1px 2px 0 hsl(220 20% 10% / 0.05);
-    --shadow-md: 0 4px 6px -1px hsl(220 20% 10% / 0.1), 0 2px 4px -2px hsl(220 20% 10% / 0.1);
-    --shadow-lg: 0 10px 15px -3px hsl(220 20% 10% / 0.1), 0 4px 6px -4px hsl(220 20% 10% / 0.1);
-    --shadow-xl: 0 20px 25px -5px hsl(220 20% 10% / 0.1), 0 8px 10px -6px hsl(220 20% 10% / 0.1);
-    --shadow-glow: 0 0 40px hsl(220 90% 45% / 0.2);
-    --shadow-glow-accent: 0 0 40px hsl(155 70% 40% / 0.2);
+    --shadow-sm: 0 1px 2px 0 hsl(225 40% 12% / 0.05);
+    --shadow-md: 0 4px 6px -1px hsl(225 40% 12% / 0.1), 0 2px 4px -2px hsl(225 40% 12% / 0.1);
+    --shadow-lg: 0 10px 15px -3px hsl(225 40% 12% / 0.1), 0 4px 6px -4px hsl(225 40% 12% / 0.1);
+    --shadow-xl: 0 20px 25px -5px hsl(225 40% 12% / 0.1), 0 8px 10px -6px hsl(225 40% 12% / 0.1);
+    --shadow-glow: 0 0 40px hsl(225 75% 48% / 0.25);
+    --shadow-glow-accent: 0 0 40px hsl(225 90% 58% / 0.25);
 
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-background: 225 30% 98%;
+    --sidebar-foreground: 225 30% 26%;
+    --sidebar-primary: 225 75% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 225 35% 95%;
+    --sidebar-accent-foreground: 225 50% 12%;
+    --sidebar-border: 225 25% 90%;
+    --sidebar-ring: 225 75% 48%;
   }
 
   .dark {
-    --background: 222 47% 6%;
-    --foreground: 220 20% 95%;
+    --background: 225 45% 7%;
+    --foreground: 225 20% 95%;
 
-    --card: 222 47% 9%;
-    --card-foreground: 220 20% 95%;
+    --card: 225 40% 10%;
+    --card-foreground: 225 20% 95%;
 
-    --popover: 222 47% 9%;
-    --popover-foreground: 220 20% 95%;
+    --popover: 225 40% 10%;
+    --popover-foreground: 225 20% 95%;
 
-    --primary: 220 90% 55%;
+    --primary: 225 80% 60%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 222 30% 15%;
-    --secondary-foreground: 220 20% 95%;
+    --secondary: 225 30% 16%;
+    --secondary-foreground: 225 20% 95%;
 
-    --muted: 222 30% 15%;
-    --muted-foreground: 220 15% 60%;
+    --muted: 225 30% 16%;
+    --muted-foreground: 225 18% 62%;
 
-    --accent: 155 65% 45%;
+    --accent: 225 90% 65%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 70% 50%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 222 30% 18%;
-    --input: 222 30% 18%;
-    --ring: 220 90% 55%;
+    --border: 225 30% 20%;
+    --input: 225 30% 20%;
+    --ring: 225 80% 60%;
 
     --success: 155 65% 45%;
     --success-foreground: 0 0% 100%;
 
-    --gradient-primary: linear-gradient(135deg, hsl(220 90% 55%) 0%, hsl(240 80% 60%) 100%);
-    --gradient-accent: linear-gradient(135deg, hsl(155 65% 45%) 0%, hsl(170 60% 50%) 100%);
-    --gradient-hero: linear-gradient(180deg, hsl(222 47% 6%) 0%, hsl(222 47% 8%) 100%);
-    --gradient-card: linear-gradient(180deg, hsl(222 47% 9%) 0%, hsl(222 47% 7%) 100%);
+    --gradient-primary: linear-gradient(135deg, hsl(225 80% 60%) 0%, hsl(230 85% 68%) 100%);
+    --gradient-accent: linear-gradient(135deg, hsl(225 90% 65%) 0%, hsl(220 85% 55%) 100%);
+    --gradient-hero: linear-gradient(180deg, hsl(225 45% 7%) 0%, hsl(225 45% 9%) 100%);
+    --gradient-card: linear-gradient(180deg, hsl(225 40% 10%) 0%, hsl(225 45% 8%) 100%);
 
-    --shadow-glow: 0 0 40px hsl(220 90% 55% / 0.3);
-    --shadow-glow-accent: 0 0 40px hsl(155 65% 45% / 0.3);
+    --shadow-glow: 0 0 40px hsl(225 80% 60% / 0.35);
+    --shadow-glow-accent: 0 0 40px hsl(225 90% 65% / 0.35);
 
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-background: 225 45% 8%;
+    --sidebar-foreground: 225 20% 90%;
+    --sidebar-primary: 225 80% 60%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-accent: 225 35% 14%;
+    --sidebar-accent-foreground: 225 20% 95%;
+    --sidebar-border: 225 30% 18%;
+    --sidebar-ring: 225 80% 60%;
   }
 }
 
@@ -177,19 +177,19 @@
 
   /* Brand colors for logos */
   .text-bitrix {
-    color: hsl(195 91% 57%);
+    color: hsl(var(--primary));
   }
 
   .text-asaas {
-    color: hsl(155 100% 33%);
+    color: hsl(var(--primary));
   }
 
   .bg-bitrix {
-    background-color: hsl(195 91% 57% / 0.1);
+    background-color: hsl(var(--primary) / 0.1);
   }
 
   .bg-asaas {
-    background-color: hsl(155 100% 33% / 0.1);
+    background-color: hsl(var(--primary) / 0.1);
   }
 
   /* Animation utilities */
