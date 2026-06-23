@@ -62,9 +62,9 @@ serve(async (req) => {
       method: 'POST',
       headers: { access_token: cfg.api_key, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name: 'Cliente Teste Asaas Pay by Thoth',
+        name: 'Cliente Teste Asaas Pay by Thoth24',
         cpfCnpj: '24971563792', // CPF de teste válido
-        email: 'teste@connectpay.app',
+        email: 'teste@thoth24.com',
       }),
     });
     const customer = await custRes.json();

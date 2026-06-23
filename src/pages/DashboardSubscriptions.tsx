@@ -154,7 +154,7 @@ export default function DashboardSubscriptions() {
   return (
     <>
       <Helmet>
-        <title>Assinaturas | Asaas Pay by Thoth</title>
+        <title>Assinaturas | Asaas Pay by Thoth24</title>
       </Helmet>
 
       <DashboardLayout title="Assinaturas" description="Gerencie suas cobranças recorrentes">

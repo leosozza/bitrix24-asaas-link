@@ -237,7 +237,7 @@ export default function DashboardInvoices() {
   return (
     <>
       <Helmet>
-        <title>Faturas | Asaas Pay by Thoth</title>
+        <title>Faturas | Asaas Pay by Thoth24</title>
       </Helmet>
 
       <DashboardLayout title="Faturas" description="Acompanhe suas faturas a receber, em atraso e recebidas">

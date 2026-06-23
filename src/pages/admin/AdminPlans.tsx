@@ -85,7 +85,7 @@ function PlanEditor({ plan }: { plan: AdminPlan }) {
 export default function AdminPlans() {
   const { data, isLoading } = useAdminTenants();
   return (
-    <AdminLayout title="Planos" description="Editar preço, limites e features dos planos Asaas Pay by Thoth">
+    <AdminLayout title="Planos" description="Editar preço, limites e features dos planos Asaas Pay by Thoth24">
       {isLoading ? (
         <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
       ) : (
