@@ -59,6 +59,9 @@ export default function DashboardSettings() {
   const [invoiceStages, setInvoiceStages] = useState<Array<{ statusId: string; name: string; semantics?: string | null }>>([]);
   const [loadingStages, setLoadingStages] = useState(false);
   const [savingInvoiceSync, setSavingInvoiceSync] = useState(false);
+  // Notificações Asaas (email / WhatsApp / SMS para o cliente final)
+  const [customerNotifEnabled, setCustomerNotifEnabled] = useState(true);
+  const [savingNotifFlag, setSavingNotifFlag] = useState(false);
 
   // ===== Webhook =====
   const [webhookUrl, setWebhookUrl] = useState('');
@@ -143,7 +146,7 @@ export default function DashboardSettings() {
       setWebhookUrl(`${supaUrl}/functions/v1/asaas-webhook`);
       const { data: cfg } = await supabase
         .from('asaas_configurations')
-        .select('api_key, environment, is_active, webhook_secret, webhook_configured, sync_bitrix_invoices, bitrix_invoice_paid_stage_id, bitrix_invoice_pending_stage_id, bitrix_invoice_overdue_stage_id' as any)
+        .select('api_key, environment, is_active, webhook_secret, webhook_configured, sync_bitrix_invoices, bitrix_invoice_paid_stage_id, bitrix_invoice_pending_stage_id, bitrix_invoice_overdue_stage_id, customer_notifications_enabled' as any)
         .eq('tenant_id', user.id)
         .eq('is_active', true)
         .maybeSingle();
@@ -157,6 +160,7 @@ export default function DashboardSettings() {
         setInvoicePaidStageId((cfg as any).bitrix_invoice_paid_stage_id || '');
         setInvoicePendingStageId((cfg as any).bitrix_invoice_pending_stage_id || '');
         setInvoiceOverdueStageId((cfg as any).bitrix_invoice_overdue_stage_id || '');
+        setCustomerNotifEnabled((cfg as any).customer_notifications_enabled !== false);
       }
       // Fiscal
       const { data: fc } = await supabase
