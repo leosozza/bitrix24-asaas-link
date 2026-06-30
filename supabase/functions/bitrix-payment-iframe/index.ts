@@ -965,13 +965,14 @@ async function asaasFetch(apiKey: string, baseUrl: string, path: string, init: R
 async function loadInstallationContext(supabase: any, inst: any) {
   const { data: cfg } = await supabase
     .from('asaas_configurations')
-    .select('api_key, environment')
+    .select('api_key, environment, customer_notifications_enabled')
     .eq('tenant_id', inst.tenant_id)
     .eq('is_active', true)
     .maybeSingle();
   if (!cfg?.api_key) throw new Error('Asaas não configurado para este tenant');
   const baseUrl = cfg.environment === 'production' ? 'https://api.asaas.com/v3' : 'https://sandbox.asaas.com/api/v3';
-  return { apiKey: cfg.api_key, baseUrl, environment: cfg.environment };
+  const notificationsEnabled = cfg.customer_notifications_enabled !== false;
+  return { apiKey: cfg.api_key, baseUrl, environment: cfg.environment, notificationsEnabled };
 }
 
 async function getEntityContact(clientEndpoint: string, accessToken: string, entityType: string, entityId: string) {
