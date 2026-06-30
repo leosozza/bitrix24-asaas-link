@@ -2645,7 +2645,7 @@ async function handleDashboardAction(body: any, supabase: any): Promise<Response
           .eq('tenant_id', tenantId)
           .gte('created_at', (sub as any).current_period_start)
           .lte('created_at', `${(sub as any).current_period_end}T23:59:59`)
-          .not('status', 'in', '(cancelled,canceled,refunded,failed)');
+          .not('status', 'in', '(cancelled,refunded)');
         usedCount = count || 0;
       }
       const current = sub ? {

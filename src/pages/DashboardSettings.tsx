@@ -190,7 +190,7 @@ export default function DashboardSettings() {
           .eq('tenant_id', user.id)
           .gte('created_at', sub.current_period_start)
           .lte('created_at', `${sub.current_period_end}T23:59:59`)
-          .not('status', 'in', '(cancelled,canceled,refunded,failed)');
+          .not('status', 'in', '(cancelled,refunded)');
         setPlanCurrent({
           plan_id: sub.plan_id,
           plan_name: (sub as any).subscription_plans?.name,
@@ -239,7 +239,7 @@ export default function DashboardSettings() {
         .eq('tenant_id', user.id)
         .gte('created_at', sub.current_period_start)
         .lte('created_at', `${sub.current_period_end}T23:59:59`)
-        .not('status', 'in', '(cancelled,canceled,refunded,failed)');
+        .not('status', 'in', '(cancelled,refunded)');
       setPlanCurrent({
         plan_id: sub.plan_id,
         plan_name: (sub as any).subscription_plans?.name,
