@@ -1,0 +1,1 @@
+ALTER TABLE public.asaas_configurations ADD COLUMN IF NOT EXISTS customer_notifications_enabled boolean NOT NULL DEFAULT true;
