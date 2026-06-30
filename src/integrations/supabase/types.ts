@@ -21,6 +21,7 @@ export type Database = {
           bitrix_invoice_paid_stage_id: string | null
           bitrix_invoice_pending_stage_id: string | null
           created_at: string
+          customer_notifications_enabled: boolean
           environment: Database["public"]["Enums"]["asaas_environment"]
           id: string
           is_active: boolean
@@ -37,6 +38,7 @@ export type Database = {
           bitrix_invoice_paid_stage_id?: string | null
           bitrix_invoice_pending_stage_id?: string | null
           created_at?: string
+          customer_notifications_enabled?: boolean
           environment?: Database["public"]["Enums"]["asaas_environment"]
           id?: string
           is_active?: boolean
@@ -53,6 +55,7 @@ export type Database = {
           bitrix_invoice_paid_stage_id?: string | null
           bitrix_invoice_pending_stage_id?: string | null
           created_at?: string
+          customer_notifications_enabled?: boolean
           environment?: Database["public"]["Enums"]["asaas_environment"]
           id?: string
           is_active?: boolean

@@ -965,13 +965,14 @@ async function asaasFetch(apiKey: string, baseUrl: string, path: string, init: R
 async function loadInstallationContext(supabase: any, inst: any) {
   const { data: cfg } = await supabase
     .from('asaas_configurations')
-    .select('api_key, environment')
+    .select('api_key, environment, customer_notifications_enabled')
     .eq('tenant_id', inst.tenant_id)
     .eq('is_active', true)
     .maybeSingle();
   if (!cfg?.api_key) throw new Error('Asaas não configurado para este tenant');
   const baseUrl = cfg.environment === 'production' ? 'https://api.asaas.com/v3' : 'https://sandbox.asaas.com/api/v3';
-  return { apiKey: cfg.api_key, baseUrl, environment: cfg.environment };
+  const notificationsEnabled = cfg.customer_notifications_enabled !== false;
+  return { apiKey: cfg.api_key, baseUrl, environment: cfg.environment, notificationsEnabled };
 }
 
 async function getEntityContact(clientEndpoint: string, accessToken: string, entityType: string, entityId: string) {
@@ -1010,7 +1011,7 @@ async function getEntityContact(clientEndpoint: string, accessToken: string, ent
   };
 }
 
-async function findOrCreateAsaasCustomerSimple(apiKey: string, baseUrl: string, data: { name: string; email: string; cpfCnpj: string; phone?: string }) {
+async function findOrCreateAsaasCustomerSimple(apiKey: string, baseUrl: string, data: { name: string; email: string; cpfCnpj: string; phone?: string; notificationDisabled?: boolean }) {
   if (!data.cpfCnpj || data.cpfCnpj.length < 11) {
     throw new Error('CPF/CNPJ do contato é obrigatório para criar cobrança. Cadastre o documento no Contato do Bitrix.');
   }
@@ -1023,6 +1024,7 @@ async function findOrCreateAsaasCustomerSimple(apiKey: string, baseUrl: string, 
       email: data.email || undefined,
       cpfCnpj: data.cpfCnpj,
       mobilePhone: data.phone || undefined,
+      ...(typeof data.notificationDisabled === 'boolean' ? { notificationDisabled: data.notificationDisabled } : {}),
     }),
   });
   if (created.errors) throw new Error('Asaas: ' + JSON.stringify(created.errors));
@@ -1159,7 +1161,7 @@ async function handleCrmTabCreate(body: any, supabase: any, inst: any): Promise<
       return jsonError(msg);
     }
 
-    const customer = await findOrCreateAsaasCustomerSimple(ctx.apiKey, ctx.baseUrl, ec.customerData);
+    const customer = await findOrCreateAsaasCustomerSimple(ctx.apiKey, ctx.baseUrl, { ...ec.customerData, notificationDisabled: !ctx.notificationsEnabled });
 
     const billingType = payload.billingType || 'BOLETO';
     const entry = Number(payload.entryValue) || 0;

@@ -1,84 +1,80 @@
 
 ## Objetivo
 
-Criar 4 novas rotas públicas no app, no padrão visual azul royal (#1E48D6) da landing, e entregar os textos prontos (Descrição completa, Palavras-chave, Descrição da instalação, Informações de suporte) para o formulário do Bitrix24 Marketplace.
+1. Garantir que o telefone vindo do Bitrix entre no campo **Celular (`mobilePhone`)** do Asaas, e não em **Fone (`phone`)**.
+2. Adicionar uma opção no conector para o tenant escolher se o Asaas envia (ou não) as cobranças por **e-mail / WhatsApp / SMS** ao cliente final.
 
-**Dados oficiais Thoth24 usados em todas as páginas:**
-- CNPJ: 54.727.112/0001-78
-- Razão social: Thoth24
-- Email: contato@thoth24.com
-- Domínio: https://asaas.thoth24.com
+---
 
-## Páginas a criar
+## 1. Phone → mobilePhone
 
-Todas usando o `Header` + `Footer` da landing, container centralizado, tipografia e tokens já existentes (`bg-primary`, `text-primary`, azul royal `#1E48D6`). Cada página adiciona `<Helmet>` com title/description próprios (instalar `react-helmet-async` se ainda não estiver).
+A maior parte do código já usa `mobilePhone`, mas há um ponto que ainda usa `phone`:
 
-### 1. `src/pages/Eula.tsx` — rota `/eula`
-EULA (Contrato de Licença de Usuário Final) com seções:
-1. Definições (Thoth24, Aplicativo, Usuário, Bitrix24, Asaas)
-2. Objeto da licença (uso não exclusivo, intransferível)
-3. Cadastro e conta
-4. Planos, pagamentos e período de teste
-5. Obrigações do usuário (uso lícito, credenciais Asaas próprias)
-6. Propriedade intelectual (código pertence à Thoth24)
-7. Limitação de responsabilidade
-8. Suspensão e rescisão
-9. Atualizações do aplicativo
-10. Foro (Comarca da sede da Thoth24) e legislação brasileira
-Rodapé: "Thoth24 — CNPJ 54.727.112/0001-78 — contato@thoth24.com — Última atualização: 23/06/2026"
+- `supabase/functions/bitrix-crm-detail-tab/index.ts` (função `findOrCreateAsaasCustomer`, ~linha 114):  
+  trocar `phone: (phone || '').replace(/\D/g, '')` por `mobilePhone: (phone || '').replace(/\D/g, '')`.
 
-### 2. `src/pages/Privacidade.tsx` — rota `/privacidade`
-Política de Privacidade compatível com LGPD:
-1. Controlador (Thoth24, CNPJ, email DPO: contato@thoth24.com)
-2. Dados coletados (cadastro, dados Bitrix24 via OAuth, dados Asaas via API key, dados de cobrança dos clientes finais do tenant)
-3. Finalidade (operar a integração, emitir cobranças, NFSe, automações)
-4. Base legal (execução de contrato, legítimo interesse, consentimento)
-5. Compartilhamento (Asaas, Bitrix24, infraestrutura Supabase/Lovable Cloud)
-6. Armazenamento e segurança (RLS, criptografia, isolamento por tenant)
-7. Retenção (durante vigência + 5 anos fiscais)
-8. Direitos do titular (acesso, correção, exclusão, portabilidade)
-9. Cookies (somente essenciais de sessão)
-10. Contato do encarregado
+Também verificar/uniformizar:
+- `bitrix-payment-iframe`: já usa `mobilePhone` ✅
+- `asaas-contract-billing` / `contract-public`: payload já aceita `mobilePhone` ✅
+- `subscription-checkout` e `admin-tenant-management`: já usam `mobilePhone` ✅
 
-### 3. `src/pages/Suporte.tsx` — rota `/suporte`
-Página de suporte com:
-- Hero curto "Como podemos ajudar?"
-- 3 cards: Email (`contato@thoth24.com`), WhatsApp (placeholder — usar `contato@thoth24.com` enquanto não houver número), Central de Ajuda (link para `/eula` e `/privacidade`)
-- FAQ rápido (4 perguntas reaproveitadas da landing)
-- SLA de resposta: dias úteis, até 24h
-- Bloco "Empresa": Thoth24, CNPJ 54.727.112/0001-78
+Nenhuma mudança de schema; só ajuste no edge function acima.
 
-### 4. `src/pages/Demo.tsx` — rota `/demo`
-Página de solicitação de demo:
-- Hero "Agende uma demonstração ao vivo"
-- Formulário (nome, empresa, email, telefone, portal Bitrix24, mensagem) que dispara `mailto:contato@thoth24.com` com corpo pré-formatado (sem backend novo — mantém escopo mínimo)
-- Bloco lateral: o que será mostrado (PIX, Boleto, Cartão, Assinaturas, NFSe, Automações)
-- Contato direto: contato@thoth24.com
+---
 
-## Integração de rotas
+## 2. Toggle "Notificações do Asaas"
 
-Em `src/App.tsx`, adicionar 4 `<Route>` públicas (fora de `ProtectedRoute`) apontando para os novos componentes.
+### Banco de dados
 
-Em `src/components/landing/Footer.tsx`, garantir que os links de EULA, Privacidade, Suporte e Demo apontem para as novas rotas internas (`<Link to="/eula">` etc.), substituindo âncoras `#` se existirem.
+Migração em `asaas_configurations`:
+- Adicionar coluna `customer_notifications_enabled boolean not null default true`.
 
-## Setup técnico
+### Backend (edge functions)
 
-- Verificar se `react-helmet-async` já está instalado; se não, `bun add react-helmet-async` e envolver `<App />` em `<HelmetProvider>` em `src/main.tsx`.
-- Nenhuma mudança de backend, schema ou edge function.
+Em todos os pontos onde criamos cliente no Asaas, ler `customer_notifications_enabled` da `asaas_configurations` do tenant e enviar:
 
-## Entregáveis de texto para o formulário Marketplace
+```
+notificationDisabled: !customer_notifications_enabled
+```
 
-Junto com as páginas, vou entregar no chat (prontos para copiar/colar) os 4 blocos do formulário visível no screenshot:
+no payload de criação/atualização do customer (Asaas aplica em todas as cobranças desse cliente — email, WhatsApp e SMS).
 
-1. **Descrição completa** (~1500 chars) — descrição rica do conector Asaas + Bitrix24, recursos (PIX/Boleto/Cartão, assinaturas, NFSe, robôs Bizproc, split, webhook), benefícios e diferenciais Thoth24.
-2. **Palavras-chave de pesquisa** (lista separada por vírgula, < 2000 chars) — asaas, pagamentos, pix, boleto, cartão de crédito, cobrança, assinatura recorrente, nfse, nota fiscal de serviço, bizproc, automação, crm, bitrix24, integração financeira, gateway de pagamento, split de pagamento, conector asaas, recebíveis, thoth24, etc.
-3. **Descrição da instalação** — passo a passo: instalar pelo Marketplace → abrir o app no Bitrix24 → informar API key Asaas (produção/sandbox) → salvar → o app registra automaticamente webhook, pay system, robôs e aba CRM.
-4. **Informações de suporte e contatos** — Thoth24 / CNPJ 54.727.112/0001-78 / contato@thoth24.com / https://asaas.thoth24.com/suporte / SLA dias úteis até 24h / links para EULA e Privacidade.
+Pontos a atualizar:
+- `supabase/functions/bitrix-payment-iframe/index.ts` → `findOrCreateAsaasCustomerSimple`
+- `supabase/functions/bitrix-payment-process/index.ts` → `findOrCreateCustomer`
+- `supabase/functions/bitrix-crm-detail-tab/index.ts` → `findOrCreateAsaasCustomer`
+- `supabase/functions/contract-public/index.ts` → propagar no `customerPayload` antes de chamar `ensureAsaasCustomer`
+- `supabase/functions/subscription-checkout/index.ts` e `admin-tenant-management/index.ts` → idem
+
+Como envolve várias funções, criar um helper compartilhado em `supabase/functions/_shared/asaas-contract-billing.ts` (ou novo `_shared/asaas-config.ts`) para buscar a flag uma única vez por tenant.
+
+### Frontend
+
+Em `src/pages/DashboardSettings.tsx`, na seção "Configuração Asaas", adicionar um `<Switch>`:
+
+- **Label:** "Enviar cobranças por e-mail/WhatsApp via Asaas"
+- **Descrição:** "Quando ativo, o Asaas envia automaticamente notificações de cobrança (e-mail, WhatsApp e SMS) ao cliente final. Desative se você prefere enviar pelo seu próprio fluxo no Bitrix24."
+- Persiste em `asaas_configurations.customer_notifications_enabled`.
+- Default: ligado (mantém comportamento atual).
+
+⚠️ Importante: a flag só se aplica a **novos** clientes criados a partir daí. Clientes já existentes no Asaas mantêm a configuração anterior — adicionar nota explicativa abaixo do switch. (Opcionalmente, no `ensureAsaasCustomer` já existe um PATCH best-effort em clientes encontrados; podemos atualizar `notificationDisabled` lá também — incluído no escopo.)
+
+---
 
 ## Validação
 
-- Abrir `/eula`, `/privacidade`, `/suporte`, `/demo` direto na URL — devem renderizar com Header+Footer azul royal, sem 404.
-- Footer da landing leva às novas rotas.
-- Formulário de `/demo` abre o cliente de email com destino `contato@thoth24.com`.
+- Criar cobrança via iframe checkout com um contato Bitrix que tenha telefone → conferir no painel Asaas que o número aparece em **Celular**.
+- Desativar o switch nas configurações, criar nova cobrança → cliente recém-criado no Asaas deve aparecer com "Notificações desativadas".
+- Reativar → próximo cliente novo volta a receber notificações.
 
-Posso aplicar?
+## Arquivos tocados
+
+- migration nova (coluna `customer_notifications_enabled`)
+- `supabase/functions/_shared/asaas-contract-billing.ts` (helper)
+- `supabase/functions/bitrix-payment-iframe/index.ts`
+- `supabase/functions/bitrix-payment-process/index.ts`
+- `supabase/functions/bitrix-crm-detail-tab/index.ts`
+- `supabase/functions/contract-public/index.ts`
+- `supabase/functions/subscription-checkout/index.ts`
+- `supabase/functions/admin-tenant-management/index.ts`
+- `src/pages/DashboardSettings.tsx`

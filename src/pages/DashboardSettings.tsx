@@ -59,6 +59,9 @@ export default function DashboardSettings() {
   const [invoiceStages, setInvoiceStages] = useState<Array<{ statusId: string; name: string; semantics?: string | null }>>([]);
   const [loadingStages, setLoadingStages] = useState(false);
   const [savingInvoiceSync, setSavingInvoiceSync] = useState(false);
+  // Notificações Asaas (email / WhatsApp / SMS para o cliente final)
+  const [customerNotifEnabled, setCustomerNotifEnabled] = useState(true);
+  const [savingNotifFlag, setSavingNotifFlag] = useState(false);
 
   // ===== Webhook =====
   const [webhookUrl, setWebhookUrl] = useState('');
@@ -143,7 +146,7 @@ export default function DashboardSettings() {
       setWebhookUrl(`${supaUrl}/functions/v1/asaas-webhook`);
       const { data: cfg } = await supabase
         .from('asaas_configurations')
-        .select('api_key, environment, is_active, webhook_secret, webhook_configured, sync_bitrix_invoices, bitrix_invoice_paid_stage_id, bitrix_invoice_pending_stage_id, bitrix_invoice_overdue_stage_id' as any)
+        .select('api_key, environment, is_active, webhook_secret, webhook_configured, sync_bitrix_invoices, bitrix_invoice_paid_stage_id, bitrix_invoice_pending_stage_id, bitrix_invoice_overdue_stage_id, customer_notifications_enabled' as any)
         .eq('tenant_id', user.id)
         .eq('is_active', true)
         .maybeSingle();
@@ -157,6 +160,7 @@ export default function DashboardSettings() {
         setInvoicePaidStageId((cfg as any).bitrix_invoice_paid_stage_id || '');
         setInvoicePendingStageId((cfg as any).bitrix_invoice_pending_stage_id || '');
         setInvoiceOverdueStageId((cfg as any).bitrix_invoice_overdue_stage_id || '');
+        setCustomerNotifEnabled((cfg as any).customer_notifications_enabled !== false);
       }
       // Fiscal
       const { data: fc } = await supabase
@@ -349,6 +353,25 @@ export default function DashboardSettings() {
     if (error) return toast.error('Erro: ' + error.message);
     toast.success('Integração com Faturas Bitrix atualizada');
   };
+
+  const saveCustomerNotifFlag = async (next: boolean) => {
+    if (!user) return;
+    setSavingNotifFlag(true);
+    setCustomerNotifEnabled(next);
+    const { error } = await supabase
+      .from('asaas_configurations')
+      .update({ customer_notifications_enabled: next } as any)
+      .eq('tenant_id', user.id)
+      .eq('is_active', true);
+    setSavingNotifFlag(false);
+    if (error) {
+      setCustomerNotifEnabled(!next);
+      return toast.error('Erro: ' + error.message);
+    }
+    toast.success(next ? 'Notificações Asaas ativadas' : 'Notificações Asaas desativadas');
+  };
+
+
 
 
 
@@ -952,6 +975,25 @@ export default function DashboardSettings() {
                   {savingAsaas ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                   Salvar Configuração
                 </Button>
+              </div>
+              <Separator />
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <h4 className="font-medium flex items-center gap-2"><Bell className="h-4 w-4" />Notificações Asaas ao cliente</h4>
+                  <Switch
+                    id="asaas-customer-notifications"
+                    checked={customerNotifEnabled}
+                    disabled={savingNotifFlag || !asaasConnected}
+                    onCheckedChange={(v) => saveCustomerNotifFlag(v)}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Quando ativo, o Asaas envia automaticamente notificações de cobrança (e-mail, WhatsApp e SMS) para o cliente final.
+                  Desative se você prefere conduzir o envio pelo seu próprio fluxo (ex.: WhatsApp do Bitrix24).
+                </p>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Aplica-se aos novos clientes criados no Asaas a partir de agora. Clientes já cadastrados mantêm a configuração atual no painel do Asaas.
+                </p>
               </div>
               <Separator />
               <div>
