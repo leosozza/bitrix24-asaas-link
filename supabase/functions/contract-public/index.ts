@@ -223,13 +223,14 @@ serve(async (req) => {
         try {
           const { data: cfg } = await admin
             .from("asaas_configurations")
-            .select("api_key, environment")
+            .select("api_key, environment, customer_notifications_enabled")
             .eq("tenant_id", contract.tenant_id)
             .eq("is_active", true)
             .maybeSingle();
           if (cfg?.api_key) {
             const env = cfg.environment || "sandbox";
-            const customerPayload = { ...(contract.asaas_customer_payload as any), externalReference: `contract:${contract.id}` };
+            const notificationDisabled = (cfg as any).customer_notifications_enabled === false;
+            const customerPayload = { ...(contract.asaas_customer_payload as any), externalReference: `contract:${contract.id}`, notificationDisabled };
             const customerId = await ensureAsaasCustomer(env, cfg.api_key, customerPayload);
             const billingType = (contract.asaas_billing_type || "UNDEFINED") as any;
             const due = contract.payment_due_date || new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
