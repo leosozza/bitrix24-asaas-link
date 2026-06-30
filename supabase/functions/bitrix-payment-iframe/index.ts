@@ -1010,7 +1010,7 @@ async function getEntityContact(clientEndpoint: string, accessToken: string, ent
   };
 }
 
-async function findOrCreateAsaasCustomerSimple(apiKey: string, baseUrl: string, data: { name: string; email: string; cpfCnpj: string; phone?: string }) {
+async function findOrCreateAsaasCustomerSimple(apiKey: string, baseUrl: string, data: { name: string; email: string; cpfCnpj: string; phone?: string; notificationDisabled?: boolean }) {
   if (!data.cpfCnpj || data.cpfCnpj.length < 11) {
     throw new Error('CPF/CNPJ do contato é obrigatório para criar cobrança. Cadastre o documento no Contato do Bitrix.');
   }
@@ -1023,6 +1023,7 @@ async function findOrCreateAsaasCustomerSimple(apiKey: string, baseUrl: string, 
       email: data.email || undefined,
       cpfCnpj: data.cpfCnpj,
       mobilePhone: data.phone || undefined,
+      ...(typeof data.notificationDisabled === 'boolean' ? { notificationDisabled: data.notificationDisabled } : {}),
     }),
   });
   if (created.errors) throw new Error('Asaas: ' + JSON.stringify(created.errors));
