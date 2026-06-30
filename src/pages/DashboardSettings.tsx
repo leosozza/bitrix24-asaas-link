@@ -978,6 +978,25 @@ export default function DashboardSettings() {
               </div>
               <Separator />
               <div>
+                <div className="flex items-center justify-between mb-1">
+                  <h4 className="font-medium flex items-center gap-2"><Bell className="h-4 w-4" />Notificações Asaas ao cliente</h4>
+                  <Switch
+                    id="asaas-customer-notifications"
+                    checked={customerNotifEnabled}
+                    disabled={savingNotifFlag || !asaasConnected}
+                    onCheckedChange={(v) => saveCustomerNotifFlag(v)}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Quando ativo, o Asaas envia automaticamente notificações de cobrança (e-mail, WhatsApp e SMS) para o cliente final.
+                  Desative se você prefere conduzir o envio pelo seu próprio fluxo (ex.: WhatsApp do Bitrix24).
+                </p>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Aplica-se aos novos clientes criados no Asaas a partir de agora. Clientes já cadastrados mantêm a configuração atual no painel do Asaas.
+                </p>
+              </div>
+              <Separator />
+              <div>
                 <h4 className="font-medium mb-1">Integração com Faturas do Bitrix24</h4>
                 <p className="text-xs text-muted-foreground mb-3">
                   Ao criar uma cobrança no Asaas, geramos automaticamente uma Fatura vinculada ao Deal.
