@@ -1161,7 +1161,7 @@ async function handleCrmTabCreate(body: any, supabase: any, inst: any): Promise<
       return jsonError(msg);
     }
 
-    const customer = await findOrCreateAsaasCustomerSimple(ctx.apiKey, ctx.baseUrl, ec.customerData);
+    const customer = await findOrCreateAsaasCustomerSimple(ctx.apiKey, ctx.baseUrl, { ...ec.customerData, notificationDisabled: !ctx.notificationsEnabled });
 
     const billingType = payload.billingType || 'BOLETO';
     const entry = Number(payload.entryValue) || 0;
