@@ -113,7 +113,8 @@ serve(async (req) => {
       });
     };
 
-    const EXCLUDED_TX_STATUSES = ['cancelled', 'canceled', 'refunded', 'failed'];
+    // transaction_status enum valid values: pending, confirmed, received, overdue, refunded, cancelled
+    const EXCLUDED_TX_STATUSES = ['cancelled', 'refunded'];
 
     async function countTxForPeriod(tenantId: string, periodStart: string | null, periodEnd: string | null) {
       let q = admin.from('transactions').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId);
