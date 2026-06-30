@@ -1178,7 +1178,7 @@ serve(async (req) => {
         .eq('member_id', j.memberId).order('updated_at', { ascending: false }).limit(1).maybeSingle();
       if (!installation?.tenant_id) return json({ success: false, error: 'Instalação não encontrada' });
 
-      const { data: cfg } = await supabase.from('asaas_configurations').select('api_key, environment').eq('tenant_id', installation.tenant_id).eq('is_active', true).maybeSingle();
+      const { data: cfg } = await supabase.from('asaas_configurations').select('api_key, environment, customer_notifications_enabled').eq('tenant_id', installation.tenant_id).eq('is_active', true).maybeSingle();
       if (!cfg?.api_key) return json({ success: false, error: 'Asaas não configurado' });
       const base = asaasBase(cfg.environment);
       const clientEndpoint = installation.client_endpoint || (installation.domain ? `https://${installation.domain}/rest/` : null);
@@ -1239,7 +1239,8 @@ serve(async (req) => {
         let subscriptionId: string | null = null;
 
         try {
-          const customerId = await findOrCreateAsaasCustomer(base, cfg.api_key, j.name, j.email, j.doc, j.phone);
+          const notifDisabled = (cfg as any).customer_notifications_enabled === false;
+          const customerId = await findOrCreateAsaasCustomer(base, cfg.api_key, j.name, j.email, j.doc, j.phone, notifDisabled);
 
           const billingMapLower = (bt: string) => bt.toLowerCase() === 'credit_card' ? 'credit_card' : bt.toLowerCase();
 
