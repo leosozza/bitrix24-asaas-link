@@ -102,7 +102,7 @@ function asaasBase(env: string) {
   return env === 'production' ? 'https://api.asaas.com/v3' : 'https://sandbox.asaas.com/api/v3';
 }
 
-async function findOrCreateAsaasCustomer(base: string, key: string, name: string, email: string, doc: string, phone?: string): Promise<string> {
+async function findOrCreateAsaasCustomer(base: string, key: string, name: string, email: string, doc: string, phone?: string, notificationDisabled?: boolean): Promise<string> {
   const cpfCnpj = (doc || '').replace(/\D/g, '');
   if (!cpfCnpj) throw new Error('CPF/CNPJ obrigatório');
   const r = await fetch(`${base}/customers?cpfCnpj=${cpfCnpj}`, { headers: { 'access_token': key } });
@@ -111,7 +111,13 @@ async function findOrCreateAsaasCustomer(base: string, key: string, name: string
   const cr = await fetch(`${base}/customers`, {
     method: 'POST',
     headers: { 'access_token': key, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: name || 'Cliente', email: email || '', cpfCnpj, phone: (phone || '').replace(/\D/g, '') || undefined }),
+    body: JSON.stringify({
+      name: name || 'Cliente',
+      email: email || '',
+      cpfCnpj,
+      mobilePhone: (phone || '').replace(/\D/g, '') || undefined,
+      ...(typeof notificationDisabled === 'boolean' ? { notificationDisabled } : {}),
+    }),
   });
   const c = await cr.json();
   if (c.errors) throw new Error(c.errors[0]?.description || 'Falha ao criar cliente');
