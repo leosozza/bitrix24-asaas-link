@@ -354,6 +354,25 @@ export default function DashboardSettings() {
     toast.success('Integração com Faturas Bitrix atualizada');
   };
 
+  const saveCustomerNotifFlag = async (next: boolean) => {
+    if (!user) return;
+    setSavingNotifFlag(true);
+    setCustomerNotifEnabled(next);
+    const { error } = await supabase
+      .from('asaas_configurations')
+      .update({ customer_notifications_enabled: next } as any)
+      .eq('tenant_id', user.id)
+      .eq('is_active', true);
+    setSavingNotifFlag(false);
+    if (error) {
+      setCustomerNotifEnabled(!next);
+      return toast.error('Erro: ' + error.message);
+    }
+    toast.success(next ? 'Notificações Asaas ativadas' : 'Notificações Asaas desativadas');
+  };
+
+
+
 
 
   const saveManualSecret = async () => {
