@@ -40,7 +40,7 @@ export default function AdminTenants() {
   const [planFilter, setPlanFilter] = useState<string>('all');
 
   const [selected, setSelected] = useState<AdminTenant | null>(null);
-  const [dialog, setDialog] = useState<'plan' | 'trial' | 'cancel' | 'notes' | null>(null);
+  const [dialog, setDialog] = useState<'plan' | 'trial' | 'cancel' | 'notes' | 'dates' | null>(null);
   const [busy, setBusy] = useState(false);
 
   // dialog state
@@ -48,6 +48,9 @@ export default function AdminTenants() {
   const [trialDays, setTrialDays] = useState('14');
   const [notes, setNotes] = useState('');
   const [cancelMode, setCancelMode] = useState<'period_end' | 'immediate'>('period_end');
+  const [dateStart, setDateStart] = useState('');
+  const [dateEnd, setDateEnd] = useState('');
+  const [dateTrialEnd, setDateTrialEnd] = useState('');
 
   const filtered = useMemo(() => {
     const list = data?.tenants || [];
@@ -63,13 +66,16 @@ export default function AdminTenants() {
     });
   }, [data, search, statusFilter, planFilter]);
 
-  const open = (t: AdminTenant, kind: 'plan' | 'trial' | 'cancel' | 'notes') => {
+  const open = (t: AdminTenant, kind: 'plan' | 'trial' | 'cancel' | 'notes' | 'dates') => {
     setSelected(t);
     setDialog(kind);
     setPlanChoice(t.plan?.id || '');
     setTrialDays('14');
     setNotes(t.subscription?.notes || '');
     setCancelMode('period_end');
+    setDateStart(t.subscription?.current_period_start?.slice(0, 10) || '');
+    setDateEnd(t.subscription?.current_period_end?.slice(0, 10) || '');
+    setDateTrialEnd(t.subscription?.trial_ends_at?.slice(0, 10) || '');
   };
 
   const closeDialog = () => { setDialog(null); setSelected(null); };
@@ -166,6 +172,7 @@ export default function AdminTenants() {
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => open(t, 'plan')}>Trocar plano</DropdownMenuItem>
                       <DropdownMenuItem onClick={() => open(t, 'trial')}>Estender trial</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => open(t, 'dates')}>Editar datas</DropdownMenuItem>
                       <DropdownMenuItem onClick={() => open(t, 'notes')}>Editar notas</DropdownMenuItem>
                       <DropdownMenuSeparator />
                       {(t.subscription?.status === 'canceled' || t.subscription?.status === 'expired') ? (
@@ -266,6 +273,41 @@ export default function AdminTenants() {
           <DialogFooter>
             <Button variant="outline" onClick={closeDialog} disabled={busy}>Cancelar</Button>
             <Button disabled={busy} onClick={() => selected && run(() => adminApi.updateNotes(selected.id, notes), 'Notas salvas')}>
+              {busy && <Loader2 className="w-4 h-4 mr-2 animate-spin" />} Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dates */}
+      <Dialog open={dialog === 'dates'} onOpenChange={(o) => !o && closeDialog()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar datas de pagamento</DialogTitle>
+            <DialogDescription>{selected?.company_name}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label>Início do período atual</Label>
+              <Input type="date" value={dateStart} onChange={(e) => setDateStart(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Próximo vencimento (fim do período)</Label>
+              <Input type="date" value={dateEnd} onChange={(e) => setDateEnd(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Fim do trial (opcional)</Label>
+              <Input type="date" value={dateTrialEnd} onChange={(e) => setDateTrialEnd(e.target.value)} />
+              <p className="text-xs text-muted-foreground">Deixe em branco para remover o trial.</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeDialog} disabled={busy}>Cancelar</Button>
+            <Button disabled={busy} onClick={() => selected && run(() => adminApi.updateDates(selected.id, {
+              current_period_start: dateStart || null,
+              current_period_end: dateEnd || null,
+              trial_ends_at: dateTrialEnd || null,
+            }), 'Datas atualizadas')}>
               {busy && <Loader2 className="w-4 h-4 mr-2 animate-spin" />} Salvar
             </Button>
           </DialogFooter>
