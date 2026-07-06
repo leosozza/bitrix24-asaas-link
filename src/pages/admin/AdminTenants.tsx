@@ -172,6 +172,7 @@ export default function AdminTenants() {
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => open(t, 'plan')}>Trocar plano</DropdownMenuItem>
                       <DropdownMenuItem onClick={() => open(t, 'trial')}>Estender trial</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => open(t, 'dates')}>Editar datas</DropdownMenuItem>
                       <DropdownMenuItem onClick={() => open(t, 'notes')}>Editar notas</DropdownMenuItem>
                       <DropdownMenuSeparator />
                       {(t.subscription?.status === 'canceled' || t.subscription?.status === 'expired') ? (
