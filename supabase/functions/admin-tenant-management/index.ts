@@ -288,6 +288,20 @@ serve(async (req) => {
         return json({ success: true });
       }
 
+      case 'update_dates': {
+        const { tenant_id, current_period_start, current_period_end, trial_ends_at } = body;
+        if (!tenant_id) return json({ error: 'tenant_id required' }, 400);
+        const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+        if (current_period_start !== undefined) patch.current_period_start = current_period_start || null;
+        if (current_period_end !== undefined) patch.current_period_end = current_period_end || null;
+        if (trial_ends_at !== undefined) patch.trial_ends_at = trial_ends_at ? new Date(trial_ends_at).toISOString() : null;
+        const { error } = await admin.from('tenant_subscriptions').update(patch).eq('tenant_id', tenant_id);
+        if (error) { await logAction('update_dates', body, 'error', error.message); return json({ error: error.message }, 400); }
+        await logAction('update_dates', body, 'success', patch);
+        return json({ success: true });
+      }
+
+
       case 'update_plan_details': {
         const { plan_id, name, price, transaction_limit, features, is_active } = body;
         if (!plan_id) return json({ error: 'plan_id required' }, 400);
