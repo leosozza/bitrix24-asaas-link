@@ -66,13 +66,16 @@ export default function AdminTenants() {
     });
   }, [data, search, statusFilter, planFilter]);
 
-  const open = (t: AdminTenant, kind: 'plan' | 'trial' | 'cancel' | 'notes') => {
+  const open = (t: AdminTenant, kind: 'plan' | 'trial' | 'cancel' | 'notes' | 'dates') => {
     setSelected(t);
     setDialog(kind);
     setPlanChoice(t.plan?.id || '');
     setTrialDays('14');
     setNotes(t.subscription?.notes || '');
     setCancelMode('period_end');
+    setDateStart(t.subscription?.current_period_start?.slice(0, 10) || '');
+    setDateEnd(t.subscription?.current_period_end?.slice(0, 10) || '');
+    setDateTrialEnd(t.subscription?.trial_ends_at?.slice(0, 10) || '');
   };
 
   const closeDialog = () => { setDialog(null); setSelected(null); };
