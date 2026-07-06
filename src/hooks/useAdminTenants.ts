@@ -68,6 +68,8 @@ export const adminApi = {
   cancel: (tenant_id: string, immediate: boolean) => call('cancel_subscription', { tenant_id, immediate }),
   reactivate: (tenant_id: string) => call('reactivate', { tenant_id }),
   updateNotes: (tenant_id: string, notes: string) => call('update_notes', { tenant_id, notes }),
+  updateDates: (tenant_id: string, dates: { current_period_start?: string | null; current_period_end?: string | null; trial_ends_at?: string | null }) =>
+    call('update_dates', { tenant_id, ...dates }),
   updatePlan: (plan_id: string, patch: Partial<AdminPlan>) => call('update_plan_details', { plan_id, ...patch }),
   createAsaasSubscription: (tenant_id: string, cpf_cnpj: string, billing_type: string) =>
     call('create_asaas_subscription', { tenant_id, cpf_cnpj, billing_type }),
