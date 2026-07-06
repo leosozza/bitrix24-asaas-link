@@ -187,14 +187,33 @@ serve(async (req) => {
         if (!tenant_id || !plan_id) return json({ error: 'tenant_id and plan_id required' }, 400);
         const { data: plan } = await admin.from('subscription_plans').select('*').eq('id', plan_id).maybeSingle();
         if (!plan) return json({ error: 'Plan not found' }, 404);
+        const { data: currentSub } = await admin
+          .from('tenant_subscriptions')
+          .select('status')
+          .eq('tenant_id', tenant_id)
+          .maybeSingle();
+        const patch: Record<string, unknown> = { plan_id, updated_at: new Date().toISOString() };
+        // If tenant is on trial, activate immediately when admin assigns a paid plan
+        if (currentSub?.status === 'trial') {
+          const start = new Date();
+          const end = new Date();
+          end.setMonth(end.getMonth() + 1);
+          patch.status = 'active';
+          patch.trial_ends_at = null;
+          patch.current_period_start = start.toISOString().slice(0, 10);
+          patch.current_period_end = end.toISOString().slice(0, 10);
+          patch.cancel_at_period_end = false;
+          patch.canceled_at = null;
+        }
         const { error } = await admin
           .from('tenant_subscriptions')
-          .update({ plan_id, updated_at: new Date().toISOString() })
+          .update(patch)
           .eq('tenant_id', tenant_id);
         if (error) { await logAction('change_plan', body, 'error', error.message); return json({ error: error.message }, 400); }
-        await logAction('change_plan', body, 'success', { plan_name: plan.name });
+        await logAction('change_plan', body, 'success', { plan_name: plan.name, activated: currentSub?.status === 'trial' });
         return json({ success: true });
       }
+
 
       case 'extend_trial': {
         const { tenant_id, days } = body;
