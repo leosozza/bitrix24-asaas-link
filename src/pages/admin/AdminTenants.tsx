@@ -278,6 +278,41 @@ export default function AdminTenants() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Dates */}
+      <Dialog open={dialog === 'dates'} onOpenChange={(o) => !o && closeDialog()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar datas de pagamento</DialogTitle>
+            <DialogDescription>{selected?.company_name}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label>Início do período atual</Label>
+              <Input type="date" value={dateStart} onChange={(e) => setDateStart(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Próximo vencimento (fim do período)</Label>
+              <Input type="date" value={dateEnd} onChange={(e) => setDateEnd(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Fim do trial (opcional)</Label>
+              <Input type="date" value={dateTrialEnd} onChange={(e) => setDateTrialEnd(e.target.value)} />
+              <p className="text-xs text-muted-foreground">Deixe em branco para remover o trial.</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeDialog} disabled={busy}>Cancelar</Button>
+            <Button disabled={busy} onClick={() => selected && run(() => adminApi.updateDates(selected.id, {
+              current_period_start: dateStart || null,
+              current_period_end: dateEnd || null,
+              trial_ends_at: dateTrialEnd || null,
+            }), 'Datas atualizadas')}>
+              {busy && <Loader2 className="w-4 h-4 mr-2 animate-spin" />} Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AdminLayout>
   );
 }
