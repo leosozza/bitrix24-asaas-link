@@ -40,7 +40,7 @@ export default function AdminTenants() {
   const [planFilter, setPlanFilter] = useState<string>('all');
 
   const [selected, setSelected] = useState<AdminTenant | null>(null);
-  const [dialog, setDialog] = useState<'plan' | 'trial' | 'cancel' | 'notes' | null>(null);
+  const [dialog, setDialog] = useState<'plan' | 'trial' | 'cancel' | 'notes' | 'dates' | null>(null);
   const [busy, setBusy] = useState(false);
 
   // dialog state
@@ -48,6 +48,9 @@ export default function AdminTenants() {
   const [trialDays, setTrialDays] = useState('14');
   const [notes, setNotes] = useState('');
   const [cancelMode, setCancelMode] = useState<'period_end' | 'immediate'>('period_end');
+  const [dateStart, setDateStart] = useState('');
+  const [dateEnd, setDateEnd] = useState('');
+  const [dateTrialEnd, setDateTrialEnd] = useState('');
 
   const filtered = useMemo(() => {
     const list = data?.tenants || [];
