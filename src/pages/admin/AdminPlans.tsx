@@ -68,6 +68,7 @@ function PlanEditor({ plan }: { plan: AdminPlan }) {
           <div>
             <Label>Limite de transações/mês</Label>
             <Input type="number" value={limit} onChange={(e) => setLimit(e.target.value)} />
+            <p className="text-xs text-muted-foreground mt-1">Use <code>-1</code> para ilimitado.</p>
           </div>
         </div>
         <div>
