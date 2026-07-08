@@ -73,8 +73,12 @@ export function PlanCheckoutModal({ open, onOpenChange, initialPlanId, onCheckou
         .eq('is_active', true)
         .order('price', { ascending: true });
       if (error) toast.error('Erro ao carregar planos');
-      setPlans((data || []) as Plan[]);
+      const list = (data || []) as Plan[];
+      setPlans(list);
       if (initialPlanId) setPlanId(initialPlanId);
+      else if (list.length === 1) setPlanId(list[0].id);
+      // Skip plan-selection step when there's only one active plan
+      if (list.length === 1) setStep(2);
       setLoadingPlans(false);
     })();
   }, [open, initialPlanId]);
