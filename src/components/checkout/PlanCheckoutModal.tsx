@@ -73,8 +73,12 @@ export function PlanCheckoutModal({ open, onOpenChange, initialPlanId, onCheckou
         .eq('is_active', true)
         .order('price', { ascending: true });
       if (error) toast.error('Erro ao carregar planos');
-      setPlans((data || []) as Plan[]);
+      const list = (data || []) as Plan[];
+      setPlans(list);
       if (initialPlanId) setPlanId(initialPlanId);
+      else if (list.length === 1) setPlanId(list[0].id);
+      // Skip plan-selection step when there's only one active plan
+      if (list.length === 1) setStep(2);
       setLoadingPlans(false);
     })();
   }, [open, initialPlanId]);
@@ -116,7 +120,7 @@ export function PlanCheckoutModal({ open, onOpenChange, initialPlanId, onCheckou
         <DialogHeader>
           <DialogTitle>Contratar plano Asaas Pay by Thoth24</DialogTitle>
           <DialogDescription>
-            {step < 4 ? `Passo ${step} de 3` : 'Pagamento gerado'}
+            {step < 4 ? `Passo ${plans.length <= 1 ? step - 1 : step} de ${plans.length <= 1 ? 2 : 3}` : 'Pagamento gerado'}
           </DialogDescription>
         </DialogHeader>
 
@@ -230,7 +234,7 @@ export function PlanCheckoutModal({ open, onOpenChange, initialPlanId, onCheckou
             <Button onClick={() => onOpenChange(false)}>Fechar</Button>
           ) : (
             <>
-              {step > 1 && (
+              {step > 1 && !(step === 2 && plans.length <= 1) && (
                 <Button variant="outline" onClick={() => setStep((s) => (s - 1) as 1 | 2 | 3)} disabled={submitting}>
                   Voltar
                 </Button>

@@ -161,7 +161,7 @@ export default function AdminTenants() {
                 <TableCell className="text-xs">{t.subscription?.trial_ends_at ? new Date(t.subscription.trial_ends_at).toLocaleDateString('pt-BR') : '—'}</TableCell>
                 <TableCell className="text-xs">{t.subscription?.current_period_end ? new Date(t.subscription.current_period_end).toLocaleDateString('pt-BR') : '—'}</TableCell>
                 <TableCell className="text-xs">
-                  {t.subscription?.transactions_used ?? 0} / {t.plan?.transaction_limit ?? '∞'}
+                  {t.subscription?.transactions_used ?? 0} / {t.plan?.transaction_limit === -1 || t.plan?.transaction_limit == null ? '∞' : t.plan?.transaction_limit}
                 </TableCell>
                 <TableCell className="text-xs">{t.subscription?.status === 'active' ? formatBRL(Number(t.plan?.price) || 0) : '—'}</TableCell>
                 <TableCell>
