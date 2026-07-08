@@ -2,16 +2,59 @@ import { Button } from "@/components/ui/button";
 import { Check, Sparkles, Infinity as InfinityIcon } from "lucide-react";
 import { Link } from "react-router-dom";
 
-const features = [
-  "Transações ilimitadas",
-  "PIX, Boleto e Cartão de crédito",
-  "Assinaturas recorrentes",
-  "Split de pagamentos",
-  "Emissão automática de NFSe",
-  "Automações Bizproc (robôs Asaas)",
-  "Contratos digitais",
-  "Usuários Bitrix24 ilimitados",
-  "Suporte prioritário",
+const groups: { title: string; items: string[] }[] = [
+  {
+    title: "Cobranças & pagamentos Asaas",
+    items: [
+      "Transações ilimitadas — sem cap mensal",
+      "PIX, Boleto bancário e Cartão de crédito",
+      "Assinaturas recorrentes (mensal, anual, custom)",
+      "Split de pagamentos entre múltiplas carteiras Asaas",
+      "Link de pagamento e cobrança avulsa",
+      "Reembolsos e cancelamentos direto do CRM",
+    ],
+  },
+  {
+    title: "Integração nativa com Bitrix24",
+    items: [
+      "Instalação 1-clique no Marketplace Bitrix24",
+      "Pay System API — checkout Asaas dentro do Bitrix (PIX, Boleto, Cartão)",
+      "Aba \"Pagamentos Asaas\" em Leads, Deals e Smart Processes (CRM detail tab)",
+      "Badges de status de pagamento na timeline do CRM",
+      "Hub de gestão embutido em iframe (dashboard, transações, config)",
+      "Campos personalizados UF_CRM_ASAAS_* nos Deals",
+      "Sincronização automática Cliente Asaas ↔ Contato/Empresa Bitrix",
+    ],
+  },
+  {
+    title: "Automações & Bizproc",
+    items: [
+      "5 robôs Bizproc: gerar cobrança, assinatura, split, NFSe e checar status",
+      "Auto-registro e self-healing dos robôs em cada portal",
+      "Workflows disparados por eventos de pagamento (pago, vencido, estornado)",
+      "Webhooks Asaas registrados e monitorados automaticamente",
+    ],
+  },
+  {
+    title: "Fiscal & Contratos",
+    items: [
+      "Emissão automática de NFSe pela API do Asaas",
+      "Configuração de serviço municipal, ISS e template de observações",
+      "Contratos digitais com aceite público e assinatura eletrônica",
+      "Templates de contrato editáveis e mapeamento de campos Bitrix",
+      "Cobrança recorrente vinculada ao contrato",
+    ],
+  },
+  {
+    title: "Operação & suporte",
+    items: [
+      "Usuários Bitrix24 ilimitados",
+      "Dashboard SaaS com transações, assinaturas, splits e NFSe",
+      "Logs de integração e ferramenta de reparo (pay system, robôs, webhooks)",
+      "Conector MCP para automações com IA",
+      "Suporte prioritário por e-mail (contato@thoth24.com)",
+    ],
+  },
 ];
 
 export function Pricing() {
