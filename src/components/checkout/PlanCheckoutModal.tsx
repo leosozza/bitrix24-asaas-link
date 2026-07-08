@@ -234,7 +234,7 @@ export function PlanCheckoutModal({ open, onOpenChange, initialPlanId, onCheckou
             <Button onClick={() => onOpenChange(false)}>Fechar</Button>
           ) : (
             <>
-              {step > 1 && (
+              {step > 1 && !(step === 2 && plans.length <= 1) && (
                 <Button variant="outline" onClick={() => setStep((s) => (s - 1) as 1 | 2 | 3)} disabled={submitting}>
                   Voltar
                 </Button>
