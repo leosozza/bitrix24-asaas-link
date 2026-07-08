@@ -75,7 +75,7 @@ export function Pricing() {
           </p>
         </div>
 
-        <div className="max-w-lg mx-auto">
+        <div className="max-w-2xl mx-auto">
           <div className="relative p-8 rounded-2xl border border-primary/50 bg-card shadow-2xl shadow-primary/10">
             <div className="absolute -top-4 left-1/2 -translate-x-1/2">
               <span className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full gradient-primary text-primary-foreground text-sm font-medium shadow-glow">
