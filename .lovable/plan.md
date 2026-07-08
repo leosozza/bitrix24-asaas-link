@@ -1,80 +1,79 @@
 
-## Objetivo
+# Plano único: Asaas Pay by Thoth24 — R$ 249/mês, transações ilimitadas
 
-1. Garantir que o telefone vindo do Bitrix entre no campo **Celular (`mobilePhone`)** do Asaas, e não em **Fone (`phone`)**.
-2. Adicionar uma opção no conector para o tenant escolher se o Asaas envia (ou não) as cobranças por **e-mail / WhatsApp / SMS** ao cliente final.
+Simplificar a oferta do conector para um único plano ao invés de Starter/Pro/Enterprise.
 
----
+## 1. Banco de dados (migration)
 
-## 1. Phone → mobilePhone
+Migration em `supabase/migrations/`:
 
-A maior parte do código já usa `mobilePhone`, mas há um ponto que ainda usa `phone`:
+- Desativar todos os planos atuais (`UPDATE subscription_plans SET is_active = false`).
+- Inserir (ou atualizar via upsert por nome) o plano único:
+  - `name`: `Pro` (mantém compatibilidade com `handle_new_user` que procura por `lower(name) = 'pro'`)
+  - `price`: `249.00`
+  - `transaction_limit`: `-1` (convenção para "ilimitado"; UI já pode tratar)
+  - `features`: lista enxuta (ver seção 4)
+  - `is_active`: `true`
+- Migrar assinaturas existentes de outros planos para o novo `plan_id` do Pro, preservando `status`, datas e uso.
 
-- `supabase/functions/bitrix-crm-detail-tab/index.ts` (função `findOrCreateAsaasCustomer`, ~linha 114):  
-  trocar `phone: (phone || '').replace(/\D/g, '')` por `mobilePhone: (phone || '').replace(/\D/g, '')`.
+## 2. Tratamento de "ilimitado" (`transaction_limit = -1`)
 
-Também verificar/uniformizar:
-- `bitrix-payment-iframe`: já usa `mobilePhone` ✅
-- `asaas-contract-billing` / `contract-public`: payload já aceita `mobilePhone` ✅
-- `subscription-checkout` e `admin-tenant-management`: já usam `mobilePhone` ✅
+Atualizar leituras do limite para exibir/agir como ilimitado quando `< 0`:
 
-Nenhuma mudança de schema; só ajuste no edge function acima.
+- `src/pages/admin/AdminTenants.tsx` e `AdminPlans.tsx`: mostrar "Ilimitado" quando `-1`.
+- `src/components/checkout/PlanCheckoutModal.tsx`: idem no card.
+- Qualquer gate por limite em edge functions (checar `admin-tenant-management`, `subscription-checkout`, webhooks) — se houver bloqueio quando `transactions_used >= transaction_limit`, ignorar quando limite `< 0`.
 
----
+## 3. Landing page — `src/components/landing/Pricing.tsx`
 
-## 2. Toggle "Notificações do Asaas"
+Substituir a grade de 3 planos por um único card centralizado:
 
-### Banco de dados
+- Título: "Plano único, sem surpresas"
+- Preço: `R$ 249/mês`
+- Destaque: "Transações ilimitadas"
+- Features finais (seção 4)
+- CTA: `Começar Agora` → `/auth?plan=pro`
+- Manter layout responsivo (card centralizado, largura máx ~480px).
 
-Migração em `asaas_configurations`:
-- Adicionar coluna `customer_notifications_enabled boolean not null default true`.
+## 4. Features do plano (sugestão inicial)
 
-### Backend (edge functions)
+- Transações ilimitadas
+- PIX, Boleto e Cartão de crédito
+- Assinaturas recorrentes
+- Split de pagamentos
+- Emissão automática de NFSe
+- Automações Bizproc (5 robôs Asaas)
+- Contratos digitais
+- Usuários Bitrix24 ilimitados
+- Suporte prioritário
 
-Em todos os pontos onde criamos cliente no Asaas, ler `customer_notifications_enabled` da `asaas_configurations` do tenant e enviar:
+(Podem ser ajustadas antes de aplicar.)
 
-```
-notificationDisabled: !customer_notifications_enabled
-```
+## 5. Modal de checkout — `PlanCheckoutModal.tsx`
 
-no payload de criação/atualização do customer (Asaas aplica em todas as cobranças desse cliente — email, WhatsApp e SMS).
+Como só há um plano ativo:
 
-Pontos a atualizar:
-- `supabase/functions/bitrix-payment-iframe/index.ts` → `findOrCreateAsaasCustomerSimple`
-- `supabase/functions/bitrix-payment-process/index.ts` → `findOrCreateCustomer`
-- `supabase/functions/bitrix-crm-detail-tab/index.ts` → `findOrCreateAsaasCustomer`
-- `supabase/functions/contract-public/index.ts` → propagar no `customerPayload` antes de chamar `ensureAsaasCustomer`
-- `supabase/functions/subscription-checkout/index.ts` e `admin-tenant-management/index.ts` → idem
+- Pular o passo 1 (seleção de plano) quando `plans.length === 1`, indo direto para dados do cliente.
+- Ajustar contador de passos ("Passo X de 2").
+- Manter fallback caso o admin reative múltiplos planos no futuro.
 
-Como envolve várias funções, criar um helper compartilhado em `supabase/functions/_shared/asaas-contract-billing.ts` (ou novo `_shared/asaas-config.ts`) para buscar a flag uma única vez por tenant.
+## 6. Admin
 
-### Frontend
+- `AdminPlans.tsx`: continua funcional (edita o plano único). Adicionar dica: use `-1` em "Limite de transações/mês" para ilimitado.
+- `AdminTenants.tsx`: coluna/label de uso mostra `41 / Ilimitado` quando `-1`.
 
-Em `src/pages/DashboardSettings.tsx`, na seção "Configuração Asaas", adicionar um `<Switch>`:
+## Detalhes técnicos
 
-- **Label:** "Enviar cobranças por e-mail/WhatsApp via Asaas"
-- **Descrição:** "Quando ativo, o Asaas envia automaticamente notificações de cobrança (e-mail, WhatsApp e SMS) ao cliente final. Desative se você prefere enviar pelo seu próprio fluxo no Bitrix24."
-- Persiste em `asaas_configurations.customer_notifications_enabled`.
-- Default: ligado (mantém comportamento atual).
+- Mantemos o `name = 'Pro'` para não quebrar `handle_new_user` (trial de 14 dias no Pro).
+- Nenhuma coluna nova é adicionada; `-1` é convenção in-code para ilimitado.
+- Migration é idempotente (usa upsert por `lower(name) = 'pro'`).
+- Sem mudanças em RLS, grants ou edge functions além dos gates de limite.
 
-⚠️ Importante: a flag só se aplica a **novos** clientes criados a partir daí. Clientes já existentes no Asaas mantêm a configuração anterior — adicionar nota explicativa abaixo do switch. (Opcionalmente, no `ensureAsaasCustomer` já existe um PATCH best-effort em clientes encontrados; podemos atualizar `notificationDisabled` lá também — incluído no escopo.)
+## Arquivos a alterar
 
----
-
-## Validação
-
-- Criar cobrança via iframe checkout com um contato Bitrix que tenha telefone → conferir no painel Asaas que o número aparece em **Celular**.
-- Desativar o switch nas configurações, criar nova cobrança → cliente recém-criado no Asaas deve aparecer com "Notificações desativadas".
-- Reativar → próximo cliente novo volta a receber notificações.
-
-## Arquivos tocados
-
-- migration nova (coluna `customer_notifications_enabled`)
-- `supabase/functions/_shared/asaas-contract-billing.ts` (helper)
-- `supabase/functions/bitrix-payment-iframe/index.ts`
-- `supabase/functions/bitrix-payment-process/index.ts`
-- `supabase/functions/bitrix-crm-detail-tab/index.ts`
-- `supabase/functions/contract-public/index.ts`
-- `supabase/functions/subscription-checkout/index.ts`
-- `supabase/functions/admin-tenant-management/index.ts`
-- `src/pages/DashboardSettings.tsx`
+- `supabase/migrations/<novo>.sql` (novo)
+- `src/components/landing/Pricing.tsx`
+- `src/components/checkout/PlanCheckoutModal.tsx`
+- `src/pages/admin/AdminTenants.tsx`
+- `src/pages/admin/AdminPlans.tsx`
+- Edge functions com gate de limite (a confirmar durante a implementação)
