@@ -104,16 +104,25 @@ export function Pricing() {
               </div>
             </div>
 
-            <ul className="space-y-3 mb-8">
-              {features.map((f, i) => (
-                <li key={i} className="flex items-start gap-3">
-                  <div className="w-5 h-5 rounded-full bg-primary/15 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <Check className="w-3 h-3 text-primary" />
-                  </div>
-                  <span className="text-foreground text-sm">{f}</span>
-                </li>
+            <div className="space-y-5 mb-8">
+              {groups.map((g, gi) => (
+                <div key={gi}>
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-primary mb-2">
+                    {g.title}
+                  </h4>
+                  <ul className="space-y-2">
+                    {g.items.map((f, i) => (
+                      <li key={i} className="flex items-start gap-2.5">
+                        <div className="w-4 h-4 rounded-full bg-primary/15 flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <Check className="w-2.5 h-2.5 text-primary" />
+                        </div>
+                        <span className="text-foreground text-sm leading-snug">{f}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ))}
-            </ul>
+            </div>
 
             <Button
               className="w-full h-12 text-base gradient-primary text-primary-foreground hover:opacity-90 shadow-md"
