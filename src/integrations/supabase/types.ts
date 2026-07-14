@@ -1227,6 +1227,7 @@ export type Database = {
         | "expired"
         | "trial"
         | "past_due"
+        | "suspended"
       subscription_status_asaas: "active" | "canceled" | "expired" | "pending"
       transaction_status:
         | "pending"
@@ -1391,6 +1392,7 @@ export const Constants = {
         "expired",
         "trial",
         "past_due",
+        "suspended",
       ],
       subscription_status_asaas: ["active", "canceled", "expired", "pending"],
       transaction_status: [
