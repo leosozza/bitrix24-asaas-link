@@ -112,7 +112,8 @@ export default function AdminTenants() {
             <SelectItem value="trial">Trial</SelectItem>
             <SelectItem value="active">Ativo</SelectItem>
             <SelectItem value="past_due">Inadimplente</SelectItem>
-            <SelectItem value="canceled">Cancelado</SelectItem>
+            <SelectItem value="suspended">Suspenso</SelectItem>
+            <SelectItem value="cancelled">Cancelado</SelectItem>
             <SelectItem value="expired">Expirado</SelectItem>
           </SelectContent>
         </Select>
