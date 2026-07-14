@@ -178,10 +178,15 @@ export default function AdminTenants() {
                       <DropdownMenuItem onClick={() => open(t, 'dates')}>Editar datas</DropdownMenuItem>
                       <DropdownMenuItem onClick={() => open(t, 'notes')}>Editar notas</DropdownMenuItem>
                       <DropdownMenuSeparator />
-                      {(t.subscription?.status === 'canceled' || t.subscription?.status === 'expired') ? (
-                        <DropdownMenuItem onClick={() => run(() => adminApi.reactivate(t.id), 'Reativado')}>Reativar</DropdownMenuItem>
+                      {t.subscription?.status === 'suspended' || t.subscription?.status === 'cancelled' || t.subscription?.status === 'expired' ? (
+                        <DropdownMenuItem onClick={() => run(() => adminApi.reactivate(t.id), 'Reativado')}>Reativar acesso</DropdownMenuItem>
                       ) : (
-                        <DropdownMenuItem className="text-destructive" onClick={() => open(t, 'cancel')}>Cancelar</DropdownMenuItem>
+                        <>
+                          <DropdownMenuItem className="text-amber-600" onClick={() => run(() => adminApi.suspend(t.id, 'Aguardando contratação/pagamento'), 'Acesso suspenso')}>
+                            Suspender acesso
+                          </DropdownMenuItem>
+                          <DropdownMenuItem className="text-destructive" onClick={() => open(t, 'cancel')}>Cancelar</DropdownMenuItem>
+                        </>
                       )}
                     </DropdownMenuContent>
                   </DropdownMenu>
