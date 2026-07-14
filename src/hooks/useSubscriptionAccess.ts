@@ -80,7 +80,7 @@ export function useSubscriptionAccess(): SubscriptionAccess {
       reason = 'suspended';
     } else if (sub.status === 'past_due') {
       reason = 'past_due';
-    } else if (sub.status === 'canceled') {
+    } else if (sub.status === 'cancelled') {
       reason = 'canceled';
     } else if (sub.status === 'expired') {
       reason = 'expired';
