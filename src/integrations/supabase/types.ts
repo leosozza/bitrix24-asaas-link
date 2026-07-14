@@ -1197,6 +1197,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      tenant_has_access: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
       app_role: "admin" | "user" | "super_admin"
@@ -1226,6 +1227,7 @@ export type Database = {
         | "expired"
         | "trial"
         | "past_due"
+        | "suspended"
       subscription_status_asaas: "active" | "canceled" | "expired" | "pending"
       transaction_status:
         | "pending"
@@ -1390,6 +1392,7 @@ export const Constants = {
         "expired",
         "trial",
         "past_due",
+        "suspended",
       ],
       subscription_status_asaas: ["active", "canceled", "expired", "pending"],
       transaction_status: [

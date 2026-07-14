@@ -277,6 +277,26 @@ serve(async (req) => {
         return json({ success: true });
       }
 
+      case 'suspend': {
+        const { tenant_id, reason } = body;
+        if (!tenant_id) return json({ error: 'tenant_id required' }, 400);
+        const { data: sub } = await admin.from('tenant_subscriptions').select('notes').eq('tenant_id', tenant_id).maybeSingle();
+        const suspendNote = `[${new Date().toISOString().slice(0,10)}] Acesso suspenso pelo admin${reason ? ` — ${reason}` : ''}`;
+        const notes = sub?.notes ? `${sub.notes}\n${suspendNote}` : suspendNote;
+        const { error } = await admin
+          .from('tenant_subscriptions')
+          .update({
+            status: 'suspended',
+            cancel_at_period_end: false,
+            notes,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('tenant_id', tenant_id);
+        if (error) { await logAction('suspend', body, 'error', error.message); return json({ error: error.message }, 400); }
+        await logAction('suspend', body, 'success', { reason });
+        return json({ success: true });
+      }
+
       case 'update_notes': {
         const { tenant_id, notes } = body;
         if (!tenant_id) return json({ error: 'tenant_id required' }, 400);

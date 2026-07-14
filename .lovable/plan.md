@@ -1,79 +1,88 @@
+## Objetivo
 
-# Plano único: Asaas Pay by Thoth24 — R$ 249/mês, transações ilimitadas
+Bloquear o uso do conector até que o tenant conclua a contratação (assinatura Asaas paga). Enquanto não houver assinatura ativa, o usuário vê uma **tela clara exigindo a contratação para continuar o uso**, tanto no dashboard quanto no iframe do Bitrix.
 
-Simplificar a oferta do conector para um único plano ao invés de Starter/Pro/Enterprise.
+Especificamente:
 
-## 1. Banco de dados (migration)
+1. Suspender o **Delivery Real** agora (`status='suspended'`).
+2. Ao concluir checkout na Asaas e receber `PAYMENT_CONFIRMED`/`PAYMENT_RECEIVED`, o status volta para `active` automaticamente via webhook.
+3. Frontend (dashboard + iframe Bitrix) bloqueia todas as funcionalidades quando o tenant não está `active`/`trial`, mostrando tela de exigência de contratação.
 
-Migration em `supabase/migrations/`:
+---
 
-- Desativar todos os planos atuais (`UPDATE subscription_plans SET is_active = false`).
-- Inserir (ou atualizar via upsert por nome) o plano único:
-  - `name`: `Pro` (mantém compatibilidade com `handle_new_user` que procura por `lower(name) = 'pro'`)
-  - `price`: `249.00`
-  - `transaction_limit`: `-1` (convenção para "ilimitado"; UI já pode tratar)
-  - `features`: lista enxuta (ver seção 4)
-  - `is_active`: `true`
-- Migrar assinaturas existentes de outros planos para o novo `plan_id` do Pro, preservando `status`, datas e uso.
+## Mudanças
 
-## 2. Tratamento de "ilimitado" (`transaction_limit = -1`)
+### 1. Banco de dados (migration)
 
-Atualizar leituras do limite para exibir/agir como ilimitado quando `< 0`:
+- Convenção: `tenant_subscriptions.status` passa a aceitar `'suspended'` (texto livre, sem enum — sem breaking change).
+- Função `public.tenant_has_access(_user_id uuid) returns boolean` (stable, security definer, `search_path=public`):
+  - `true` se `status IN ('trial','active')` **e** (`trial_ends_at > now()` OR `current_period_end >= now()`).
 
-- `src/pages/admin/AdminTenants.tsx` e `AdminPlans.tsx`: mostrar "Ilimitado" quando `-1`.
-- `src/components/checkout/PlanCheckoutModal.tsx`: idem no card.
-- Qualquer gate por limite em edge functions (checar `admin-tenant-management`, `subscription-checkout`, webhooks) — se houver bloqueio quando `transactions_used >= transaction_limit`, ignorar quando limite `< 0`.
+### 2. Ação admin: Suspender / Reativar
 
-## 3. Landing page — `src/components/landing/Pricing.tsx`
+Em `supabase/functions/admin-tenant-management/index.ts`, `src/hooks/useAdminTenants.ts` e `src/pages/admin/AdminTenants.tsx`:
 
-Substituir a grade de 3 planos por um único card centralizado:
+- Nova ação `suspend` (seta `status='suspended'`, guarda motivo em `notes`).
+- Badge "Suspenso" no `statusBadge`.
+- Item "Suspender acesso" no dropdown.
 
-- Título: "Plano único, sem surpresas"
-- Preço: `R$ 249/mês`
-- Destaque: "Transações ilimitadas"
-- Features finais (seção 4)
-- CTA: `Começar Agora` → `/auth?plan=pro`
-- Manter layout responsivo (card centralizado, largura máx ~480px).
+### 3. Ativação automática via webhook
 
-## 4. Features do plano (sugestão inicial)
+Em `supabase/functions/thoth-asaas-webhook/index.ts`, quando o `externalReference` for um `tenant_id`:
 
-- Transações ilimitadas
-- PIX, Boleto e Cartão de crédito
-- Assinaturas recorrentes
-- Split de pagamentos
-- Emissão automática de NFSe
-- Automações Bizproc (5 robôs Asaas)
-- Contratos digitais
-- Usuários Bitrix24 ilimitados
-- Suporte prioritário
+- `PAYMENT_CONFIRMED` / `PAYMENT_RECEIVED` → `status='active'`, atualiza `current_period_start/end` e `invoice_url`.
+- `PAYMENT_OVERDUE` → `status='past_due'`.
+- `SUBSCRIPTION_DELETED` → `status='canceled'`.
+- Registro em `integration_logs`.
 
-(Podem ser ajustadas antes de aplicar.)
+### 4. Tela de exigência de contratação (o foco desta iteração)
 
-## 5. Modal de checkout — `PlanCheckoutModal.tsx`
+Novo hook `src/hooks/useSubscriptionAccess.ts` — retorna `{ hasAccess, status, reason, subscription, plan }`.
 
-Como só há um plano ativo:
+Novo componente `src/components/access/SubscriptionRequiredScreen.tsx` — tela cheia com:
 
-- Pular o passo 1 (seleção de plano) quando `plans.length === 1`, indo direto para dados do cliente.
-- Ajustar contador de passos ("Passo X de 2").
-- Manter fallback caso o admin reative múltiplos planos no futuro.
+- Título forte: **"Contratação necessária para continuar usando o Asaas Pay by Thoth24"**.
+- Subtítulo explicando o motivo conforme `status`:
+  - `suspended` → "Seu acesso foi suspenso. Para retomar o uso, contrate o plano Pro."
+  - `past_due` → "Sua última fatura está em aberto. Regularize o pagamento para liberar o acesso."
+  - `canceled`/`expired` → "Sua assinatura foi encerrada. Contrate novamente para reativar."
+  - `trial` vencido → "Seu período de teste terminou. Contrate o plano Pro para continuar."
+- Resumo do plano Pro (R$ 249/mês, transações ilimitadas, lista curta de features).
+- **Botão primário**: "Contratar agora" → abre `PlanCheckoutModal`.
+- **Botão secundário**: "Ver fatura em aberto" quando existir `invoice_url` (past_due).
+- Rodapé: contato de suporte.
+- Design consistente com a landing (glassmorphism, cores Asaas/Bitrix).
 
-## 6. Admin
+Novo componente `src/components/access/SubscriptionGate.tsx` — envolve `children`. Se sem acesso, renderiza `SubscriptionRequiredScreen`; senão, `children`.
 
-- `AdminPlans.tsx`: continua funcional (edita o plano único). Adicionar dica: use `-1` em "Limite de transações/mês" para ilimitado.
-- `AdminTenants.tsx`: coluna/label de uso mostra `41 / Ilimitado` quando `-1`.
+Aplicar em:
+- `src/components/dashboard/DashboardLayout.tsx` (envolve o `Outlet`).
+- `src/pages/BitrixPreview.tsx` (iframe Bitrix — mesma tela, compacta).
+- Rotas isentas: `/admin/**` (super admin) e `/dashboard/settings` (para editar dados de cobrança).
+
+### 5. Aviso persistente antes do bloqueio
+
+`src/components/access/SubscriptionBanner.tsx` — banner amarelo/vermelho no topo do `DashboardLayout` quando:
+
+- `trial` faltando ≤ 5 dias → "Seu teste termina em X dias. Contrate agora para não perder o acesso."
+- `past_due` → "Fatura em aberto. Regularize para evitar suspensão."
+
+Botão "Contratar" abre o mesmo `PlanCheckoutModal`.
+
+### 6. Suspender Delivery Real agora
+
+Após deploy, `UPDATE tenant_subscriptions SET status='suspended', notes='Suspenso — aguardando contratação e pagamento do plano Pro' WHERE tenant_id=<id>`.
+
+---
 
 ## Detalhes técnicos
 
-- Mantemos o `name = 'Pro'` para não quebrar `handle_new_user` (trial de 14 dias no Pro).
-- Nenhuma coluna nova é adicionada; `-1` é convenção in-code para ilimitado.
-- Migration é idempotente (usa upsert por `lower(name) = 'pro'`).
-- Sem mudanças em RLS, grants ou edge functions além dos gates de limite.
+- Sem enum Postgres; `status` continua `text`.
+- `tenant_has_access` é `security definer` com `search_path=public`.
+- Gate é UX/UI; RLS existente continua sendo a barreira de dados.
+- `PlanCheckoutModal` já integra com `subscription-checkout` (cria cliente + assinatura + fatura na Asaas). Webhook (passo 3) reativa após pagamento — nenhum trabalho adicional necessário.
 
-## Arquivos a alterar
+## O que não muda
 
-- `supabase/migrations/<novo>.sql` (novo)
-- `src/components/landing/Pricing.tsx`
-- `src/components/checkout/PlanCheckoutModal.tsx`
-- `src/pages/admin/AdminTenants.tsx`
-- `src/pages/admin/AdminPlans.tsx`
-- Edge functions com gate de limite (a confirmar durante a implementação)
+- Preços, planos, RLS, integração Bitrix, layout do admin.
+- Trial de 14 dias para novos signups continua igual.
