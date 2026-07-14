@@ -67,6 +67,7 @@ export const adminApi = {
   extendTrial: (tenant_id: string, days: number) => call('extend_trial', { tenant_id, days }),
   cancel: (tenant_id: string, immediate: boolean) => call('cancel_subscription', { tenant_id, immediate }),
   reactivate: (tenant_id: string) => call('reactivate', { tenant_id }),
+  suspend: (tenant_id: string, reason?: string) => call('suspend', { tenant_id, reason }),
   updateNotes: (tenant_id: string, notes: string) => call('update_notes', { tenant_id, notes }),
   updateDates: (tenant_id: string, dates: { current_period_start?: string | null; current_period_end?: string | null; trial_ends_at?: string | null }) =>
     call('update_dates', { tenant_id, ...dates }),
